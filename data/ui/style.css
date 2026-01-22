@@ -1,0 +1,52 @@
+/* Main window styles */
+window.background {
+    background-color: @window_bg_color;
+}
+
+.sidebar {
+    background-color: @headerbar_bg_color;
+    border-right: 1px solid @borders;
+}
+
+.navigation-sidebar row {
+    padding: 0;
+    margin: 4px 12px;
+    border-radius: 8px;
+    transition: background-color 200ms ease;
+}
+
+.navigation-sidebar row:hover {
+    background-color: alpha(@window_fg_color, 0.05);
+}
+
+.navigation-sidebar row:selected {
+    background-color: @accent_bg_color;
+    color: @accent_fg_color;
+}
+
+/* Wallpaper Cards */
+.wallpaper-card {
+    background-color: @card_bg_color;
+    border: 1px solid @borders;
+    border-radius: 12px;
+    padding: 0;
+    transition: transform 200ms ease, box-shadow 200ms ease;
+}
+
+.wallpaper-card:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    border-color: @accent_bg_color;
+}
+
+.card-badge {
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    border-radius: 4px;
+    padding: 4px;
+}
+
+/* Grid */
+scrolledwindow {
+    background-color: transparent;
+}
