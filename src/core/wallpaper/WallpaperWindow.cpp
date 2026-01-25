@@ -1,6 +1,7 @@
 #include "WallpaperWindow.hpp"
-#include "../../utils/Logger.hpp"
 #include "../transition/effects/BasicEffects.hpp"
+#include "../utils/Logger.hpp"
+#include <gtk/gtk.h>
 #include <gtk4-layer-shell/gtk4-layer-shell.h> // Assuming this library is used
 
 namespace bwp::wallpaper {
@@ -71,8 +72,7 @@ void WallpaperWindow::updateMonitor(const monitor::MonitorInfo &monitor) {
 
 void WallpaperWindow::transitionTo(
     std::shared_ptr<WallpaperRenderer> nextRenderer) {
-  if (!m_drawingArea || m_renderer.expired() ||
-      IsIconified(m_window)) { // IsIconified mock check
+  if (!m_drawingArea || m_renderer.expired()) {
     setRenderer(nextRenderer);
     return;
   }

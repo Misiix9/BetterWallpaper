@@ -37,8 +37,8 @@ bool HyprlandIPC::connect() {
   if (m_instanceSignature.empty()) {
     const char *sig = std::getenv("HYPRLAND_INSTANCE_SIGNATURE");
     if (!sig) {
-      LOG_WARNING("HYPRLAND_INSTANCE_SIGNATURE not found. Hyprland integration "
-                  "disabled.");
+      LOG_WARN("HYPRLAND_INSTANCE_SIGNATURE not found. Hyprland integration "
+               "disabled.");
       return false;
     }
     m_instanceSignature = sig;

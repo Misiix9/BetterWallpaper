@@ -11,9 +11,10 @@ target_link_libraries(bwp_core PUBLIC
     ${MPV_LIBRARIES}
     ${CURL_LIBRARIES}
     ${WAYLAND_CLIENT_LIBRARIES}
-    ${WAYLAND_CLIENT_LIBRARIES}
+    ${GTK4_LAYER_SHELL_LIBRARIES}
     Threads::Threads
     GTK4::gtk4
+    LIBADWAITA::libadwaita-1
 )
 
 # Add sources

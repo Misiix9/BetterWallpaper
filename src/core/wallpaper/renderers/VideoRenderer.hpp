@@ -1,5 +1,6 @@
 #pragma once
 #include "../WallpaperRenderer.hpp"
+#include <cairo.h>
 #include <mpv/client.h>
 #include <mpv/render.h>
 #include <mutex>

@@ -29,6 +29,9 @@ public:
   std::vector<WallpaperInfo>
   filter(const std::function<bool(const WallpaperInfo &)> &predicate) const;
 
+  // Data directory access
+  std::filesystem::path getDataDirectory() const;
+
 private:
   WallpaperLibrary();
   ~WallpaperLibrary();

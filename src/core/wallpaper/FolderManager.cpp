@@ -19,8 +19,7 @@ FolderManager::~FolderManager() { save(); }
 void FolderManager::load() {
   std::lock_guard<std::mutex> lock(m_mutex);
   auto &lib = WallpaperLibrary::getInstance();
-  std::filesystem::path path =
-      lib.getDatabasePath().parent_path() / "folders.json";
+  std::filesystem::path path = lib.getDataDirectory() / "folders.json";
 
   if (!std::filesystem::exists(path))
     return;
@@ -49,8 +48,8 @@ void FolderManager::load() {
 void FolderManager::save() {
   std::lock_guard<std::mutex> lock(m_mutex);
   auto &lib = WallpaperLibrary::getInstance();
-  std::filesystem::path path = lib.getDatabasePath().parent_path() /
-                               "folders.json"; // Store alongside library
+  std::filesystem::path path =
+      lib.getDataDirectory() / "folders.json"; // Store alongside library
 
   try {
     nlohmann::json j;

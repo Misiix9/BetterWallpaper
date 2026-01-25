@@ -1,5 +1,7 @@
 #pragma once
+#include <cstdint>
 #include <functional>
+#include <gio/gio.h>
 #include <memory>
 #include <string>
 #include <vector>
@@ -10,6 +12,13 @@ struct _GDBusConnection;
 typedef struct _GDBusConnection GDBusConnection;
 struct _GDBusNodeInfo;
 typedef struct _GDBusNodeInfo GDBusNodeInfo;
+
+struct _GVariant;
+typedef struct _GVariant GVariant;
+struct _GDBusMethodInvocation;
+typedef struct _GDBusMethodInvocation GDBusMethodInvocation;
+struct _GError;
+typedef struct _GError GError;
 
 namespace bwp::ipc {
 
@@ -44,13 +53,15 @@ private:
   static void handle_method_call(GDBusConnection *connection,
                                  const char *sender, const char *object_path,
                                  const char *interface_name,
-                                 const char *method_name, void *parameters,
-                                 void *invocation, void *user_data);
-  static void *handle_get_property(GDBusConnection *connection,
-                                   const char *sender, const char *object_path,
-                                   const char *interface_name,
-                                   const char *property_name, void *error,
-                                   void *user_data);
+                                 const char *method_name, GVariant *parameters,
+                                 GDBusMethodInvocation *invocation,
+                                 void *user_data);
+  static GVariant *handle_get_property(GDBusConnection *connection,
+                                       const char *sender,
+                                       const char *object_path,
+                                       const char *interface_name,
+                                       const char *property_name,
+                                       GError **error, void *user_data);
 
   uint32_t m_ownerId = 0;
   GDBusConnection *m_connection = nullptr;

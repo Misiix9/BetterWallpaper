@@ -1,5 +1,5 @@
 #include "Application.hpp"
-#include "../utils/Logger.hpp"
+#include "../core/utils/Logger.hpp"
 #include "MainWindow.hpp"
 #include <iostream>
 
@@ -29,8 +29,7 @@ int Application::run(int argc, char **argv) {
   return g_application_run(G_APPLICATION(m_app), argc, argv);
 }
 
-void Application::onActivate(GApplication *app, gpointer user_data) {
-  auto *self = static_cast<Application *>(user_data);
+void Application::onActivate(GApplication *app, gpointer) {
 
   // Create main window
   // We maintain MainWindow instance via userdata or singleton or just new?
@@ -40,7 +39,7 @@ void Application::onActivate(GApplication *app, gpointer user_data) {
   window->show();
 }
 
-void Application::onStartup(GApplication *app, gpointer user_data) {
+void Application::onStartup(GApplication *, gpointer) {
   // Initialize things
   bwp::utils::Logger::log(bwp::utils::LogLevel::INFO, "Application startup");
 

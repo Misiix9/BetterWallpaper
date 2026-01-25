@@ -1,6 +1,7 @@
 #pragma once
 #include "../../core/wallpaper/WallpaperInfo.hpp"
 #include "WallpaperCard.hpp"
+#include <functional>
 #include <gtk/gtk.h>
 #include <memory>
 #include <vector>
@@ -21,6 +22,10 @@ public:
   void filter(const std::string &query);
   void setSortOrder(int sortInfo); // Enum todo
 
+  using SelectionCallback =
+      std::function<void(const bwp::wallpaper::WallpaperInfo &)>;
+  void setSelectionCallback(SelectionCallback callback);
+
 private:
   GtkWidget *m_scrolledWindow;
   GtkWidget *m_flowBox;
@@ -34,6 +39,7 @@ private:
     WallpaperCard *card;
   };
   std::vector<Item> m_items;
+  SelectionCallback m_callback;
 };
 
 } // namespace bwp::gui

@@ -107,16 +107,16 @@ void TagDialog::loadTags() {
 
     // Signal with data copy? Capturing lambda with user_data trick or
     // g_signal_connect_data
+    using TagCallbackData = std::pair<TagDialog *, std::string>;
     g_signal_connect(
         delBtn, "clicked", G_CALLBACK(+[](GtkButton *, gpointer user_data) {
-          auto *pair =
-              static_cast<std::pair<TagDialog *, std::string> *>(user_data);
+          auto *pair = static_cast<TagCallbackData *>(user_data);
           pair->first->removeTag(pair->second);
           delete pair; // Single use? No, this is dangerous if clicked multiple
                        // times (impossible as detached).
                        // Better to store pointer and refresh.
         }),
-        new std::pair<TagDialog *, std::string>(this, tag));
+        new TagCallbackData(this, tag));
 
     adw_action_row_add_suffix(ADW_ACTION_ROW(chip), delBtn);
     gtk_flow_box_append(GTK_FLOW_BOX(m_tagsFlowBox), chip);

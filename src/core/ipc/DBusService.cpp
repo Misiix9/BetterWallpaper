@@ -18,12 +18,6 @@ static const char *introspection_xml = R"(
 </node>
 )"; // Simplified for brevity in this step, should match XML file
 
-static const GDBusInterfaceVTable interface_vtable = {
-    DBusService::handle_method_call,
-    (GDBusInterfaceGetPropertyFunc)DBusService::handle_get_property,
-    nullptr, // set_property
-    {0}};
-
 DBusService::DBusService() {}
 
 DBusService::~DBusService() {
@@ -51,6 +45,11 @@ bool DBusService::initialize() {
 
 void DBusService::onBusAcquired(GDBusConnection *connection, const char *,
                                 void *user_data) {
+  static const GDBusInterfaceVTable interface_vtable = {handle_method_call,
+                                                        handle_get_property,
+                                                        nullptr, // set_property
+                                                        {0}};
+
   auto *self = static_cast<DBusService *>(user_data);
   self->m_connection = connection;
 
@@ -94,10 +93,10 @@ void DBusService::handle_method_call(GDBusConnection *connection, const char *,
   }
 }
 
-void *DBusService::handle_get_property(GDBusConnection *, const char *,
-                                       const char *, const char *,
-                                       const char *property_name, void *,
-                                       void *) {
+GVariant *DBusService::handle_get_property(GDBusConnection *, const char *,
+                                           const char *, const char *,
+                                           const char *property_name, GError **,
+                                           void *) {
   std::string prop = property_name;
   if (prop == "DaemonVersion") {
     return g_variant_new_string("1.0.0");

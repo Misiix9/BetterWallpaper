@@ -3,9 +3,11 @@ window.background {
     background-color: @window_bg_color;
 }
 
+/* Sidebar - fixed width */
 .sidebar {
     background-color: @headerbar_bg_color;
     border-right: 1px solid @borders;
+    min-width: 180px;
 }
 
 .navigation-sidebar row {
@@ -30,23 +32,88 @@ window.background {
     border: 1px solid @borders;
     border-radius: 12px;
     padding: 0;
-    transition: transform 200ms ease, box-shadow 200ms ease;
+    overflow: hidden;
+    transition: transform 150ms ease, box-shadow 150ms ease;
 }
 
 .wallpaper-card:hover {
     transform: scale(1.02);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
     border-color: @accent_bg_color;
 }
 
-.card-badge {
-    background-color: rgba(0, 0, 0, 0.7);
+/* Card image */
+.card-image {
+    border-radius: 12px 12px 0 0;
+    background-color: #1a1a1a;
+}
+
+/* Black bottom bar */
+.card-bottom-bar {
+    background-color: rgba(0, 0, 0, 0.9);
+    min-height: 28px;
+}
+
+.card-title {
     color: white;
-    border-radius: 4px;
-    padding: 4px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+/* Type badge */
+.card-badge {
+    background-color: rgba(0, 0, 0, 0.75);
+    color: white;
+    border-radius: 6px;
+    padding: 3px 5px;
+}
+
+/* Favorite button */
+.favorite-btn {
+    color: rgba(255, 255, 255, 0.5);
+    min-width: 24px;
+    min-height: 24px;
+}
+
+.favorite-btn:hover {
+    color: white;
+}
+
+.favorite-btn.favorited {
+    color: #ffd700;
 }
 
 /* Grid */
 scrolledwindow {
     background-color: transparent;
+}
+
+flowbox {
+    background-color: transparent;
+}
+
+flowboxchild {
+    padding: 0;
+    margin: 0;
+    background-color: transparent;
+    border-radius: 12px;
+}
+
+flowboxchild:selected {
+    background-color: transparent;
+    outline: 2px solid @accent_bg_color;
+    outline-offset: 2px;
+    border-radius: 12px;
+}
+
+/* Preview Panel */
+.preview-frame {
+    border-radius: 8px;
+    background-color: #1a1a1a;
+    border: 1px solid @borders;
+    overflow: hidden;
+}
+
+.preview-frame picture {
+    border-radius: 8px;
 }

@@ -1,4 +1,5 @@
 #pragma once
+#include "../widgets/PreviewPanel.hpp"
 #include "../widgets/SearchBar.hpp"
 #include "../widgets/WallpaperGrid.hpp"
 #include <adwaita.h>
@@ -23,6 +24,7 @@ private:
 
   std::unique_ptr<SearchBar> m_searchBar;
   std::unique_ptr<WallpaperGrid> m_grid;
+  std::unique_ptr<PreviewPanel> m_previewPanel;
 };
 
 } // namespace bwp::gui

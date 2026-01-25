@@ -5,11 +5,6 @@
 
 namespace bwp::wallpaper {
 
-static void *get_proc_address(void *, const char *) {
-  return nullptr; // SW rendering doesn't need proc address usually, or check
-                  // documentation
-}
-
 VideoRenderer::VideoRenderer() {
   m_mpv = mpv_create();
   if (!m_mpv) {
@@ -81,24 +76,21 @@ void VideoRenderer::render(cairo_t *cr, int width, int height) {
 
   // Ask MPV to render
   int stride = width * 4;
+  // Param size structure check
+  int sizes[2] = {width, height};
+
   mpv_render_param params[] = {
-      {MPV_RENDER_PARAM_SW_SIZE,
-       (void *)&width}, // passing ptr to int? no, array {w, h}
+      {MPV_RENDER_PARAM_SW_SIZE, sizes}, // passing ptr to int array {w, h}
       {MPV_RENDER_PARAM_SW_FORMAT, (void *)"bgra"},
       {MPV_RENDER_PARAM_SW_STRIDE, (void *)&stride},
       {MPV_RENDER_PARAM_SW_POINTER, (void *)m_buffer},
       {MPV_RENDER_PARAM_INVALID, nullptr}};
 
-  // Param size structure check
-  int sizes[2] = {width, height};
-  params[0].data = sizes;
-
   // Advance MPV state?
   // Ideally we call mpv_render_context_update() check
 
   // This is blocking render request?
-  uint64_t flags =
-      MPV_RENDER_UPDATE_FRAME_INFO_FLAG_HAS_FRAME; // check if new frame
+
   // Ideally usage is: check update, then render.
   // But for simplicity call render.
 

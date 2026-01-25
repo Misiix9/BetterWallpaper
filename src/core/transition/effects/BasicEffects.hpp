@@ -1,5 +1,5 @@
 #pragma once
-#include "TransitionEffect.hpp"
+#include "../TransitionEffect.hpp"
 
 namespace bwp::transition {
 

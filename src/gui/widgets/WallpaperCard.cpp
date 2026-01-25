@@ -1,34 +1,52 @@
 #include "WallpaperCard.hpp"
 #include "../../core/wallpaper/WallpaperLibrary.hpp"
 #include "../dialogs/TagDialog.hpp"
+#include <algorithm>
 #include <filesystem>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 
 namespace bwp::gui {
 
+// Card dimensions - compact square cards for 4+ columns
+static constexpr int CARD_WIDTH = 160;
+static constexpr int CARD_HEIGHT = 140;
+static constexpr int IMAGE_HEIGHT = 110;
+
 WallpaperCard::WallpaperCard(const bwp::wallpaper::WallpaperInfo &info)
     : m_info(info) {
-  m_mainBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
-  gtk_widget_set_size_request(m_mainBox, 200, 160);
+  // Main box with strict fixed size
+  m_mainBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+  gtk_widget_set_size_request(m_mainBox, CARD_WIDTH, CARD_HEIGHT);
+  gtk_widget_set_hexpand(m_mainBox, FALSE);
+  gtk_widget_set_vexpand(m_mainBox, FALSE);
+  gtk_widget_set_halign(m_mainBox, GTK_ALIGN_CENTER);
+  gtk_widget_set_valign(m_mainBox, GTK_ALIGN_CENTER);
   gtk_widget_add_css_class(m_mainBox, "wallpaper-card");
 
-  // Thumbnail container (Overlay for badges)
+  // Image container - fixed size
   m_overlay = gtk_overlay_new();
+  gtk_widget_set_size_request(m_overlay, CARD_WIDTH, IMAGE_HEIGHT);
+  gtk_widget_set_hexpand(m_overlay, FALSE);
+  gtk_widget_set_vexpand(m_overlay, FALSE);
 
   // Image
-  m_image = gtk_image_new_from_icon_name("image-missing-symbolic");
-  gtk_widget_set_size_request(m_image, 200, 112); // 16:9 approx
-  gtk_widget_set_vexpand(m_image, TRUE);
-  gtk_widget_set_hexpand(m_image, TRUE);
-  gtk_image_set_pixel_size(GTK_IMAGE(m_image), 64);
+  m_image = gtk_picture_new();
+  gtk_picture_set_content_fit(GTK_PICTURE(m_image), GTK_CONTENT_FIT_COVER);
+  gtk_widget_set_size_request(m_image, CARD_WIDTH, IMAGE_HEIGHT);
+  gtk_widget_set_hexpand(m_image, FALSE);
+  gtk_widget_set_vexpand(m_image, FALSE);
+  gtk_widget_add_css_class(m_image, "card-image");
 
   gtk_overlay_set_child(GTK_OVERLAY(m_overlay), m_image);
 
-  // Badge for type
+  // Type badge
   if (info.type == bwp::wallpaper::WallpaperType::Video ||
-      info.type == bwp::wallpaper::WallpaperType::WEVideo) {
-    GtkWidget *badge =
-        gtk_image_new_from_icon_name("media-playback-start-symbolic");
+      info.type == bwp::wallpaper::WallpaperType::WEVideo ||
+      info.type == bwp::wallpaper::WallpaperType::WEScene) {
+    GtkWidget *badge = gtk_image_new_from_icon_name(
+        info.type == bwp::wallpaper::WallpaperType::WEScene
+            ? "applications-games-symbolic"
+            : "media-playback-start-symbolic");
     gtk_widget_add_css_class(badge, "card-badge");
     gtk_widget_set_halign(badge, GTK_ALIGN_END);
     gtk_widget_set_valign(badge, GTK_ALIGN_START);
@@ -39,47 +57,54 @@ WallpaperCard::WallpaperCard(const bwp::wallpaper::WallpaperInfo &info)
 
   gtk_box_append(GTK_BOX(m_mainBox), m_overlay);
 
+  // Bottom bar
+  GtkWidget *bottomBar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+  gtk_widget_add_css_class(bottomBar, "card-bottom-bar");
+  gtk_widget_set_margin_start(bottomBar, 6);
+  gtk_widget_set_margin_end(bottomBar, 4);
+  gtk_widget_set_margin_top(bottomBar, 4);
+  gtk_widget_set_margin_bottom(bottomBar, 4);
+
   // Title
   std::string title = std::filesystem::path(info.path).stem().string();
   m_titleLabel = gtk_label_new(title.c_str());
   gtk_label_set_ellipsize(GTK_LABEL(m_titleLabel), PANGO_ELLIPSIZE_END);
+  gtk_label_set_max_width_chars(GTK_LABEL(m_titleLabel), 14);
   gtk_widget_set_halign(m_titleLabel, GTK_ALIGN_START);
-  gtk_box_append(GTK_BOX(m_mainBox), m_titleLabel);
+  gtk_widget_set_hexpand(m_titleLabel, TRUE);
+  gtk_widget_add_css_class(m_titleLabel, "card-title");
+  gtk_box_append(GTK_BOX(bottomBar), m_titleLabel);
 
-  setupActions();
-}
-
-WallpaperCard::~WallpaperCard() {}
-
-void WallpaperCard::setupActions() {
   // Favorite button
   m_favoriteBtn = gtk_button_new();
   gtk_widget_add_css_class(m_favoriteBtn, "flat");
   gtk_widget_add_css_class(m_favoriteBtn, "circular");
-  gtk_widget_set_valign(m_favoriteBtn, GTK_ALIGN_END);
-  gtk_widget_set_halign(m_favoriteBtn, GTK_ALIGN_END);
-  gtk_widget_set_margin_bottom(m_favoriteBtn, 4);
-  gtk_widget_set_margin_end(m_favoriteBtn, 4);
-
+  gtk_widget_add_css_class(m_favoriteBtn, "favorite-btn");
   setFavorite(m_info.favorite);
 
-  g_signal_connect(
-      m_favoriteBtn, "clicked",
-      G_CALLBACK(+[](GtkButton *, gpointer user_data) {
-        auto *self = static_cast<WallpaperCard *>(user_data);
-        self->setFavorite(!self->m_info.favorite);
-        // Update library
-        self->m_info.favorite =
-            !self->m_info.favorite; // Wait, handled in setFavorite?
-        // Actually setFavorite updates UI, need to persist.
-        auto &lib = bwp::wallpaper::WallpaperLibrary::getInstance();
-        lib.updateWallpaper(self->m_info);
-      }),
-      this);
+  g_signal_connect(m_favoriteBtn, "clicked",
+                   G_CALLBACK(+[](GtkButton *, gpointer user_data) {
+                     auto *self = static_cast<WallpaperCard *>(user_data);
+                     bool newFav = !self->m_info.favorite;
+                     self->m_info.favorite = newFav;
+                     self->setFavorite(newFav);
+                     auto &lib =
+                         bwp::wallpaper::WallpaperLibrary::getInstance();
+                     lib.updateWallpaper(self->m_info);
+                   }),
+                   this);
 
-  gtk_overlay_add_overlay(GTK_OVERLAY(m_overlay), m_favoriteBtn);
+  gtk_box_append(GTK_BOX(bottomBar), m_favoriteBtn);
+  gtk_box_append(GTK_BOX(m_mainBox), bottomBar);
 
-  // Right click gesture
+  setupContextMenu();
+}
+
+WallpaperCard::~WallpaperCard() {}
+
+void WallpaperCard::setupActions() {}
+
+void WallpaperCard::setupContextMenu() {
   GtkGesture *rightClick = gtk_gesture_click_new();
   gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(rightClick), 3);
   g_signal_connect(rightClick, "pressed",
@@ -93,86 +118,87 @@ void WallpaperCard::setupActions() {
 }
 
 void WallpaperCard::setFavorite(bool favorite) {
-  m_info.favorite = favorite;
   const char *icon = favorite ? "starred-symbolic" : "non-starred-symbolic";
-  // Using simple image inside button
   gtk_button_set_icon_name(GTK_BUTTON(m_favoriteBtn), icon);
 
   if (favorite) {
-    gtk_widget_add_css_class(m_favoriteBtn, "accent");
+    gtk_widget_add_css_class(m_favoriteBtn, "favorited");
   } else {
-    gtk_widget_remove_css_class(m_favoriteBtn, "accent");
+    gtk_widget_remove_css_class(m_favoriteBtn, "favorited");
   }
 }
 
 void WallpaperCard::showContextMenu(double x, double y) {
-  // Create popover menu
-  GMenu *menu = g_menu_new();
-  g_menu_append(menu, "Manage Tags...", "card.tags");
-  g_menu_append(menu, "Remove from Library", "card.remove");
-
-  GtkWidget *popover = gtk_popover_menu_new_from_model(G_MENU_MODEL(menu));
+  GtkWidget *popover = gtk_popover_new();
   gtk_widget_set_parent(popover, m_mainBox);
-
-  // Actions - simpler approach: custom popover content or manual buttons?
-  // Using GActionGroup is standard but verbose for this.
-  // Let's use a simpler GtkPopover with buttons if we want direct callbacks.
-  // Or map actions.
-
-  // Simple custom popover for direct binding
-  GtkWidget *simplePopover = gtk_popover_new();
-  gtk_widget_set_parent(simplePopover, m_mainBox);
 
   GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 
-  // Tags button
   GtkWidget *tagsBtn = gtk_button_new_with_label("Manage Tags...");
   gtk_widget_add_css_class(tagsBtn, "flat");
-  gtk_widget_set_halign(tagsBtn, GTK_ALIGN_FILL);
+
+  using TagCallbackData = std::pair<WallpaperCard *, GtkWidget *>;
+
   g_signal_connect(
       tagsBtn, "clicked", G_CALLBACK(+[](GtkButton *, gpointer user_data) {
-        auto *pair =
-            static_cast<std::pair<WallpaperCard *, GtkWidget *> *>(user_data);
+        auto *pair = static_cast<TagCallbackData *>(user_data);
         auto *self = pair->first;
         GtkWidget *pop = pair->second;
         gtk_popover_popdown(GTK_POPOVER(pop));
 
-        // Find window
         GtkNative *native = gtk_widget_get_native(self->getWidget());
         if (GTK_IS_WINDOW(native)) {
           auto *dialog = new TagDialog(GTK_WINDOW(native), self->m_info.id);
           dialog->show();
-          // memory leak of dialog? It should delete itself when closed or
-          // attached to window as child. TagDialog likely needs to manage its
-          // own lifecycle (delete on close). Current TagDialog::show just
-          // presents. It should be managed. Let's assume it leaks for now or we
-          // store it. Correction: TagDialog created with new needs ownership.
         }
       }),
-      new std::pair<WallpaperCard *, GtkWidget *>(this, simplePopover));
+      new TagCallbackData(this, popover));
   gtk_box_append(GTK_BOX(box), tagsBtn);
 
-  gtk_popover_set_child(GTK_POPOVER(simplePopover), box);
+  gtk_popover_set_child(GTK_POPOVER(popover), box);
 
-  // Position
   GdkRectangle rect = {(int)x, (int)y, 1, 1};
-  gtk_popover_set_pointing_to(GTK_POPOVER(simplePopover), &rect);
-  gtk_popover_popup(GTK_POPOVER(simplePopover));
+  gtk_popover_set_pointing_to(GTK_POPOVER(popover), &rect);
+  gtk_popover_popup(GTK_POPOVER(popover));
 }
 
 void WallpaperCard::updateThumbnail(const std::string &path) {
-  if (std::filesystem::exists(path)) {
-    // Blocking load for simplicity here
-    GError *err = nullptr;
-    GdkPixbuf *pixbuf =
-        gdk_pixbuf_new_from_file_at_scale(path.c_str(), 200, 112, TRUE, &err);
-    if (pixbuf) {
-      gtk_image_set_from_pixbuf(GTK_IMAGE(m_image), pixbuf);
-      g_object_unref(pixbuf);
+  if (!std::filesystem::exists(path))
+    return;
+
+  std::string ext = std::filesystem::path(path).extension().string();
+  std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+  bool isImage = (ext == ".jpg" || ext == ".jpeg" || ext == ".png" ||
+                  ext == ".gif" || ext == ".bmp" || ext == ".webp");
+
+  std::string thumbnailPath;
+
+  if (!isImage) {
+    std::filesystem::path dir = std::filesystem::path(path).parent_path();
+    for (const auto &previewName :
+         {"preview.jpg", "preview.png", "preview.gif"}) {
+      std::filesystem::path preview = dir / previewName;
+      if (std::filesystem::exists(preview)) {
+        thumbnailPath = preview.string();
+        break;
+      }
     }
-    if (err)
-      g_object_unref(err);
+    if (thumbnailPath.empty())
+      return;
+  } else {
+    thumbnailPath = path;
   }
+
+  GError *err = nullptr;
+  GdkTexture *texture =
+      gdk_texture_new_from_filename(thumbnailPath.c_str(), &err);
+  if (texture) {
+    gtk_picture_set_paintable(GTK_PICTURE(m_image), GDK_PAINTABLE(texture));
+    g_object_unref(texture);
+  }
+  if (err)
+    g_error_free(err);
 }
 
 } // namespace bwp::gui

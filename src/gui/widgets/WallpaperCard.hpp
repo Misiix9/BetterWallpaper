@@ -18,6 +18,7 @@ public:
 
 private:
   void setupActions();
+  void setupContextMenu();
   void showContextMenu(double x, double y);
 
   GtkWidget *m_mainBox;

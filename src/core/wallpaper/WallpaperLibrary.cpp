@@ -2,6 +2,7 @@
 #include "../config/ConfigManager.hpp"
 #include "../utils/FileUtils.hpp"
 #include "../utils/Logger.hpp"
+#include "../utils/StringUtils.hpp"
 #include <fstream>
 #include <iostream>
 
@@ -106,10 +107,13 @@ void WallpaperLibrary::save() {
 }
 
 void WallpaperLibrary::addWallpaper(const WallpaperInfo &info) {
-  std::lock_guard<std::mutex> lock(m_mutex);
-  m_wallpapers[info.id] = info;
-  m_dirty = true;
-  save(); // Auto save for now
+  {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_wallpapers[info.id] = info;
+    m_dirty = true;
+  }
+  // Don't auto-save on every add - too slow and causes issues
+  // save();
 }
 
 void WallpaperLibrary::updateWallpaper(const WallpaperInfo &info) {
@@ -187,6 +191,10 @@ std::vector<WallpaperInfo> WallpaperLibrary::filter(
     }
   }
   return result;
+}
+
+std::filesystem::path WallpaperLibrary::getDataDirectory() const {
+  return m_dbPath.parent_path();
 }
 
 } // namespace bwp::wallpaper

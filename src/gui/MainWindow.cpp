@@ -1,39 +1,62 @@
 #include "MainWindow.hpp"
-#include "../utils/Logger.hpp"
+#include "../core/utils/Logger.hpp"
+#include "views/FavoritesView.hpp"
+#include "views/RecentView.hpp"
+#include "views/SettingsView.hpp"
+#include <adwaita.h>
 
 namespace bwp::gui {
 
+static constexpr int MIN_WINDOW_WIDTH = 1000;
+static constexpr int MIN_WINDOW_HEIGHT = 600;
+static constexpr int DEFAULT_WINDOW_WIDTH = 1280;
+static constexpr int DEFAULT_WINDOW_HEIGHT = 720;
+static constexpr int SIDEBAR_WIDTH = 200;
+
 MainWindow::MainWindow(AdwApplication *app) {
-  m_window = GTK_WIDGET(adw_application_window_new(app));
+  // Use adw_application_window which gives nice rounded corners
+  m_window = GTK_WIDGET(adw_application_window_new(GTK_APPLICATION(app)));
+
   gtk_window_set_title(GTK_WINDOW(m_window), "BetterWallpaper");
-  gtk_window_set_default_size(GTK_WINDOW(m_window), 1200, 800);
+  gtk_window_set_default_size(GTK_WINDOW(m_window), DEFAULT_WINDOW_WIDTH,
+                              DEFAULT_WINDOW_HEIGHT);
+  gtk_widget_set_size_request(m_window, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT);
+
+  // Set window role/class to help Hyprland rules
+  // Standard way is via app-id which is already set by GtkApplication
+  // But we can set a specific role for the window if needed
+  // gtk_window_set_type_hint(GTK_WINDOW(m_window),
+  // GDK_SURFACE_TYPE_HINT_DIALOG); Note: Using DIALOG hint might force floating
+  // but removes minimize/maximize buttons Better to let user set rule:
+  // windowrulev2 = float,class:^(betterwallpaper)$
+
+  // However, we can make it look like a dialog-ish app
+  gtk_window_set_resizable(GTK_WINDOW(m_window), TRUE);
 
   setupUi();
+
+  bwp::utils::Logger::log(bwp::utils::LogLevel::INFO,
+                          "MainWindow initialized and ready");
 }
 
-MainWindow::~MainWindow() {
-  // Widgets are destroyed by GTK hierarchy
-}
+MainWindow::~MainWindow() {}
 
 void MainWindow::show() { gtk_window_present(GTK_WINDOW(m_window)); }
 
 void MainWindow::setupUi() {
-  // Main layout
-  // Use AdwOverlaySplitView for sidebar
-
-  // Check if AdwOverlaySplitView is available (Adwaita 1.4+)
-  // If compiling against older, might need fallback. Assuming 1.4+.
 #if ADW_CHECK_VERSION(1, 4, 0)
   m_splitView = adw_overlay_split_view_new();
   adw_application_window_set_content(ADW_APPLICATION_WINDOW(m_window),
                                      m_splitView);
 
-  // Sidebar
   m_sidebar = std::make_unique<Sidebar>();
+  GtkWidget *sidebarWidget = m_sidebar->getWidget();
+  gtk_widget_set_size_request(sidebarWidget, SIDEBAR_WIDTH, -1);
   adw_overlay_split_view_set_sidebar(ADW_OVERLAY_SPLIT_VIEW(m_splitView),
-                                     m_sidebar->getWidget());
+                                     sidebarWidget);
+  adw_overlay_split_view_set_sidebar_width_fraction(
+      ADW_OVERLAY_SPLIT_VIEW(m_splitView), 0.15);
 
-  // Connect navigation signal
   m_sidebar->setCallback([this](const std::string &page) {
     if (page == "library") {
       adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(m_contentStack),
@@ -46,41 +69,67 @@ void MainWindow::setupUi() {
       adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(m_contentStack),
                                             "workshop");
     } else if (page.rfind("folder.", 0) == 0) {
-      // Folder selection
       std::string folderId = page.substr(7);
       m_folderView->loadFolder(folderId);
       adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(m_contentStack),
                                             "folder");
+    } else if (page == "settings") {
+      adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(m_contentStack),
+                                            "settings");
+    } else if (page == "favorites") {
+      adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(m_contentStack),
+                                            "favorites");
+    } else if (page == "recent") {
+      adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(m_contentStack),
+                                            "recent");
     }
-    // Handle other pages
   });
 
-  // Content
   m_contentStack = adw_view_stack_new();
   adw_overlay_split_view_set_content(ADW_OVERLAY_SPLIT_VIEW(m_splitView),
                                      m_contentStack);
 
-  // Library View
+  LOG_INFO("Creating LibraryView...");
   m_libraryView = std::make_unique<LibraryView>();
   adw_view_stack_add_named(ADW_VIEW_STACK(m_contentStack),
                            m_libraryView->getWidget(), "library");
 
-  // Monitors View
+  LOG_INFO("Creating MonitorsView...");
   m_monitorsView = std::make_unique<MonitorsView>();
   adw_view_stack_add_named(ADW_VIEW_STACK(m_contentStack),
                            m_monitorsView->getWidget(), "monitors");
 
-  // Folder View
+  LOG_INFO("Creating FolderView...");
   m_folderView = std::make_unique<FolderView>();
   adw_view_stack_add_named(ADW_VIEW_STACK(m_contentStack),
                            m_folderView->getWidget(), "folder");
 
+  LOG_INFO("Creating WorkshopView...");
+  m_workshopView = std::make_unique<WorkshopView>();
+  adw_view_stack_add_named(ADW_VIEW_STACK(m_contentStack),
+                           m_workshopView->getWidget(), "workshop");
+
+  LOG_INFO("Creating SettingsView...");
+  m_settingsView = std::make_unique<SettingsView>();
+  adw_view_stack_add_named(ADW_VIEW_STACK(m_contentStack),
+                           m_settingsView->getWidget(), "settings");
+
+  LOG_INFO("Creating FavoritesView...");
+  m_favoritesView = std::make_unique<FavoritesView>();
+  adw_view_stack_add_named(ADW_VIEW_STACK(m_contentStack),
+                           m_favoritesView->getWidget(), "favorites");
+
+  LOG_INFO("Creating RecentView...");
+  m_recentView = std::make_unique<RecentView>();
+  adw_view_stack_add_named(ADW_VIEW_STACK(m_contentStack),
+                           m_recentView->getWidget(), "recent");
+
 #else
-  // Fallback for older libadwaita
   GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
   adw_application_window_set_content(ADW_APPLICATION_WINDOW(m_window), box);
 
   m_sidebar = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+  gtk_widget_set_size_request(m_sidebar, SIDEBAR_WIDTH, -1);
   gtk_box_append(GTK_BOX(box), m_sidebar);
 
   GtkWidget *separator = gtk_separator_new(GTK_ORIENTATION_VERTICAL);

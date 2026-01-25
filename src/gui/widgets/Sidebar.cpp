@@ -1,5 +1,6 @@
 #include "Sidebar.hpp"
 #include "../../core/wallpaper/FolderManager.hpp"
+#include <adwaita.h>
 #include <iostream>
 
 namespace bwp::gui {
@@ -39,14 +40,6 @@ Sidebar::Sidebar() {
   addRow("folder.new", "list-add-symbolic", "New Folder...");
 
   gtk_box_append(GTK_BOX(m_box), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
-
-  // Folders header
-  GtkWidget *folderLabel = gtk_label_new("Folders");
-  gtk_widget_add_css_class(folderLabel, "heading");
-  gtk_widget_set_halign(folderLabel, GTK_ALIGN_START);
-  gtk_widget_set_margin_start(folderLabel, 12);
-  gtk_widget_set_margin_top(folderLabel, 8);
-  gtk_box_append(GTK_BOX(m_box), folderLabel);
 
   // Placeholder for folders
   // addRow(...)
@@ -95,7 +88,7 @@ void Sidebar::addRow(const std::string &id, const std::string &iconName,
   m_rowIds[GTK_LIST_BOX_ROW(row)] = id;
 }
 
-void Sidebar::onRowActivated(GtkListBox *box, GtkListBoxRow *row,
+void Sidebar::onRowActivated(GtkListBox *, GtkListBoxRow *row,
                              gpointer user_data) {
   auto *self = static_cast<Sidebar *>(user_data);
   if (!row)

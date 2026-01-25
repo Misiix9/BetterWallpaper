@@ -18,6 +18,7 @@ public:
 
   // Check specific file and add to library if new
   void scanFile(const std::filesystem::path &path);
+  bool scanWorkshopItem(const std::filesystem::path &dir);
 
   // Status
   bool isScanning() const { return m_scanning; }
