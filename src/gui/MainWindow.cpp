@@ -23,15 +23,13 @@ MainWindow::MainWindow(AdwApplication *app) {
   gtk_widget_set_size_request(m_window, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT);
 
   // Set window role/class to help Hyprland rules
-  // Standard way is via app-id which is already set by GtkApplication
-  // But we can set a specific role for the window if needed
+  // Setting DIALOG hint usually forces tiling WMs to float the window
   // gtk_window_set_type_hint(GTK_WINDOW(m_window),
-  // GDK_SURFACE_TYPE_HINT_DIALOG); Note: Using DIALOG hint might force floating
-  // but removes minimize/maximize buttons Better to let user set rule:
-  // windowrulev2 = float,class:^(betterwallpaper)$
+  // GDK_SURFACE_TYPE_HINT_DIALOG);
 
-  // However, we can make it look like a dialog-ish app
-  gtk_window_set_resizable(GTK_WINDOW(m_window), TRUE);
+  // Make window fixed size (dialog-like) to encourage floating behavior
+  // and prevent layout breakage
+  gtk_window_set_resizable(GTK_WINDOW(m_window), FALSE);
 
   setupUi();
 
