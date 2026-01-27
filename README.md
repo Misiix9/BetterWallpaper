@@ -2,10 +2,13 @@
 
 A modern, high-performance animated wallpaper manager for Linux.
 
+> [!WARNING]
+> **WORK IN PROGRESS**: This project is currently in active development. Some features (like Transitions, Settings UI, and full Wallpaper Engine compatibility) may be incomplete or unstable.
+
 ## Features
 - **Responsive Library**: Grid layout that adapts to your screen.
-- **Preview Panel**: Settings and adjustments for your wallpapers.
-- **Wallpaper Engine Support**: Compatible with `linux-wallpaperengine`.
+- **Preview Panel**: Settings and adjustments for your wallpapers (WIP).
+- **Wallpaper Engine Support**: Compatible with `linux-wallpaperengine` (Experimental on Wayland).
 - **System Tray**: Quick access and control.
 
 ## Installation

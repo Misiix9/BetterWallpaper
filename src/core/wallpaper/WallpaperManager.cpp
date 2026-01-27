@@ -94,6 +94,9 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
     renderer->play();
   }
 
+  // Kill other wallpaper managers NOW, to overwrite them visually
+  killConflictingWallpapers();
+
   return true;
 }
 
@@ -145,6 +148,23 @@ WallpaperManager::getCurrentWallpaper(const std::string &monitorName) const {
     return it->second.currentPath;
   }
   return "";
+}
+
+void WallpaperManager::killConflictingWallpapers() {
+  // List of known wallpaper managers to kill
+  const std::vector<std::string> conflicts = {
+      "hyprpaper",  "swaybg",   "swww-daemon", "mpvpaper",    "wpaperd",
+      "waypaper",   "aztime",   "glpaper",     "feh",         "nitrogen",
+      "xwallpaper", "hsetroot", "habak",       "displayball", "eww-daemon",
+      "ags",        "swww",     "mpv"};
+
+  for (const auto &proc : conflicts) {
+    // Aggressive kill
+    std::string cmd = "pkill -9 -x " + proc + " 2>/dev/null";
+    system(cmd.c_str());
+    // Also try without -x for partial matches if needed, but -x is safer for
+    // exact matches like 'mpv' vs 'mpvpaper'
+  }
 }
 
 } // namespace bwp::wallpaper

@@ -39,6 +39,8 @@ private:
     std::string currentPath;
   };
 
+  void killConflictingWallpapers();
+
   mutable std::mutex m_mutex;
   std::map<std::string, MonitorState> m_monitors; // Key: monitor name
   bool m_paused = false;

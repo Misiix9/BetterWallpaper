@@ -38,7 +38,13 @@ if(TARGET PkgConfig::LIBADWAITA)
 endif()
 
 find_package(WaylandProtocols REQUIRED)
-find_package(nlohmann_json REQUIRED)
+# Fetch nlohmann_json
+include(FetchContent)
+FetchContent_Declare(
+    json
+    URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+)
+FetchContent_MakeAvailable(json)
 find_package(Threads REQUIRED)
 
 # Compiler warnings
