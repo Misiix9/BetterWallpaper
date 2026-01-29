@@ -1,4 +1,5 @@
 #include "WallpaperCard.hpp"
+#include "../../core/wallpaper/ThumbnailCache.hpp"
 #include "../../core/wallpaper/WallpaperLibrary.hpp"
 #include "../dialogs/TagDialog.hpp"
 #include <algorithm>
@@ -162,43 +163,69 @@ void WallpaperCard::showContextMenu(double x, double y) {
   gtk_popover_popup(GTK_POPOVER(popover));
 }
 
-void WallpaperCard::updateThumbnail(const std::string &path) {
-  if (!std::filesystem::exists(path))
-    return;
+void WallpaperCard::setInfo(const bwp::wallpaper::WallpaperInfo &info) {
+  m_info = info;
 
-  std::string ext = std::filesystem::path(path).extension().string();
-  std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+  // Update Title
+  std::string title = std::filesystem::path(info.path).stem().string();
+  gtk_label_set_text(GTK_LABEL(m_titleLabel), title.c_str());
 
-  bool isImage = (ext == ".jpg" || ext == ".jpeg" || ext == ".png" ||
-                  ext == ".gif" || ext == ".bmp" || ext == ".webp");
+  // Update Favorite
+  setFavorite(info.favorite);
 
-  std::string thumbnailPath;
+  // Update Thumbnail
+  // Use a placeholder first or clear current image to avoid flashing old image
+  // But updateThumbnail handles async load, so it's fine.
+  updateThumbnail(info.path);
 
-  if (!isImage) {
-    std::filesystem::path dir = std::filesystem::path(path).parent_path();
-    for (const auto &previewName :
-         {"preview.jpg", "preview.png", "preview.gif"}) {
-      std::filesystem::path preview = dir / previewName;
-      if (std::filesystem::exists(preview)) {
-        thumbnailPath = preview.string();
-        break;
-      }
+  // Update Badge
+  // Remove existing badges from overlay
+  GtkWidget *child = gtk_widget_get_first_child(m_overlay);
+  while (child) {
+    GtkWidget *next = gtk_widget_get_next_sibling(child);
+    if (child != m_image) {
+      gtk_overlay_remove_overlay(GTK_OVERLAY(m_overlay), child);
     }
-    if (thumbnailPath.empty())
-      return;
-  } else {
-    thumbnailPath = path;
+    child = next;
   }
 
-  GError *err = nullptr;
-  GdkTexture *texture =
-      gdk_texture_new_from_filename(thumbnailPath.c_str(), &err);
-  if (texture) {
-    gtk_picture_set_paintable(GTK_PICTURE(m_image), GDK_PAINTABLE(texture));
-    g_object_unref(texture);
+  // Add new badge if needed
+  if (info.type == bwp::wallpaper::WallpaperType::Video ||
+      info.type == bwp::wallpaper::WallpaperType::WEVideo ||
+      info.type == bwp::wallpaper::WallpaperType::WEScene) {
+    GtkWidget *badge = gtk_image_new_from_icon_name(
+        info.type == bwp::wallpaper::WallpaperType::WEScene
+            ? "applications-games-symbolic"
+            : "media-playback-start-symbolic");
+    gtk_widget_add_css_class(badge, "card-badge");
+    gtk_widget_set_halign(badge, GTK_ALIGN_END);
+    gtk_widget_set_valign(badge, GTK_ALIGN_START);
+    gtk_widget_set_margin_top(badge, 4);
+    gtk_widget_set_margin_end(badge, 4);
+    gtk_overlay_add_overlay(GTK_OVERLAY(m_overlay), badge);
   }
-  if (err)
-    g_error_free(err);
+}
+
+void WallpaperCard::updateThumbnail(const std::string &path) {
+  auto &cache = bwp::wallpaper::ThumbnailCache::getInstance();
+
+  // Use medium size for grid cards
+  auto size = bwp::wallpaper::ThumbnailCache::Size::Medium;
+
+  // Request async load
+  cache.getAsync(path, size, [this](GdkPixbuf *pixbuf) {
+    if (pixbuf) {
+      // Create texture from pixbuf
+      GdkTexture *texture = gdk_texture_new_for_pixbuf(pixbuf);
+      if (texture) {
+        gtk_picture_set_paintable(GTK_PICTURE(m_image), GDK_PAINTABLE(texture));
+        g_object_unref(texture);
+      }
+    } else {
+      // Set placeholder or keep empty
+      // Could set a generic icon here if load failed
+    }
+  });
 }
 
 } // namespace bwp::gui

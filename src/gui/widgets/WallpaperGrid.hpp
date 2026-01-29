@@ -1,6 +1,5 @@
 #pragma once
-#include "../../core/wallpaper/WallpaperInfo.hpp"
-#include "WallpaperCard.hpp"
+#include "../models/WallpaperObject.hpp"
 #include <functional>
 #include <gtk/gtk.h>
 #include <memory>
@@ -28,18 +27,30 @@ public:
 
 private:
   GtkWidget *m_scrolledWindow;
-  GtkWidget *m_flowBox;
+  GtkWidget *m_gridView;
 
-  // Keep track of cards to manage memory or updates
-  std::vector<std::unique_ptr<WallpaperCard>> m_cards;
+  // Data models
+  GListStore *m_store;
+  GtkFilterListModel *m_filterModel;
+  GtkSortListModel *m_sortModel;
+  GtkSingleSelection *m_selectionModel;
+  GtkCustomFilter *m_filter;
 
-  // Store data for filtering locally?
-  struct Item {
-    bwp::wallpaper::WallpaperInfo info;
-    WallpaperCard *card;
-  };
-  std::vector<Item> m_items;
   SelectionCallback m_callback;
+
+  // Signal handlers for factory
+  static void onSetup(GtkSignalListItemFactory *factory, GtkListItem *item,
+                      gpointer user_data);
+  static void onBind(GtkSignalListItemFactory *factory, GtkListItem *item,
+                     gpointer user_data);
+  static void onUnbind(GtkSignalListItemFactory *factory, GtkListItem *item,
+                       gpointer user_data);
+  static void onTeardown(GtkSignalListItemFactory *factory, GtkListItem *item,
+                         gpointer user_data);
+
+  // Selection change handler
+  static void onSelectionChanged(GtkSelectionModel *model, guint position,
+                                 guint n_items, gpointer user_data);
 };
 
 } // namespace bwp::gui

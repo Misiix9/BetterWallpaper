@@ -15,6 +15,7 @@ public:
   void updateThumbnail(const std::string &path); // Load from file/cache
 
   void setFavorite(bool favorite);
+  void setInfo(const bwp::wallpaper::WallpaperInfo &info);
 
 private:
   void setupActions();

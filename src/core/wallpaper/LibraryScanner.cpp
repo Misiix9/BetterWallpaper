@@ -8,6 +8,22 @@
 
 namespace bwp::wallpaper {
 
+// Helper structs for idle callbacks
+struct ProgressData {
+  ScanProgress progress;
+  LibraryScanner::ProgressCallback callback;
+};
+
+struct CompletionData {
+  int totalFound;
+  LibraryScanner::CompletionCallback callback;
+};
+
+struct FileFoundData {
+  std::string path;
+  LibraryScanner::ScanCallback callback;
+};
+
 LibraryScanner &LibraryScanner::getInstance() {
   static LibraryScanner instance;
   return instance;
@@ -16,6 +32,7 @@ LibraryScanner &LibraryScanner::getInstance() {
 LibraryScanner::LibraryScanner() {}
 
 LibraryScanner::~LibraryScanner() {
+  cancelScan();
   if (m_scanThread.joinable()) {
     m_scanThread.join();
   }
@@ -26,16 +43,92 @@ void LibraryScanner::setCallback(ScanCallback callback) {
   m_callback = callback;
 }
 
+void LibraryScanner::setProgressCallback(ProgressCallback callback) {
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_progressCallback = callback;
+}
+
+void LibraryScanner::setCompletionCallback(CompletionCallback callback) {
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_completionCallback = callback;
+}
+
+ScanProgress LibraryScanner::getProgress() const {
+  std::lock_guard<std::mutex> lock(m_mutex);
+  return m_progress;
+}
+
+void LibraryScanner::cancelScan() { m_cancelRequested = true; }
+
+void LibraryScanner::waitForCompletion() {
+  if (m_scanThread.joinable()) {
+    m_scanThread.join();
+  }
+}
+
 void LibraryScanner::scan(const std::vector<std::string> &paths) {
   if (m_scanning)
     return;
 
+  // Reset state
+  m_cancelRequested = false;
   m_scanning = true;
+
+  {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_progress = ScanProgress{};
+  }
+
   if (m_scanThread.joinable()) {
     m_scanThread.join();
   }
 
   m_scanThread = std::thread(&LibraryScanner::runScan, this, paths);
+}
+
+// Static idle callbacks for main thread execution
+gboolean LibraryScanner::idleProgress(gpointer data) {
+  auto *pd = static_cast<ProgressData *>(data);
+  if (pd && pd->callback) {
+    pd->callback(pd->progress);
+  }
+  delete pd;
+  return G_SOURCE_REMOVE;
+}
+
+gboolean LibraryScanner::idleCompletion(gpointer data) {
+  auto *cd = static_cast<CompletionData *>(data);
+  if (cd && cd->callback) {
+    cd->callback(cd->totalFound);
+  }
+  delete cd;
+  return G_SOURCE_REMOVE;
+}
+
+gboolean LibraryScanner::idleFileFound(gpointer data) {
+  auto *fd = static_cast<FileFoundData *>(data);
+  if (fd && fd->callback) {
+    fd->callback(fd->path);
+  }
+  delete fd;
+  return G_SOURCE_REMOVE;
+}
+
+void LibraryScanner::reportProgress() {
+  std::lock_guard<std::mutex> lock(m_mutex);
+  if (m_progressCallback) {
+    auto *data = new ProgressData{m_progress, m_progressCallback};
+    g_idle_add(idleProgress, data);
+  }
+}
+
+void LibraryScanner::notifyCompletion() {
+  std::lock_guard<std::mutex> lock(m_mutex);
+  if (m_completionCallback) {
+    auto *data =
+        new CompletionData{m_progress.filesFound, m_completionCallback};
+    g_idle_add(idleCompletion, data);
+  }
 }
 
 void LibraryScanner::runScan(std::vector<std::string> paths) {
@@ -50,6 +143,11 @@ void LibraryScanner::runScan(std::vector<std::string> paths) {
 
   // Scan Workshop Paths
   for (const auto &wsPathStr : workshopPaths) {
+    if (m_cancelRequested) {
+      LOG_INFO("Scan cancelled by user");
+      break;
+    }
+
     std::filesystem::path wsPath(wsPathStr);
     if (!std::filesystem::exists(wsPath) ||
         !std::filesystem::is_directory(wsPath)) {
@@ -62,21 +160,37 @@ void LibraryScanner::runScan(std::vector<std::string> paths) {
     int folderCount = 0;
     try {
       for (const auto &entry : std::filesystem::directory_iterator(wsPath)) {
+        if (m_cancelRequested)
+          break;
+
         try {
           if (!entry.is_directory())
             continue;
 
           folderCount++;
           std::string folderId = entry.path().filename().string();
-          LOG_INFO("Folder #" + std::to_string(folderCount) + ": " + folderId);
+
+          // Update progress
+          {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_progress.filesScanned++;
+            m_progress.currentPath = entry.path().string();
+          }
+
+          // Report progress every 10 items
+          if (folderCount % 10 == 0) {
+            reportProgress();
+          }
 
           // Try to add this workshop item
           bool added = scanWorkshopItem(entry.path());
           if (added) {
             totalFound++;
-            LOG_INFO("  ADDED: " + folderId);
-          } else {
-            LOG_INFO("  SKIPPED: " + folderId);
+            {
+              std::lock_guard<std::mutex> lock(m_mutex);
+              m_progress.filesFound = totalFound;
+            }
+            LOG_DEBUG("  ADDED: " + folderId);
           }
         } catch (const std::exception &e) {
           LOG_ERROR("Exception in folder loop: " + std::string(e.what()));
@@ -90,30 +204,51 @@ void LibraryScanner::runScan(std::vector<std::string> paths) {
              std::to_string(totalFound) + " items");
   }
 
-  LOG_INFO("Workshop scan complete. Total: " + std::to_string(totalFound));
+  if (!m_cancelRequested) {
+    LOG_INFO("Workshop scan complete. Total: " + std::to_string(totalFound));
 
-  // Scan User Paths (skip if workshop path)
-  for (const auto &pathStr : paths) {
-    if (pathStr.find("431960") != std::string::npos)
-      continue;
+    // Scan User Paths (skip if workshop path)
+    for (const auto &pathStr : paths) {
+      if (m_cancelRequested)
+        break;
 
-    std::filesystem::path path = utils::FileUtils::expandPath(pathStr);
-    if (!std::filesystem::exists(path))
-      continue;
+      if (pathStr.find("431960") != std::string::npos)
+        continue;
 
-    LOG_INFO("Scanning user path: " + path.string());
-    try {
-      if (std::filesystem::is_directory(path)) {
-        for (const auto &entry :
-             std::filesystem::recursive_directory_iterator(path)) {
-          if (entry.is_regular_file()) {
-            scanFile(entry.path());
+      std::filesystem::path path = utils::FileUtils::expandPath(pathStr);
+      if (!std::filesystem::exists(path))
+        continue;
+
+      LOG_INFO("Scanning user path: " + path.string());
+      try {
+        if (std::filesystem::is_directory(path)) {
+          for (const auto &entry :
+               std::filesystem::recursive_directory_iterator(path)) {
+            if (m_cancelRequested)
+              break;
+
+            if (entry.is_regular_file()) {
+              {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                m_progress.filesScanned++;
+                m_progress.currentPath = entry.path().string();
+              }
+
+              scanFile(entry.path());
+            }
           }
         }
+      } catch (const std::exception &e) {
+        LOG_ERROR("Error scanning path " + pathStr + ": " + e.what());
       }
-    } catch (const std::exception &e) {
-      LOG_ERROR("Error scanning path " + pathStr + ": " + e.what());
     }
+  }
+
+  // Mark as complete
+  {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_progress.isComplete = true;
+    m_progress.filesFound = totalFound;
   }
 
   m_scanning = false;
@@ -122,6 +257,10 @@ void LibraryScanner::runScan(std::vector<std::string> paths) {
   auto allItems = library.getAllWallpapers();
   LOG_INFO("Scan finished. Library has " + std::to_string(allItems.size()) +
            " wallpapers");
+
+  // Notify completion on main thread
+  notifyCompletion();
+  reportProgress();
 }
 
 bool LibraryScanner::scanWorkshopItem(const std::filesystem::path &dir) {

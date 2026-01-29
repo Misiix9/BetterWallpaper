@@ -153,6 +153,37 @@ void SettingsView::setupGeneralPage() {
   adw_action_row_set_subtitle(ADW_ACTION_ROW(autostartRow),
                               "Launch BetterWallpaper automatically");
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), autostartRow);
+
+  // Window Mode (Floating vs Tiling)
+  GtkWidget *windowModeRow = adw_combo_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(windowModeRow),
+                                "Window Mode");
+  adw_action_row_set_subtitle(
+      ADW_ACTION_ROW(windowModeRow),
+      "Behavior for window managers (Restart required)");
+
+  const char *modes[] = {"Tiling (Resizable)", "Floating (Fixed Size)", NULL};
+  GtkStringList *modeModel = gtk_string_list_new(modes);
+  adw_combo_row_set_model(ADW_COMBO_ROW(windowModeRow),
+                          G_LIST_MODEL(modeModel));
+  g_object_unref(modeModel);
+
+  // Bind current value
+  auto &conf = bwp::config::ConfigManager::getInstance();
+  std::string currentMode = conf.get<std::string>("general.window_mode");
+  int selected = (currentMode == "floating") ? 1 : 0;
+  adw_combo_row_set_selected(ADW_COMBO_ROW(windowModeRow), selected);
+
+  g_signal_connect(windowModeRow, "notify::selected",
+                   G_CALLBACK(+[](AdwComboRow *row, GParamSpec *, gpointer) {
+                     auto &conf = bwp::config::ConfigManager::getInstance();
+                     int idx = adw_combo_row_get_selected(row);
+                     std::string mode = (idx == 1) ? "floating" : "tiling";
+                     conf.set("general.window_mode", mode);
+                   }),
+                   nullptr);
+
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), windowModeRow);
 }
 
 void SettingsView::setupAppearancePage() {

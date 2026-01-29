@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=BetterWallpaper Tray
+Comment=System Tray Icon for BetterWallpaper
+Exec=betterwallpaper-tray
+Icon=betterwallpaper
+Terminal=false
+Categories=Utility;
+StartupNotify=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

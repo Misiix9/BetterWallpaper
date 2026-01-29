@@ -13,9 +13,29 @@ static const char *introspection_xml = R"(
       <arg name="monitor" type="s" direction="in"/>
       <arg name="success" type="b" direction="out"/>
     </method>
+    <method name="GetWallpaper">
+      <arg name="monitor" type="s" direction="in"/>
+      <arg name="path" type="s" direction="out"/>
+    </method>
+    <method name="Next">
+      <arg name="monitor" type="s" direction="in"/>
+    </method>
+    <method name="Previous">
+      <arg name="monitor" type="s" direction="in"/>
+    </method>
+    <method name="Pause">
+      <arg name="monitor" type="s" direction="in"/>
+    </method>
+    <method name="Resume">
+      <arg name="monitor" type="s" direction="in"/>
+    </method>
+    <method name="Stop">
+      <arg name="monitor" type="s" direction="in"/>
+    </method>
     <property name="DaemonVersion" type="s" access="read"/>
   </interface>
 </node>
+
 )"; // Simplified for brevity in this step, should match XML file
 
 DBusService::DBusService() {}
@@ -86,6 +106,35 @@ void DBusService::handle_method_call(GDBusConnection *connection, const char *,
 
     g_dbus_method_invocation_return_value(invocation,
                                           g_variant_new("(b)", success));
+  } else if (method == "GetWallpaper") {
+    const char *monitor;
+    g_variant_get(parameters, "(&s)", &monitor);
+
+    std::string path;
+    if (self->m_getWallpaperHandler) {
+      path = self->m_getWallpaperHandler(monitor);
+    }
+
+    g_dbus_method_invocation_return_value(invocation,
+                                          g_variant_new("(s)", path.c_str()));
+  } else if (method == "Next" || method == "Previous" || method == "Pause" ||
+             method == "Resume" || method == "Stop") {
+    const char *monitor;
+    g_variant_get(parameters, "(&s)", &monitor);
+    std::string mon(monitor);
+
+    if (method == "Next" && self->m_nextHandler)
+      self->m_nextHandler(mon);
+    else if (method == "Previous" && self->m_prevHandler)
+      self->m_prevHandler(mon);
+    else if (method == "Pause" && self->m_pauseHandler)
+      self->m_pauseHandler(mon);
+    else if (method == "Resume" && self->m_resumeHandler)
+      self->m_resumeHandler(mon);
+    else if (method == "Stop" && self->m_stopHandler)
+      self->m_stopHandler(mon);
+
+    g_dbus_method_invocation_return_value(invocation, nullptr);
   } else {
     g_dbus_method_invocation_return_error(invocation, G_DBUS_ERROR,
                                           G_DBUS_ERROR_UNKNOWN_METHOD,
@@ -106,6 +155,26 @@ GVariant *DBusService::handle_get_property(GDBusConnection *, const char *,
 
 void DBusService::setSetWallpaperHandler(SetWallpaperHandler handler) {
   m_setWallpaperHandler = handler;
+}
+
+void DBusService::setGetWallpaperHandler(GetWallpaperHandler handler) {
+  m_getWallpaperHandler = handler;
+}
+
+void DBusService::setNextHandler(VoidMonitorHandler handler) {
+  m_nextHandler = handler;
+}
+void DBusService::setPreviousHandler(VoidMonitorHandler handler) {
+  m_prevHandler = handler;
+}
+void DBusService::setPauseHandler(VoidMonitorHandler handler) {
+  m_pauseHandler = handler;
+}
+void DBusService::setResumeHandler(VoidMonitorHandler handler) {
+  m_resumeHandler = handler;
+}
+void DBusService::setStopHandler(VoidMonitorHandler handler) {
+  m_stopHandler = handler;
 }
 
 } // namespace bwp::ipc

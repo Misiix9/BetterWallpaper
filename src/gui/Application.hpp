@@ -1,7 +1,13 @@
 #pragma once
 #include <adwaita.h>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <gio/gio.h>
 #include <gtk/gtk.h> // Ensure GTK is included
 #include <memory>
+#include <string>
+#include <vector>
 
 namespace bwp::gui {
 
@@ -38,7 +44,21 @@ private:
   static void onActivate(GApplication *app, gpointer user_data);
   static void onStartup(GApplication *app, gpointer user_data);
 
+  // CSS loading and hot-reload
+  static std::string findStylesheetPath();
+  static void loadStylesheet();
+  static void setupCssHotReload();
+  static void onCssFileChanged(GFileMonitor *monitor, GFile *file,
+                               GFile *other_file, GFileMonitorEvent event_type,
+                               gpointer user_data);
+  static void reloadStylesheet();
+
   AdwApplication *m_app;
+
+  // CSS hot-reload state
+  static GtkCssProvider *s_cssProvider;
+  static GFileMonitor *s_cssMonitor;
+  static std::string s_currentCssPath;
 };
 
 } // namespace bwp::gui

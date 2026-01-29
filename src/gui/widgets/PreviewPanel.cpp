@@ -1,4 +1,5 @@
 #include "PreviewPanel.hpp"
+#include "../../core/ipc/DBusClient.hpp"
 #include "../../core/monitor/MonitorManager.hpp"
 #include "../../core/utils/Logger.hpp"
 #include <algorithm>
@@ -293,35 +294,19 @@ std::string PreviewPanel::getSettingsFlags() {
 
 bool PreviewPanel::setWallpaperWithTool(const std::string &path,
                                         const std::string &monitor) {
-  std::filesystem::path wallpaperPath(path);
-  std::filesystem::path wallpaperDir = wallpaperPath.parent_path();
-  std::string workshopId = wallpaperDir.filename().string();
+  LOG_INFO("Setting wallpaper via IPC: " + path);
 
-  bool isWorkshop = std::filesystem::exists(wallpaperDir / "project.json");
-  bool isNumericId =
-      !workshopId.empty() &&
-      std::all_of(workshopId.begin(), workshopId.end(), ::isdigit);
-
-  // Kill existing instances
-  system("pkill -9 linux-wallpaperengine 2>/dev/null");
-
-  std::string flags = getSettingsFlags();
-  std::string cmd;
-
-  if (isWorkshop && isNumericId) {
-    cmd = "linux-wallpaperengine " + flags + " --screen-root " + monitor + " " +
-          workshopId + " 2>&1 &";
-  } else if (isWorkshop) {
-    cmd = "linux-wallpaperengine " + flags + " --screen-root " + monitor +
-          " \"" + wallpaperDir.string() + "\" 2>&1 &";
-  } else {
-    cmd = "linux-wallpaperengine " + flags + " --screen-root " + monitor +
-          " \"" + path + "\" 2>&1 &";
+  bwp::ipc::DBusClient client;
+  if (!client.connect()) {
+    LOG_ERROR("Failed to connect to daemon!");
+    return false;
   }
 
-  LOG_INFO("Setting wallpaper: " + cmd);
-  int result = system(cmd.c_str());
-  return result == 0;
+  // Note: flags like --silent etc are not yet passed to IPC
+  // Phase 3 todo: Update IPC method to accept flags or use Profile
+  // For now, simple path
+
+  return client.setWallpaper(path, monitor);
 }
 
 void PreviewPanel::onApplyClicked() {

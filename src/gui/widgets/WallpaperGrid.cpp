@@ -1,127 +1,195 @@
 #include "WallpaperGrid.hpp"
+#include "../../core/utils/Logger.hpp"
 #include "../../core/utils/StringUtils.hpp"
+#include "WallpaperCard.hpp"
 #include <filesystem>
 
 namespace bwp::gui {
 
 WallpaperGrid::WallpaperGrid() {
+  // Scrolled Window
   m_scrolledWindow = gtk_scrolled_window_new();
   gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(m_scrolledWindow),
                                  GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
   gtk_widget_set_vexpand(m_scrolledWindow, TRUE);
   gtk_widget_set_hexpand(m_scrolledWindow, TRUE);
 
-  m_flowBox = gtk_flow_box_new();
-  gtk_widget_set_valign(m_flowBox, GTK_ALIGN_START);
-  gtk_widget_set_halign(m_flowBox, GTK_ALIGN_FILL);
+  // Data Model Pipeline
+  // 1. Base Store
+  m_store = g_list_store_new(BWP_TYPE_WALLPAPER_OBJECT);
 
-  // Force multiple columns
-  // homogenous=TRUE is required for a clean grid layout where items align
-  gtk_flow_box_set_homogeneous(GTK_FLOW_BOX(m_flowBox), TRUE);
+  // 2. Filter Model
+  m_filter =
+      gtk_custom_filter_new(bwp_wallpaper_object_match, nullptr, nullptr);
+  m_filterModel =
+      gtk_filter_list_model_new(G_LIST_MODEL(m_store), GTK_FILTER(m_filter));
 
-  // Set constraints to force at least 4 columns as requested
-  gtk_flow_box_set_min_children_per_line(GTK_FLOW_BOX(m_flowBox), 4);
-  gtk_flow_box_set_max_children_per_line(GTK_FLOW_BOX(m_flowBox), 12);
+  // 3. Sort Model (Default sort)
+  m_sortModel = gtk_sort_list_model_new(G_LIST_MODEL(m_filterModel), nullptr);
 
-  gtk_flow_box_set_selection_mode(GTK_FLOW_BOX(m_flowBox),
-                                  GTK_SELECTION_SINGLE);
+  // 4. Selection Model
+  m_selectionModel = gtk_single_selection_new(G_LIST_MODEL(m_sortModel));
 
-  gtk_widget_set_margin_start(m_flowBox, 16);
-  gtk_widget_set_margin_end(m_flowBox, 16);
-  gtk_widget_set_margin_top(m_flowBox, 16);
-  gtk_widget_set_margin_bottom(m_flowBox, 16);
+  // Note: autoselect is true by default, which selects the first item.
+  // We might want to disable that if we want "no selection" initially,
+  // but GtkSingleSelection implies one item is selected if not empty.
+  // For no selection, GtkNoSelection usually used, but we want selection
+  // capability. We can stick with SingleSelection for now.
 
-  gtk_flow_box_set_row_spacing(GTK_FLOW_BOX(m_flowBox), 16);
-  gtk_flow_box_set_column_spacing(GTK_FLOW_BOX(m_flowBox), 16);
+  g_signal_connect(m_selectionModel, "selection-changed",
+                   G_CALLBACK(onSelectionChanged), this);
+
+  // Item Factory
+  GtkListItemFactory *factory = gtk_signal_list_item_factory_new();
+  g_signal_connect(factory, "setup", G_CALLBACK(onSetup), this);
+  g_signal_connect(factory, "bind", G_CALLBACK(onBind), this);
+  g_signal_connect(factory, "unbind", G_CALLBACK(onUnbind), this);
+  g_signal_connect(factory, "teardown", G_CALLBACK(onTeardown), this);
+
+  // Grid View
+  m_gridView =
+      gtk_grid_view_new(GTK_SELECTION_MODEL(m_selectionModel), factory);
+
+  // Card size about 160 + margins
+  gtk_grid_view_set_max_columns(GTK_GRID_VIEW(m_gridView), 20); // Dynamic
+  gtk_grid_view_set_min_columns(GTK_GRID_VIEW(m_gridView), 2);
+
+  // Add CSS class for styling if needed
+  gtk_widget_add_css_class(m_gridView, "wallpaper-grid");
 
   gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(m_scrolledWindow),
-                                m_flowBox);
+                                m_gridView);
+}
 
-  // Selection callback
-  g_signal_connect(
-      m_flowBox, "child-activated",
-      G_CALLBACK(+[](GtkFlowBox *, GtkFlowBoxChild *child, gpointer data) {
-        WallpaperGrid *self = static_cast<WallpaperGrid *>(data);
-        if (self->m_callback) {
-          GtkWidget *cardWidget = gtk_flow_box_child_get_child(child);
-          if (cardWidget) {
-            bwp::wallpaper::WallpaperInfo *info =
-                static_cast<bwp::wallpaper::WallpaperInfo *>(
-                    g_object_get_data(G_OBJECT(cardWidget), "wallpaper-info"));
-            if (info) {
-              self->m_callback(*info);
-            }
-          }
-        }
-      }),
-      this);
+WallpaperGrid::~WallpaperGrid() {
+  // GObjects are ref-counted, but we might need to unref models if we own the
+  // initial ref GtkGridView takes ownership of the model passed to it? Usually
+  // widgets just take a reference.
+
+  // We created them, so we own a reference.
+  g_object_unref(m_selectionModel);
+  g_object_unref(m_sortModel);
+  g_object_unref(m_filterModel);
+  g_object_unref(m_filter);
+  g_object_unref(m_store);
+}
+
+void WallpaperGrid::clear() { g_list_store_remove_all(m_store); }
+
+void WallpaperGrid::addWallpaper(const bwp::wallpaper::WallpaperInfo &info) {
+  BwpWallpaperObject *obj = bwp_wallpaper_object_new(info);
+  g_list_store_append(m_store, obj);
+  g_object_unref(obj);
+}
+
+void WallpaperGrid::filter(const std::string &query) {
+  // We need to pass the query to the match function.
+  // Since GtkCustomFilter callback assumes user_data is static or managed,
+  // we need a way to pass the string.
+
+  // A simple way is to recreate the filter, or set user_data.
+  // But user_data in gtk_custom_filter_new is fixed.
+
+  // Alternative: subclass GtkCustomFilter or use a persistent context.
+  // For now, let's just create a new filter. It's cheap.
+
+  // Note: Using a heap-allocated string for user_data
+  char *q = query.empty() ? nullptr : g_strdup(query.c_str());
+
+  auto matchFunc = [](gpointer item, gpointer user_data) -> gboolean {
+    gboolean result = bwp_wallpaper_object_match(item, user_data);
+    return result;
+  };
+
+  m_filter = gtk_custom_filter_new(matchFunc, q, g_free);
+  gtk_filter_list_model_set_filter(m_filterModel, GTK_FILTER(m_filter));
+}
+
+void WallpaperGrid::setSortOrder(int /*sortInfo*/) {
+  // Todo: Implement sort sorter
 }
 
 void WallpaperGrid::setSelectionCallback(SelectionCallback callback) {
   m_callback = callback;
 }
 
-WallpaperGrid::~WallpaperGrid() {}
+// Static Callbacks
 
-void WallpaperGrid::clear() {
-  GtkWidget *child = gtk_widget_get_first_child(m_flowBox);
-  while (child) {
-    GtkWidget *next = gtk_widget_get_next_sibling(child);
-    gtk_flow_box_remove(GTK_FLOW_BOX(m_flowBox), child);
-    child = next;
-  }
-  m_cards.clear();
-  m_items.clear();
-}
+void WallpaperGrid::onSetup(GtkSignalListItemFactory * /*factory*/,
+                            GtkListItem *item, gpointer /*user_data*/) {
+  LOG_DEBUG("onSetup");
+  // Create a WallpaperCard. Since we don't have info yet, create with dummy
+  // info. But WallpaperCard expects valid info. We can construct with empty
+  // info.
+  bwp::wallpaper::WallpaperInfo dummy;
+  WallpaperCard *card = new WallpaperCard(dummy);
 
-void WallpaperGrid::addWallpaper(const bwp::wallpaper::WallpaperInfo &info) {
-  for (const auto &item : m_items) {
-    if (item.info.id == info.id)
-      return;
-  }
-
-  auto card = std::make_unique<WallpaperCard>(info);
-  card->updateThumbnail(info.path);
-
-  // Ensure the card widget itself is centered in the allocation
+  // Center alignment for the grid cell
   gtk_widget_set_halign(card->getWidget(), GTK_ALIGN_CENTER);
   gtk_widget_set_valign(card->getWidget(), GTK_ALIGN_CENTER);
+  gtk_widget_set_margin_start(card->getWidget(), 8);
+  gtk_widget_set_margin_end(card->getWidget(), 8);
+  gtk_widget_set_margin_top(card->getWidget(), 8);
+  gtk_widget_set_margin_bottom(card->getWidget(), 8);
 
-  g_object_set_data_full(
-      G_OBJECT(card->getWidget()), "wallpaper-info",
-      new bwp::wallpaper::WallpaperInfo(info), [](gpointer data) {
-        delete static_cast<bwp::wallpaper::WallpaperInfo *>(data);
-      });
+  // Attach card pointer to widget so we can retrieve it
+  g_object_set_data(G_OBJECT(card->getWidget()), "card-ptr", card);
 
-  gtk_flow_box_append(GTK_FLOW_BOX(m_flowBox), card->getWidget());
-
-  Item item;
-  item.info = info;
-  item.card = card.get();
-  m_items.push_back(item);
-
-  m_cards.push_back(std::move(card));
+  gtk_list_item_set_child(item, card->getWidget());
 }
 
-void WallpaperGrid::filter(const std::string &query) {
-  std::string q = utils::StringUtils::toLower(utils::StringUtils::trim(query));
+void WallpaperGrid::onBind(GtkSignalListItemFactory * /*factory*/,
+                           GtkListItem *item, gpointer /*user_data*/) {
+  GtkWidget *widget = gtk_list_item_get_child(item);
+  WallpaperCard *card = static_cast<WallpaperCard *>(
+      g_object_get_data(G_OBJECT(widget), "card-ptr"));
 
-  for (const auto &item : m_items) {
-    bool visible = true;
-    if (!q.empty()) {
-      std::string title = std::filesystem::path(item.info.path).stem().string();
-      if (utils::StringUtils::toLower(title).find(q) == std::string::npos) {
-        visible = false;
-      }
-    }
+  BwpWallpaperObject *obj = BWP_WALLPAPER_OBJECT(gtk_list_item_get_item(item));
+  const bwp::wallpaper::WallpaperInfo *info =
+      bwp_wallpaper_object_get_info(obj);
 
-    GtkWidget *parent = gtk_widget_get_parent(item.card->getWidget());
-    if (parent) {
-      gtk_widget_set_visible(parent, visible);
-    }
+  if (card && info) {
+    LOG_DEBUG("onBind: " + info->path);
+    card->setInfo(*info);
+  } else {
+    LOG_WARN("onBind: card or info is null");
   }
 }
 
-void WallpaperGrid::setSortOrder(int /*sortInfo*/) {}
+void WallpaperGrid::onUnbind(GtkSignalListItemFactory * /*factory*/,
+                             GtkListItem * /*item*/, gpointer /*user_data*/) {
+  // Optional: clear large resources if needed, but not strictly required
+}
+
+void WallpaperGrid::onTeardown(GtkSignalListItemFactory * /*factory*/,
+                               GtkListItem *item, gpointer /*user_data*/) {
+  GtkWidget *widget = gtk_list_item_get_child(item);
+  WallpaperCard *card = static_cast<WallpaperCard *>(
+      g_object_get_data(G_OBJECT(widget), "card-ptr"));
+
+  if (card) {
+    delete card;
+  }
+}
+
+void WallpaperGrid::onSelectionChanged(GtkSelectionModel *model,
+                                       guint /*position*/, guint /*n_items*/,
+                                       gpointer user_data) {
+  WallpaperGrid *self = static_cast<WallpaperGrid *>(user_data);
+  if (!self->m_callback)
+    return;
+
+  // Use gtk_single_selection_get_selected_item
+  gpointer item =
+      gtk_single_selection_get_selected_item(GTK_SINGLE_SELECTION(model));
+  if (item) {
+    BwpWallpaperObject *obj = BWP_WALLPAPER_OBJECT(item);
+    const bwp::wallpaper::WallpaperInfo *info =
+        bwp_wallpaper_object_get_info(obj);
+    if (info) {
+      self->m_callback(*info);
+    }
+  }
+}
 
 } // namespace bwp::gui

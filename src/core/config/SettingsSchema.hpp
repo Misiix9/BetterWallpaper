@@ -13,6 +13,7 @@ const char *const START_MINIMIZED = "general.start_minimized";
 const char *const CLOSE_TO_TRAY = "general.close_to_tray";
 const char *const CHECK_UPDATES = "general.check_updates";
 const char *const LANGUAGE = "general.language";
+const char *const WINDOW_MODE = "general.window_mode"; // tiling vs floating
 
 // Library
 const char *const LIBRARY_PATHS = "library.paths";
@@ -74,6 +75,7 @@ public:
               {"start_minimized", true},
               {"close_to_tray", true},
               {"check_updates", true},
+              {"window_mode", "tiling"},
               {"language", "en"}}},
             {"library",
              {{"paths", nlohmann::json::array()},

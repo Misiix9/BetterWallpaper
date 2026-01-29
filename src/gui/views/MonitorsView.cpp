@@ -1,6 +1,6 @@
 #include "MonitorsView.hpp"
+#include "../../core/ipc/DBusClient.hpp"
 #include "../../core/monitor/MonitorManager.hpp"
-#include "../../core/wallpaper/WallpaperManager.hpp"
 
 namespace bwp::gui {
 
@@ -33,14 +33,15 @@ void MonitorsView::setupUi() {
     if (monitor) {
       m_configPanel->setMonitor(*monitor);
       // Get current wallpaper info...
-      std::string path =
-          bwp::wallpaper::WallpaperManager::getInstance().getCurrentWallpaper(
-              name);
-      if (!path.empty()) {
-        bwp::wallpaper::WallpaperInfo info;
-        info.path = path;
-        // Fill stub info
-        m_configPanel->setWallpaperInfo(info);
+      bwp::ipc::DBusClient client;
+      if (client.connect()) {
+        std::string path = client.getWallpaper(name);
+        if (!path.empty()) {
+          bwp::wallpaper::WallpaperInfo info;
+          info.path = path;
+          // Fill stub info
+          m_configPanel->setWallpaperInfo(info);
+        }
       }
     }
   });

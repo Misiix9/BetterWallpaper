@@ -47,9 +47,10 @@ bool ConfigManager::load() {
 
     // Merge with defaults to ensure all keys exist (migration)
     nlohmann::json defaults = SettingsSchema::getDefaults();
-    m_config.update(defaults); // Shallow merge?? No, need deep merge
-    // Basic update for now.
-    // For production, recursive merge is needed.
+    // Start with defaults, update with loaded config so saved values take
+    // precedence
+    defaults.update(m_config);
+    m_config = defaults;
 
     return true;
   } catch (const std::exception &e) {

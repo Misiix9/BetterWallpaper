@@ -13,6 +13,7 @@ public:
   virtual void render(cairo_t *cr, int width, int height) = 0;
 
   virtual void setScalingMode(ScalingMode mode) = 0;
+  virtual void setMonitor(const std::string &monitor) {}
   virtual void update(double dt) {} // For animations
 
   virtual void play() {}

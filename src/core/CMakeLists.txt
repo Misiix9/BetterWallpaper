@@ -15,18 +15,34 @@ target_link_libraries(bwp_core PUBLIC
     Threads::Threads
     GTK4::gtk4
     LIBADWAITA::libadwaita-1
+    bwp_ipc
+)
+
+# IPC Library (Shared between GTK4 core and GTK3 tray)
+add_library(bwp_ipc)
+target_sources(bwp_ipc PRIVATE
+    ipc/DBusService.cpp
+    ipc/DBusClient.cpp
+    utils/Logger.cpp # Logger is needed by everyone
+)
+target_include_directories(bwp_ipc PUBLIC 
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/..
+)
+target_link_libraries(bwp_ipc PUBLIC
+    Threads::Threads
+    GIO::gio-2.0
 )
 
 # Add sources
 target_sources(bwp_core PRIVATE
     config/ConfigManager.cpp
     config/ProfileManager.cpp
-    ipc/DBusService.cpp
-    ipc/DBusClient.cpp
+
     monitor/MonitorManager.cpp
     monitor/WaylandMonitor.cpp
+    utils/Error.cpp
     utils/FileUtils.cpp
-    utils/Logger.cpp
     utils/StringUtils.cpp
     wallpaper/WallpaperManager.cpp
     wallpaper/WallpaperWindow.cpp
@@ -35,6 +51,7 @@ target_sources(bwp_core PRIVATE
     wallpaper/renderers/WallpaperEngineRenderer.cpp
     wallpaper/WallpaperLibrary.cpp
     wallpaper/LibraryScanner.cpp
+    wallpaper/ThumbnailCache.cpp
     wallpaper/TagManager.cpp
     wallpaper/FolderManager.cpp
     

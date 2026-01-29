@@ -74,6 +74,8 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
     return false;
   }
 
+  renderer->setMonitor(monitorName);
+
   if (!renderer->load(path)) {
     LOG_ERROR("Failed to load wallpaper: " + path);
     return false;

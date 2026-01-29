@@ -38,6 +38,10 @@ void WallpaperEngineRenderer::setScalingMode(ScalingMode mode) {
   }
 }
 
+void WallpaperEngineRenderer::setMonitor(const std::string &monitor) {
+  m_monitor = monitor;
+}
+
 void WallpaperEngineRenderer::play() {
   if (m_pid != -1) {
     // Maybe resume signal?
@@ -52,12 +56,12 @@ void WallpaperEngineRenderer::play() {
   std::vector<std::string> args;
   args.push_back(bin);
   args.push_back("--assets-dir");
-  args.push_back(m_pkPath); // Usually expects directory of assets or pkg?
-  // LWP usage: linux-wallpaperengine --screen-root <Monitoring> --assets-dir
-  // <Path> We need to pass monitoring info. This renderer doesn't know monitor
-  // ID easily unless passed. For now assuming it runs on focused or we need to
-  // pass monitor info. NOTE: This implementation is incomplete without monitor
-  // awareness pass-through.
+  args.push_back(m_pkPath);
+
+  if (!m_monitor.empty()) {
+    args.push_back("--screen-root");
+    args.push_back(m_monitor);
+  }
 
   // Fork
   pid_t pid = fork();

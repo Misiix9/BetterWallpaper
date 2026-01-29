@@ -1,9 +1,14 @@
-add_executable(betterwallpaper-tray main.cpp)
-
-target_link_libraries(betterwallpaper-tray PRIVATE
-    bwp_core
-    GTK4::gtk4
-    LIBADWAITA::libadwaita-1
+add_executable(betterwallpaper-tray
+    main.cpp
+    TrayIcon.cpp
 )
 
-install(TARGETS betterwallpaper-tray DESTINATION ${CMAKE_INSTALL_BINDIR})
+target_link_libraries(betterwallpaper-tray PRIVATE
+    bwp_ipc
+    PkgConfig::GTK3
+    PkgConfig::APPINDICATOR3
+)
+
+install(TARGETS betterwallpaper-tray
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)

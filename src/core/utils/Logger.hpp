@@ -39,13 +39,17 @@ private:
 
 // Macros for convenience
 #define LOG_DEBUG(msg)                                                         \
-  bwp::utils::Logger::log(bwp::utils::LogLevel::DEBUG, msg, __FILE__, __LINE__)
-#define LOG_INFO(msg) bwp::utils::Logger::log(bwp::utils::LogLevel::INFO, msg)
+  ::bwp::utils::Logger::log(::bwp::utils::LogLevel::DEBUG, msg, __FILE__,      \
+                            __LINE__)
+#define LOG_INFO(msg)                                                          \
+  ::bwp::utils::Logger::log(::bwp::utils::LogLevel::INFO, msg)
 #define LOG_WARN(msg)                                                          \
-  bwp::utils::Logger::log(bwp::utils::LogLevel::WARNING, msg)
+  ::bwp::utils::Logger::log(::bwp::utils::LogLevel::WARNING, msg)
 #define LOG_ERROR(msg)                                                         \
-  bwp::utils::Logger::log(bwp::utils::LogLevel::ERROR, msg, __FILE__, __LINE__)
+  ::bwp::utils::Logger::log(::bwp::utils::LogLevel::ERROR, msg, __FILE__,      \
+                            __LINE__)
 #define LOG_FATAL(msg)                                                         \
-  bwp::utils::Logger::log(bwp::utils::LogLevel::FATAL, msg, __FILE__, __LINE__)
+  ::bwp::utils::Logger::log(::bwp::utils::LogLevel::FATAL, msg, __FILE__,      \
+                            __LINE__)
 
 } // namespace bwp::utils

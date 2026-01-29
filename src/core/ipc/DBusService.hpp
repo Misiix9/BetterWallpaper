@@ -39,6 +39,16 @@ public:
   using SetWallpaperHandler = std::function<bool(std::string, std::string)>;
   void setSetWallpaperHandler(SetWallpaperHandler handler);
 
+  using GetWallpaperHandler = std::function<std::string(std::string)>;
+  void setGetWallpaperHandler(GetWallpaperHandler handler);
+
+  using VoidMonitorHandler = std::function<void(std::string)>;
+  void setNextHandler(VoidMonitorHandler handler);
+  void setPreviousHandler(VoidMonitorHandler handler);
+  void setPauseHandler(VoidMonitorHandler handler);
+  void setResumeHandler(VoidMonitorHandler handler);
+  void setStopHandler(VoidMonitorHandler handler);
+
   // ... other handlers
 
 private:
@@ -68,6 +78,13 @@ private:
   GDBusNodeInfo *m_introspectionData = nullptr;
 
   SetWallpaperHandler m_setWallpaperHandler;
+  GetWallpaperHandler m_getWallpaperHandler;
+
+  VoidMonitorHandler m_nextHandler;
+  VoidMonitorHandler m_prevHandler;
+  VoidMonitorHandler m_pauseHandler;
+  VoidMonitorHandler m_resumeHandler;
+  VoidMonitorHandler m_stopHandler;
 };
 
 } // namespace bwp::ipc

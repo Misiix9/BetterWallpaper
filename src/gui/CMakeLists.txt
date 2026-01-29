@@ -10,6 +10,7 @@ add_executable(betterwallpaper
     widgets/MonitorConfigPanel.cpp
     widgets/PreviewPanel.cpp
     dialogs/TagDialog.cpp
+    models/WallpaperObject.cpp
     views/LibraryView.cpp
     views/MonitorsView.cpp
     views/MonitorsView.cpp
