@@ -1,6 +1,7 @@
 #pragma once
 #include "../../core/wallpaper/WallpaperInfo.hpp"
 #include <gtk/gtk.h>
+#include <memory>
 #include <string>
 
 namespace bwp::gui {
@@ -16,6 +17,11 @@ public:
 
   void setFavorite(bool favorite);
   void setInfo(const bwp::wallpaper::WallpaperInfo &info);
+  const bwp::wallpaper::WallpaperInfo &getInfo() const { return m_info; }
+
+  // Skeleton loading support
+  void showSkeleton();
+  void hideSkeleton();
 
 private:
   void setupActions();
@@ -27,8 +33,11 @@ private:
   GtkWidget *m_titleLabel;
   GtkWidget *m_overlay;
   GtkWidget *m_favoriteBtn;
+  GtkWidget *m_skeletonOverlay; // Skeleton placeholder for loading state
 
   bwp::wallpaper::WallpaperInfo m_info;
+  std::shared_ptr<bool> m_aliveToken;
+  bool m_isLoading = true;
 };
 
 } // namespace bwp::gui

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(BetterWallpaper
-    VERSION 1.0.0
+    VERSION 0.2.0
     DESCRIPTION "Feature-rich wallpaper manager for Linux"
     LANGUAGES CXX C
 )

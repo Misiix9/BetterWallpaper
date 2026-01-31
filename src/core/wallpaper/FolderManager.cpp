@@ -17,7 +17,7 @@ FolderManager::FolderManager() { load(); }
 FolderManager::~FolderManager() { save(); }
 
 void FolderManager::load() {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   auto &lib = WallpaperLibrary::getInstance();
   std::filesystem::path path = lib.getDataDirectory() / "folders.json";
 
@@ -46,7 +46,7 @@ void FolderManager::load() {
 }
 
 void FolderManager::save() {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   auto &lib = WallpaperLibrary::getInstance();
   std::filesystem::path path =
       lib.getDataDirectory() / "folders.json"; // Store alongside library
@@ -70,7 +70,7 @@ void FolderManager::save() {
 }
 
 std::string FolderManager::createFolder(const std::string &name) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   Folder f;
   // Generate UUID or simpler ID
   std::random_device rd;
@@ -89,7 +89,7 @@ std::string FolderManager::createFolder(const std::string &name) {
 }
 
 void FolderManager::deleteFolder(const std::string &id) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   if (m_folders.erase(id)) {
     save();
   }
@@ -97,7 +97,7 @@ void FolderManager::deleteFolder(const std::string &id) {
 
 void FolderManager::renameFolder(const std::string &id,
                                  const std::string &newName) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   if (m_folders.count(id)) {
     m_folders[id].name = newName;
     save();
@@ -106,7 +106,7 @@ void FolderManager::renameFolder(const std::string &id,
 
 void FolderManager::addToFolder(const std::string &folderId,
                                 const std::string &wallpaperId) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   if (m_folders.count(folderId)) {
     auto &ids = m_folders[folderId].wallpaperIds;
     if (std::find(ids.begin(), ids.end(), wallpaperId) == ids.end()) {
@@ -116,21 +116,38 @@ void FolderManager::addToFolder(const std::string &folderId,
   }
 }
 
-void FolderManager::removeFromFolder(const std::string &folderId,
-                                     const std::string &wallpaperId) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+void FolderManager::reorderWallpaper(const std::string &folderId,
+                                     const std::string &wallpaperId,
+                                     const std::string &targetId, bool after) {
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   if (m_folders.count(folderId)) {
     auto &ids = m_folders[folderId].wallpaperIds;
-    auto it = std::remove(ids.begin(), ids.end(), wallpaperId);
-    if (it != ids.end()) {
-      ids.erase(it, ids.end());
-      save();
+
+    // Find source
+    auto sourceIt = std::find(ids.begin(), ids.end(), wallpaperId);
+    if (sourceIt == ids.end())
+      return;
+
+    // Remove source
+    ids.erase(sourceIt);
+
+    // Find target
+    auto targetIt = std::find(ids.begin(), ids.end(), targetId);
+    if (targetIt == ids.end()) {
+      // Target lost (?), append to end
+      ids.push_back(wallpaperId);
+    } else {
+      if (after) {
+        targetIt++; // Insert after
+      }
+      ids.insert(targetIt, wallpaperId);
     }
+    save();
   }
 }
 
 std::vector<Folder> FolderManager::getFolders() const {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   std::vector<Folder> list;
   for (const auto &pair : m_folders) {
     list.push_back(pair.second);
@@ -139,7 +156,7 @@ std::vector<Folder> FolderManager::getFolders() const {
 }
 
 std::optional<Folder> FolderManager::getFolder(const std::string &id) const {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   if (m_folders.count(id))
     return m_folders.at(id);
   return std::nullopt;

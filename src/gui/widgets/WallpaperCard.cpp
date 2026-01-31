@@ -1,7 +1,6 @@
 #include "WallpaperCard.hpp"
 #include "../../core/wallpaper/ThumbnailCache.hpp"
 #include "../../core/wallpaper/WallpaperLibrary.hpp"
-#include "../dialogs/TagDialog.hpp"
 #include <algorithm>
 #include <filesystem>
 #include <gdk-pixbuf/gdk-pixbuf.h>
@@ -15,6 +14,8 @@ static constexpr int IMAGE_HEIGHT = 110;
 
 WallpaperCard::WallpaperCard(const bwp::wallpaper::WallpaperInfo &info)
     : m_info(info) {
+  m_aliveToken = std::make_shared<bool>(true);
+
   // Main box with strict fixed size
   m_mainBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
   gtk_widget_set_size_request(m_mainBox, CARD_WIDTH, CARD_HEIGHT);
@@ -39,6 +40,14 @@ WallpaperCard::WallpaperCard(const bwp::wallpaper::WallpaperInfo &info)
   gtk_widget_add_css_class(m_image, "card-image");
 
   gtk_overlay_set_child(GTK_OVERLAY(m_overlay), m_image);
+
+  // Skeleton overlay for loading state
+  m_skeletonOverlay = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+  gtk_widget_set_size_request(m_skeletonOverlay, CARD_WIDTH, IMAGE_HEIGHT);
+  gtk_widget_add_css_class(m_skeletonOverlay, "skeleton");
+  gtk_widget_set_halign(m_skeletonOverlay, GTK_ALIGN_FILL);
+  gtk_widget_set_valign(m_skeletonOverlay, GTK_ALIGN_FILL);
+  gtk_overlay_add_overlay(GTK_OVERLAY(m_overlay), m_skeletonOverlay);
 
   // Type badge
   if (info.type == bwp::wallpaper::WallpaperType::Video ||
@@ -101,22 +110,12 @@ WallpaperCard::WallpaperCard(const bwp::wallpaper::WallpaperInfo &info)
   setupContextMenu();
 }
 
-WallpaperCard::~WallpaperCard() {}
+WallpaperCard::~WallpaperCard() { *m_aliveToken = false; }
 
+// Context menu handled by WallpaperGrid controller
 void WallpaperCard::setupActions() {}
 
-void WallpaperCard::setupContextMenu() {
-  GtkGesture *rightClick = gtk_gesture_click_new();
-  gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(rightClick), 3);
-  g_signal_connect(rightClick, "pressed",
-                   G_CALLBACK(+[](GtkGestureClick *, int, double x, double y,
-                                  gpointer user_data) {
-                     auto *self = static_cast<WallpaperCard *>(user_data);
-                     self->showContextMenu(x, y);
-                   }),
-                   this);
-  gtk_widget_add_controller(m_mainBox, GTK_EVENT_CONTROLLER(rightClick));
-}
+void WallpaperCard::setupContextMenu() {}
 
 void WallpaperCard::setFavorite(bool favorite) {
   const char *icon = favorite ? "starred-symbolic" : "non-starred-symbolic";
@@ -129,39 +128,7 @@ void WallpaperCard::setFavorite(bool favorite) {
   }
 }
 
-void WallpaperCard::showContextMenu(double x, double y) {
-  GtkWidget *popover = gtk_popover_new();
-  gtk_widget_set_parent(popover, m_mainBox);
-
-  GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-
-  GtkWidget *tagsBtn = gtk_button_new_with_label("Manage Tags...");
-  gtk_widget_add_css_class(tagsBtn, "flat");
-
-  using TagCallbackData = std::pair<WallpaperCard *, GtkWidget *>;
-
-  g_signal_connect(
-      tagsBtn, "clicked", G_CALLBACK(+[](GtkButton *, gpointer user_data) {
-        auto *pair = static_cast<TagCallbackData *>(user_data);
-        auto *self = pair->first;
-        GtkWidget *pop = pair->second;
-        gtk_popover_popdown(GTK_POPOVER(pop));
-
-        GtkNative *native = gtk_widget_get_native(self->getWidget());
-        if (GTK_IS_WINDOW(native)) {
-          auto *dialog = new TagDialog(GTK_WINDOW(native), self->m_info.id);
-          dialog->show();
-        }
-      }),
-      new TagCallbackData(this, popover));
-  gtk_box_append(GTK_BOX(box), tagsBtn);
-
-  gtk_popover_set_child(GTK_POPOVER(popover), box);
-
-  GdkRectangle rect = {(int)x, (int)y, 1, 1};
-  gtk_popover_set_pointing_to(GTK_POPOVER(popover), &rect);
-  gtk_popover_popup(GTK_POPOVER(popover));
-}
+void WallpaperCard::showContextMenu(double, double) {}
 
 void WallpaperCard::setInfo(const bwp::wallpaper::WallpaperInfo &info) {
   m_info = info;
@@ -173,17 +140,16 @@ void WallpaperCard::setInfo(const bwp::wallpaper::WallpaperInfo &info) {
   // Update Favorite
   setFavorite(info.favorite);
 
-  // Update Thumbnail
-  // Use a placeholder first or clear current image to avoid flashing old image
-  // But updateThumbnail handles async load, so it's fine.
-  updateThumbnail(info.path);
+  // Clear old image before loading new one
+  gtk_picture_set_paintable(GTK_PICTURE(m_image), nullptr);
+  gtk_widget_remove_css_class(m_image, "no-thumbnail");
 
-  // Update Badge
-  // Remove existing badges from overlay
+  // Update Badge - remove only badge overlays, not skeleton
   GtkWidget *child = gtk_widget_get_first_child(m_overlay);
   while (child) {
     GtkWidget *next = gtk_widget_get_next_sibling(child);
-    if (child != m_image) {
+    // Only remove if it's not the main image and not the skeleton overlay
+    if (child != m_image && child != m_skeletonOverlay) {
       gtk_overlay_remove_overlay(GTK_OVERLAY(m_overlay), child);
     }
     child = next;
@@ -204,16 +170,27 @@ void WallpaperCard::setInfo(const bwp::wallpaper::WallpaperInfo &info) {
     gtk_widget_set_margin_end(badge, 4);
     gtk_overlay_add_overlay(GTK_OVERLAY(m_overlay), badge);
   }
+
+  // Update Thumbnail (this shows/hides skeleton as needed)
+  updateThumbnail(info.path);
 }
 
 void WallpaperCard::updateThumbnail(const std::string &path) {
+  // Show skeleton while loading
+  showSkeleton();
+
   auto &cache = bwp::wallpaper::ThumbnailCache::getInstance();
 
   // Use medium size for grid cards
   auto size = bwp::wallpaper::ThumbnailCache::Size::Medium;
 
   // Request async load
-  cache.getAsync(path, size, [this](GdkPixbuf *pixbuf) {
+  // Capture alive token by value (shared ptr copy)
+  cache.getAsync(path, size, [this, alive = m_aliveToken](GdkPixbuf *pixbuf) {
+    if (!*alive) {
+      // Card is dead, do not touch 'this' member variables
+      return;
+    }
     if (pixbuf) {
       // Create texture from pixbuf
       GdkTexture *texture = gdk_texture_new_for_pixbuf(pixbuf);
@@ -221,11 +198,32 @@ void WallpaperCard::updateThumbnail(const std::string &path) {
         gtk_picture_set_paintable(GTK_PICTURE(m_image), GDK_PAINTABLE(texture));
         g_object_unref(texture);
       }
+      // Hide skeleton after loading
+      hideSkeleton();
     } else {
-      // Set placeholder or keep empty
-      // Could set a generic icon here if load failed
+      // No thumbnail available - show a placeholder icon
+      // Hide skeleton and show the default icon
+      hideSkeleton();
+
+      // Set a fallback icon based on content type
+      gtk_picture_set_paintable(GTK_PICTURE(m_image), nullptr);
+      gtk_widget_add_css_class(m_image, "no-thumbnail");
     }
   });
+}
+
+void WallpaperCard::showSkeleton() {
+  if (m_skeletonOverlay) {
+    gtk_widget_set_visible(m_skeletonOverlay, TRUE);
+    m_isLoading = true;
+  }
+}
+
+void WallpaperCard::hideSkeleton() {
+  if (m_skeletonOverlay) {
+    gtk_widget_set_visible(m_skeletonOverlay, FALSE);
+    m_isLoading = false;
+  }
 }
 
 } // namespace bwp::gui

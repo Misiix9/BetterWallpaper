@@ -49,6 +49,9 @@ target_sources(bwp_core PRIVATE
     wallpaper/renderers/StaticRenderer.cpp
     wallpaper/renderers/VideoRenderer.cpp
     wallpaper/renderers/WallpaperEngineRenderer.cpp
+    
+    # Native wallpaper setter
+    wallpaper/NativeWallpaperSetter.cpp
     wallpaper/WallpaperLibrary.cpp
     wallpaper/LibraryScanner.cpp
     wallpaper/ThumbnailCache.cpp
@@ -58,6 +61,7 @@ target_sources(bwp_core PRIVATE
     # Transition
     transition/TransitionEngine.cpp
     transition/effects/BasicEffects.cpp
+    transition/effects/AdvancedEffects.cpp
     
     # Hyprland
     hyprland/HyprlandIPC.cpp
@@ -65,6 +69,26 @@ target_sources(bwp_core PRIVATE
     
     # Steam
     steam/SteamWorkshopClient.cpp
+    steam/DownloadQueue.cpp
+    
+    # Scheduler
+    scheduler/Scheduler.cpp
+    
+    # Slideshow
+    slideshow/SlideshowManager.cpp
+    
+    # Theming
+    theming/ColorExtractor.cpp
+    theming/ThemeApplier.cpp
+    
+    # Notifications
+    notification/NotificationManager.cpp
+    
+    # System
+    input/InputManager.cpp
+    power/PowerManager.cpp
+    system/AutostartManager.cpp
+    utils/SystemUtils.cpp
 )
 
 # Installation

@@ -30,6 +30,9 @@ public:
   void addToFolder(const std::string &folderId, const std::string &wallpaperId);
   void removeFromFolder(const std::string &folderId,
                         const std::string &wallpaperId);
+  void reorderWallpaper(const std::string &folderId,
+                        const std::string &wallpaperId,
+                        const std::string &targetId, bool after);
 
   void load();
   void save();
@@ -39,7 +42,7 @@ private:
   ~FolderManager();
 
   std::unordered_map<std::string, Folder> m_folders;
-  mutable std::mutex m_mutex;
+  mutable std::recursive_mutex m_mutex;
 };
 
 } // namespace bwp::wallpaper

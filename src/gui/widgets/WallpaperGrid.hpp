@@ -1,8 +1,10 @@
 #pragma once
 #include "../models/WallpaperObject.hpp"
+#include "TagEditorDialog.hpp"
 #include <functional>
 #include <gtk/gtk.h>
 #include <memory>
+#include <unordered_set>
 #include <vector>
 
 namespace bwp::gui {
@@ -19,11 +21,18 @@ public:
 
   // Filtering
   void filter(const std::string &query);
+  void setFilterFavoritesOnly(bool onlyFavorites);
+  void setFilterTag(const std::string &tag);
+
   void setSortOrder(int sortInfo); // Enum todo
 
   using SelectionCallback =
       std::function<void(const bwp::wallpaper::WallpaperInfo &)>;
   void setSelectionCallback(SelectionCallback callback);
+
+  using ReorderCallback = std::function<void(
+      const std::string &sourceId, const std::string &targetId, bool after)>;
+  void setReorderCallback(ReorderCallback callback);
 
 private:
   GtkWidget *m_scrolledWindow;
@@ -37,8 +46,19 @@ private:
   GtkCustomFilter *m_filter;
 
   SelectionCallback m_callback;
+  ReorderCallback m_reorderCallback;
+  std::unique_ptr<TagEditorDialog> m_tagEditor;
+
+  // Filter state
+  std::string m_filterQuery;
+  bool m_filterFavorites = false;
+  std::string m_filterTag;
+
+  // Duplicate tracking (faster than iterating store)
+  std::unordered_set<std::string> m_existingPaths;
 
   // Signal handlers for factory
+  void updateFilter();
   static void onSetup(GtkSignalListItemFactory *factory, GtkListItem *item,
                       gpointer user_data);
   static void onBind(GtkSignalListItemFactory *factory, GtkListItem *item,

@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.misiix9.betterwallpaper</id>
+  
+  <name>BetterWallpaper</name>
+  <summary>Modern animated wallpaper manager for Hyprland</summary>
+  
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  
+  <description>
+    <p>
+      BetterWallpaper is a high-performance animated wallpaper manager designed 
+      specifically for Hyprland and Wayland compositors. It supports static images, 
+      videos, GIFs, and Wallpaper Engine scenes.
+    </p>
+    <p>Features include:</p>
+    <ul>
+      <li>Multi-monitor support with independent wallpapers</li>
+      <li>Video and animated wallpapers via MPV</li>
+      <li>Wallpaper Engine scene support (via linux-wallpaperengine)</li>
+      <li>Steam Workshop integration</li>
+      <li>Profile and scheduling system</li>
+      <li>Color extraction and theming (pywal, matugen)</li>
+      <li>System tray integration</li>
+    </ul>
+  </description>
+  
+  <launchable type="desktop-id">betterwallpaper.desktop</launchable>
+  
+  <url type="homepage">https://github.com/Misiix9/BetterWallpaper</url>
+  <url type="bugtracker">https://github.com/Misiix9/BetterWallpaper/issues</url>
+  
+  <developer_name>Misiix9</developer_name>
+  
+  <provides>
+    <binary>betterwallpaper</binary>
+    <binary>betterwallpaper-daemon</binary>
+    <binary>betterwallpaper-tray</binary>
+    <dbus type="session">com.github.BetterWallpaper</dbus>
+  </provides>
+  
+  <requires>
+    <display_length compare="ge">800</display_length>
+  </requires>
+  
+  <recommends>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </recommends>
+  
+  <categories>
+    <category>Utility</category>
+    <category>GTK</category>
+  </categories>
+  
+  <keywords>
+    <keyword>wallpaper</keyword>
+    <keyword>background</keyword>
+    <keyword>animated</keyword>
+    <keyword>live</keyword>
+    <keyword>video</keyword>
+    <keyword>hyprland</keyword>
+    <keyword>wayland</keyword>
+  </keywords>
+  
+  <releases>
+    <release version="1.0.0" date="2026-01-30">
+      <description>
+        <p>Initial release with core features:</p>
+        <ul>
+          <li>Multi-monitor wallpaper management</li>
+          <li>Video and animated wallpaper support</li>
+          <li>Steam Workshop integration</li>
+          <li>Profile and scheduling system</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+  
+  <content_rating type="oars-1.1" />
+</component>

@@ -27,12 +27,21 @@ private:
   std::string getSettingsFlags();
 
   GtkWidget *m_box;
-  GtkWidget *m_image;
+  GtkWidget *m_imageStack;
+  GtkWidget *m_picture1;
+  GtkWidget *m_picture2;
   GtkWidget *m_titleLabel;
   GtkWidget *m_detailsLabel;
   GtkWidget *m_applyButton;
   GtkWidget *m_monitorDropdown;
   GtkWidget *m_statusLabel;
+  GtkWidget *m_ratingBox;
+  std::vector<GtkWidget *> m_ratingButtons;
+
+  // Helpers
+  void setupRating();
+  void updateRatingDisplay();
+  void setRating(int rating);
 
   // Settings Controls
   GtkWidget *m_silentCheck;

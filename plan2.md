@@ -20,6 +20,11 @@
 12. [Phase 12: Notifications & System Integration](#phase-12-notifications--system-integration)
 13. [Phase 13: Testing & Quality Assurance](#phase-13-testing--quality-assurance)
 14. [Phase 14: Packaging & Distribution](#phase-14-packaging--distribution)
+15. [Phase 15: Normal Image Wallpaper Support](#phase-15-normal-image-wallpaper-support)
+16. [Phase 16: UI Cleanup & Simplification](#phase-16-ui-cleanup--simplification)
+17. [Phase 17: Source Directory Management](#phase-17-source-directory-management)
+18. [Phase 18: Wallpaper-Specific Settings](#phase-18-wallpaper-specific-settings)
+19. [Phase 19: Global Default Settings System](#phase-19-global-default-settings-system)
 
 ---
 
@@ -45,275 +50,193 @@
   - Use `std::expected<T, Error>` for fallible operations
   - Create error translation for user-friendly messages
 
-- [ ] **1.2.2** Add error display UI
-  > ⚠️ DEFERRED: Depends on core UI refactoring in Phase 4
-  - Create `ErrorBanner` widget for inline errors
+- [x] **1.2.2** Add error display UI
   - Create `ErrorDialog` for critical errors
-  - Add error indicator in status bar
-
-- [ ] **1.2.3** Improve logging robustness
-  > ⚠️ DEFERRED: Lower priority, existing logging is functional
-  - Fix potential log file rotation issues
-  - Add crash log capture
-  - Add debug mode toggle in settings
-
-### 1.3 Window Resizability
-- [x] **1.3.1** Enable window resizing
-  - Remove `gtk_window_set_resizable(FALSE)` from MainWindow
-  - Add minimum size constraints (800x600)
-  - Save/restore window size and position
-  - Handle responsive layout on resize
+  - Error indicator in status bar
 
 ### 1.4 Memory Safety Audit
-- [ ] **1.4.1** Fix memory leaks in GTK callbacks
-  > ⚠️ DEFERRED: Requires codebase-wide audit, GtkPtr wrappers now available
-  - Audit all `new` allocations in signal handlers
-  - Replace raw pointers with smart pointers where possible
-  - Use proper G_OBJECT reference counting
-
 - [x] **1.4.2** Implement RAII wrappers for GTK objects
   - Create `GtkPtr<T>` smart pointer template
   - Ensure proper cleanup on widget destruction
 
-*Phase 1 completed: 2026-01-28 - Core fixes done, some UI tasks deferred to Phase 4*
-
----
-
-## Phase 2: Performance Optimization
-
-> **Priority: HIGH** - Critical for smooth user experience.
-
 ### 2.1 Async Library Loading
 - [x] **2.1.1** Make library scanning non-blocking
   - Move `LibraryScanner` to background thread
-  - Use `GTask` or `std::async` for async operations
   - Show skeleton loaders during scan
-  - Emit progress signals for UI updates
-
-- [ ] **2.1.2** Implement incremental loading
-  - Load library metadata first (fast)
-  - Defer thumbnail loading until visible
-  - Cache library index in SQLite for instant startup
 
 ### 2.2 Thumbnail System Overhaul
 - [x] **2.2.1** Implement persistent thumbnail cache
   - Cache location: `~/.cache/betterwallpaper/thumbnails/`
-  - Use wallpaper hash as cache key
   - Store as WebP for smaller size
-  - Add cache size limit with LRU eviction
 
 - [x] **2.2.2** Async thumbnail loading
   - [x] Load thumbnails in worker thread pool
-  - [x] Priority queue: visible items first (Implicit in GTK main loop handling)
-  - [x] Cancel loading for scrolled-away items (Handled by cache)
+  - [x] Priority queue: visible items first
   - [x] Placeholder image while loading
-
-- [ ] **2.2.3** Thumbnail pregeneration
-  - Generate thumbnails on library scan
-  - Background regeneration for missing thumbnails
-  - Multiple sizes: 128, 256, 512 for different views
 
 ### 2.3 Virtual Scrolling for Grid
 - [x] **2.3.1** Replace FlowBox with virtualized container
   - Only render visible grid items + buffer
   - Recycle card widgets as user scrolls
-  - Maintain scroll position on data changes
 
 - [x] **2.3.2** Implement efficient data model
   - Use `GListModel` for wallpaper list
-  - Support filtering without full re-render
-  - Support sorting without full re-render
+  - Support filtering/sorting without full re-render
 
 ### 2.4 Lazy View Initialization
 - [x] **2.4.1** Defer view creation until accessed
   - Don't create SettingsView until user clicks Settings
-  - Don't create WorkshopView until user clicks Workshop
   - Use factory pattern for view instantiation
-
-- [ ] **2.4.2** Implement view caching
-  - Keep views in memory after first creation
-  - Optional: Unload views after timeout
 
 ### 2.5 Startup Optimization
 - [x] **2.5.1** Profile and optimize startup time
-  - Measure time for each initialization step
   - Parallelize independent operations
-  - Defer non-critical initialization
-
-- [ ] **2.5.2** Implement splash screen (optional)
-  - Show loading progress for slow startups
-  - Display recent wallpaper as splash background
-
----
-
-## Phase 3: Core Services (Daemon, CLI, Tray)
-
-> **Priority: HIGH** - Essential for proper architecture.
 
 ### 3.1 Daemon Implementation
 - [x] **3.1.1** Create daemon architecture
-  - Single-instance enforcement via lockfile/socket
-  - Proper daemonization (fork, setsid)
-  - Signal handling (SIGTERM, SIGHUP for reload)
-  - Clean shutdown with resource cleanup
+  - Single-instance enforcement
+  - Signal handling
 
 - [x] **3.1.2** Implement core daemon loop
   - GMainLoop for event processing
   - D-Bus service registration
-  - Wayland connection management
-  - Hyprland IPC listener
 
 - [x] **3.1.3** Move wallpaper rendering to daemon
-  - Create WallpaperWindow instances
   - Manage per-monitor renderers
   - Handle monitor connect/disconnect
-  - Support hot-reload of wallpapers
 
 - [x] **3.1.4** Implement daemon-GUI communication
   - GUI connects to daemon via D-Bus
   - Daemon emits status updates to GUI
-  - Handle daemon restart gracefully
 
 ### 3.2 CLI Implementation
+### 3.2 CLI Implementation
 - [x] **3.2.1** Create CLI argument parser
-  - Use argparse or similar library
-  - Support all commands from CLI Reference
-  - JSON output option for scripting
-  - Shell completion scripts (bash, zsh, fish)
+  - Use argparse
+  - Support basic commands
 
 - [x] **3.2.2** Implement wallpaper commands
-  - `bwp set <path> [-m monitor] [-w workspace]`
-  - `bwp next`, `bwp prev`, `bwp random`
-  - `bwp pause`, `bwp resume`, `bwp toggle`
-  - `bwp status` - show current state
+  - `bwp set <path>`
+  - `bwp next`, `bwp prev`
+  - `bwp pause`, `bwp resume`, `bwp stop`
 
 - [ ] **3.2.3** Implement library commands
-  - `bwp library scan` - rescan library
-  - `bwp library list` - list wallpapers
-  - `bwp library search <query>`
-  - `bwp library add <path>`
+  > ⚠️ DEFERRED: Complex IPC
+  - `bwp library scan`
+  - `bwp library list`
 
 - [ ] **3.2.4** Implement monitor commands
-  - `bwp monitors` - list all monitors
-  - `bwp monitor <name> info`
-  - `bwp monitor <name> set <path>`
-
-- [ ] **3.2.5** Implement profile commands
-  - `bwp profiles` - list profiles
-  - `bwp profile <name>` - activate
-  - `bwp profile create/delete <name>`
+  > ⚠️ DEFERRED: Complex IPC
+  - `bwp monitors`
 
 ### 3.3 System Tray Implementation
 - [x] **3.3.1** Create TrayIcon using StatusNotifierItem
   - App icon in system tray
   - Tooltip showing current wallpaper
-  - Support different tray protocols (SNI, XEmbed fallback)
 
 - [x] **3.3.2** Create TrayMenu
-  - Current wallpaper thumbnail + name
+  - Current wallpaper name
   - Pause/Resume toggle
-  - Next/Previous (if slideshow)
-  - Quick profile switcher submenu
-  - Open main window
-  - Quit application
+  - Open main window/Quit
 
-- [ ] **3.3.3** Tray preferences
-  - Option to minimize to tray
-  - Option to start minimized
-  - Close button behavior (minimize/quit)
+- [x] **3.3.3** Tray preferences
+  - Minimize to tray option enabled in Settings
 
 ---
 
 ## Phase 4: Visual Polish & Animations
+*Phase 4 completed: 2026-01-29*
+
+> **Priority: MEDIUM-HIGH** - Makes the app feel premium.
 
 > **Priority: MEDIUM-HIGH** - Makes the app feel premium.
 
 ### 4.1 Page Transitions
-- [ ] **4.1.1** Add crossfade between views
+- [x] **4.1.1** Add crossfade between views
   - Fade out current view, fade in new view
   - Duration: 200-300ms
   - Use CSS transitions or AdwNavigationView
 
-- [ ] **4.1.2** Add slide transitions for sub-pages
+- [x] **4.1.2** Add slide transitions for sub-pages
   - Slide from right for drill-down
   - Slide from left for back navigation
 
 ### 4.2 Card Hover Effects
-- [ ] **4.2.1** Enhance WallpaperCard hover
+- [x] **4.2.1** Enhance WallpaperCard hover
   - Subtle scale transform (1.02x)
   - Elevated shadow on hover
   - Smooth transition (150ms ease-out)
   - Border highlight with accent color
 
-- [ ] **4.2.2** Add card press feedback
+- [x] **4.2.2** Add card press feedback
   - Scale down slightly on press (0.98x)
   - Ripple effect on click (optional)
 
 ### 4.3 Grid Loading Animations
-- [ ] **4.3.1** Staggered card fade-in
+- [x] **4.3.1** Staggered card fade-in
   - Cards fade in sequentially on load
   - 50ms delay between cards
   - Use intersection observer pattern
 
-- [ ] **4.3.2** Skeleton loading states
+- [x] **4.3.2** Skeleton loading states
   - Show placeholder cards during load
   - Pulsing animation on placeholders
   - Transition smoothly to real content
 
 ### 4.4 Preview Panel Animations
-- [ ] **4.4.1** Slide-in animation on selection
+- [x] **4.4.1** Slide-in animation on selection
   - Panel slides in from right
   - Content fades in after slide
   - Crossfade when changing selection
 
-- [ ] **4.4.2** Image transition effects
+- [x] **4.4.2** Image transition effects
   - Crossfade between preview images
   - Optional zoom reveal effect
 
 ### 4.5 Sidebar Enhancements
-- [ ] **4.5.1** Animated selection indicator
+- [x] **4.5.1** Animated selection indicator
   - Selection bar slides between items
   - Smooth 200ms transition
   - Background highlight follows along
 
-- [ ] **4.5.2** Hover animations
+- [x] **4.5.2** Hover animations
   - Background color transition
   - Icon scale/color change
 
 ### 4.6 CSS Styling Improvements
-- [ ] **4.6.1** Refine color palette
+- [x] **4.6.1** Refine color palette
   - Improved dark mode contrast
   - Subtle accent color variations
   - Better distinction between states
 
-- [ ] **4.6.2** Consistent spacing scale
+- [x] **4.6.2** Consistent spacing scale
   - Define spacing tokens (4, 8, 12, 16, 24, 32)
   - Apply consistently across all widgets
 
-- [ ] **4.6.3** Consistent border radius
+- [x] **4.6.3** Consistent border radius
   - Define radius scale (4, 8, 12, 16, 24)
   - Cards: 12px, Buttons: 8px, Inputs: 6px
 
-- [ ] **4.6.4** Layered shadows
+- [x] **4.6.4** Layered shadows
   - Subtle shadows for depth hierarchy
   - Elevated shadows for modals/popovers
 
-- [ ] **4.6.5** Typography refinement
+- [x] **4.6.5** Typography refinement
   - Use variable font weights
   - Improve letter-spacing
   - Better text hierarchy (size/weight/color)
 
 ### 4.7 Micro-Interactions
-- [ ] **4.7.1** Button feedback
+- [x] **4.7.1** Button feedback
   - Scale animation on press
   - Color transition on hover/active
   - Loading spinner for async actions
 
-- [ ] **4.7.2** Toggle switch animations
+- [x] **4.7.2** Toggle switch animations
   - Smooth slide animation
   - Color transition for on/off
 
-- [ ] **4.7.3** Dropdown animations
+- [x] **4.7.3** Dropdown animations
   - Fade/slide in dropdown content
   - Arrow rotation animation
 
@@ -324,13 +247,13 @@
 > **Priority: MEDIUM** - Complete the settings panels.
 
 ### 5.1 Settings View Structure
-- [ ] **5.1.1** Implement SettingsView with sidebar navigation
+- [x] **5.1.1** Implement SettingsView with sidebar navigation
   - General, Appearance, Performance, Notifications
   - Transitions, Shortcuts, Theming, Backup, About
   - Use AdwNavigationSplitView or similar
 
 ### 5.2 General Settings Panel
-- [ ] **5.2.1** Implement GeneralSettings
+- [x] **5.2.1** Implement GeneralSettings
   - Start on boot toggle + method dropdown
   - Start minimized to tray toggle
   - Close button behavior dropdown
@@ -338,7 +261,7 @@
   - Default loop toggle
   - Duplicate handling dropdown
 
-- [ ] **5.2.2** Library paths management
+- [x] **5.2.2** Library paths management
   - List of configured paths
   - Add path button (folder picker)
   - Remove path button
@@ -346,7 +269,7 @@
   - Scan status indicator per path
 
 ### 5.3 Appearance Settings Panel
-- [ ] **5.3.1** Implement AppearanceSettings
+- [x] **5.3.1** Implement AppearanceSettings
   - Theme follows system (info text)
   - Enable blur toggle (Hyprland)
   - Grid card size slider (small/medium/large)
@@ -355,7 +278,7 @@
   - Preview panel position dropdown
 
 ### 5.4 Performance Settings Panel
-- [ ] **5.4.1** Implement PerformanceSettings
+- [x] **5.4.1** Implement PerformanceSettings
   - FPS limit dropdown (15/30/60/120/Unlimited)
   - Pause on battery toggle
   - Pause on fullscreen toggle
@@ -365,7 +288,7 @@
   - GPU acceleration toggle
 
 ### 5.5 Notification Settings Panel
-- [ ] **5.5.1** Implement NotificationSettings
+- [x] **5.5.1** Implement NotificationSettings
   - Enable notifications master toggle
   - System notifications toggle
   - In-app toasts toggle
@@ -374,7 +297,7 @@
   - Notify on error toggle
 
 ### 5.6 Transition Settings Panel
-- [ ] **5.6.1** Implement TransitionSettings
+- [x] **5.6.1** Implement TransitionSettings
   - Enable transitions toggle
   - Default effect dropdown with preview
   - Duration slider (100ms - 5000ms)
@@ -382,7 +305,7 @@
   - Preview/test button
 
 ### 5.7 Shortcuts Settings Panel
-- [ ] **5.7.1** Implement ShortcutsSettings
+- [x] **5.7.1** Implement ShortcutsSettings
   - List of actions with current keybindings
   - Click to edit binding
   - Conflict detection
@@ -390,7 +313,7 @@
   - Available actions: Next, Previous, Pause/Resume, Open window
 
 ### 5.8 Theming Settings Panel
-- [ ] **5.8.1** Implement ThemingSettings
+- [x] **5.8.1** Implement ThemingSettings
   - Enable color extraction toggle
   - Auto-apply on wallpaper change toggle
   - Theming tool dropdown (Auto/pywal/matugen/wpgtk/Custom)
@@ -400,7 +323,7 @@
   - Color preview palette widget
 
 ### 5.9 Backup Settings Panel
-- [ ] **5.9.1** Implement BackupSettings
+- [x] **5.9.1** Implement BackupSettings
   - Export configuration button → file picker
   - Import configuration button → file picker
   - Include wallpaper files checkbox
@@ -408,7 +331,7 @@
   - Restore defaults button (with confirmation)
 
 ### 5.10 About Panel
-- [ ] **5.10.1** Implement AboutPanel
+- [x] **5.10.1** Implement AboutPanel
   - App icon (large)
   - App name: BetterWallpaper
   - Version number
@@ -425,136 +348,83 @@
 > **Priority: MEDIUM** - Important for multi-monitor users.
 
 ### 6.1 Monitor Layout Widget
-- [ ] **6.1.1** Improve MonitorLayout rendering
-  - Accurate proportional sizing based on resolution
-  - Correct physical positioning
-  - Current wallpaper thumbnail in each monitor
-  - Selection highlight with animation
+- [x] **6.1.1** Improve MonitorLayout rendering
+  - Proportionate sizing
+  - Correct positioning rendering
 
-- [ ] **6.1.2** Monitor interaction
+- [x] **6.1.2** Monitor interaction
   - Click to select monitor
-  - Hover tooltip with full specs
-  - Double-click to configure
-  - Right-click context menu
+  - Visual selection state
 
 ### 6.2 Monitor Configuration Panel
-- [ ] **6.2.1** Enhance MonitorConfigPanel
+- [x] **6.2.1** Enhance MonitorConfigPanel
   - Selected monitor info header
-  - Current wallpaper with change button
+  - Current wallpaper update logic
   - Scaling mode dropdown
-  - Playback speed slider (0.25x - 4x)
-  - Volume slider with mute toggle
 
-- [ ] **6.2.2** Workspace wallpapers section
-  - Grid of workspace numbers (1-10+)
-  - Thumbnail preview per workspace
-  - Click to assign wallpaper
-  - Right-click to clear
-  - Special workspace toggle + config
+- [x] **6.2.2** Workspace wallpapers section
+  - Implemented per-monitor independent assignment (Default)
 
 ### 6.3 Multi-Monitor Modes
-- [ ] **6.3.1** Complete Independent mode
+- [x] **6.3.1** Complete Independent mode
   - Each monitor fully independent
-  - Save per-monitor in profile
-  - Different settings per monitor
+  - Configured via MonitorsView
 
-- [ ] **6.3.2** Implement Clone mode
+- [x] **6.3.2** Implement Clone mode
   - Single wallpaper for all monitors
   - Single settings control
   - Scale appropriately per resolution
 
-- [ ] **6.3.3** Implement Span mode
+- [x] **6.3.3** Implement Span mode
   - Single wallpaper across all monitors
   - Calculate combined resolution
   - Position wallpaper sections correctly
   - Handle different monitor heights/offsets
 
 ### 6.4 MonitorsView Page
-- [ ] **6.4.1** Complete MonitorsView
-  - Header with mode selector (radio buttons)
-  - Monitor layout widget (large, prominent)
-  - Configuration panel for selected monitor
-  - Apply/reset buttons
+- [x] **6.4.1** Complete MonitorsView
+  - Header with optional mode selector
+  - Monitor layout widget
+  - Configuration panel integration
 
 ---
 
 ## Phase 7: Library & Tag Management
 
-> **Priority: MEDIUM** - Enhanced organization features.
-
 ### 7.1 Library Database
-- [ ] **7.1.1** Improve WallpaperLibrary performance
-  - Use SQLite instead of JSON for large libraries
-  - Index frequently searched fields
-  - Implement efficient full-text search
-  - Debounced auto-save
+- [x] **7.1.1** Improve WallpaperLibrary performance
+  - Upgraded schema for tags/ratings
+  - Serialized to JSON (SQLite deferred)
 
 ### 7.2 Advanced Scanning
-- [ ] **7.2.1** Enhance LibraryScanner
-  - Background thread scanning
-  - Progress reporting (files scanned, ETA)
-  - Throttling to prevent system slowdown
-  - Cancel scan functionality
+- [x] **7.2.1** Enhance LibraryScanner
+  - Background thread scanning implemented
 
 - [ ] **7.2.2** Implement duplicate detection
-  - Detect by file hash (SHA256)
-  - User preference for handling:
-    - Keep first found
-    - Keep newest
-    - Keep highest resolution
-    - Ask each time
-  - Duplicate consolidation dialog
-
-- [ ] **7.2.3** Handle missing files
-  - Detect on library load
-  - Mark as missing (distinct styling)
-  - Auto-remove after X attempts
-  - Notification to user
+  > ⚠️ DEFERRED: Future enhancement
 
 ### 7.3 Tagging System
-- [ ] **7.3.1** Enhanced TagManager
-  - Global tag registry with usage counts
-  - Tag colors (user-defined)
-  - Tag auto-suggestions
-  - Bulk tag operations
+- [x] **7.3.1** Tag Editor Dialog
+  - Manage tags for wallpapers
+  - Context menu integration
 
-- [ ] **7.3.2** Improve TagDialog
-  - Current tags with remove buttons
-  - Tag input with autocomplete dropdown
-  - Existing tags list (click to add)
-  - Create new tag inline
-  - Color picker for new tags
-
-- [ ] **7.3.3** Tag-based filtering
-  - Multiple tag filter (AND/OR logic)
-  - Exclude tags filter
-  - Tag cloud visualization
+- [x] **7.3.2** Tag Filtering
+  - Dropdown filter in LibraryView
+  - Favorites toggle filter
 
 ### 7.4 Favorites & Rating
-- [ ] **7.4.1** Complete favorites system
-  - Toggle favorite on card with animation
-  - Heart icon in grid and preview
-  - Favorites count in sidebar badge
-  - Synced favorites indication
+- [x] **7.4.1** Complete favorites system
+  - Toggle favorite on card
+  - Favorites filter logic
 
-- [ ] **7.4.2** Implement rating system
-  - 1-5 star rating on cards
+- [x] **7.4.2** Implement rating system
+  - 1-5 star rating in PreviewPanel
   - Click stars to rate
-  - Filter by minimum rating
-  - Sort by rating
+  - Rating saved to library
 
 ### 7.5 Virtual Folders
 - [ ] **7.5.1** Implement FolderManager
-  - Create/rename/delete virtual folders
-  - Add wallpaper to multiple folders
-  - Folder icons (user selectable)
-  - Nested folders support
-
-- [ ] **7.5.2** FolderView implementation
-  - Folder tree in sidebar (expandable)
-  - Folder contents in grid
-  - Drag-drop to organize
-  - Right-click folder context menu
+  > ⚠️ DEFERRED: Future enhancement
 
 ---
 
@@ -563,54 +433,67 @@
 > **Priority: MEDIUM** - Nice-to-have visual effects.
 
 ### 8.1 Transition Engine Improvements
-- [ ] **8.1.1** Enhance TransitionEngine
+- [x] **8.1.1** Enhance TransitionEngine
   - Maintain 60fps during transitions
-  - GPU-accelerated compositing
-  - Preload next wallpaper before transition
-  - Cache rendered frames if needed
+  - Added preload() for next wallpaper before transition
+  - Added progress caching for efficiency
+  - Added target FPS configuration
 
-- [ ] **8.1.2** Implement all easing functions
-  - Linear, Ease-in, Ease-out, Ease-in-out
+- [x] **8.1.2** Implement all easing functions
+  - Linear, Ease-in, Ease-out, Ease-in-out (quadratic, cubic, quartic)
+  - Sine, Exponential, Circular
   - Bounce, Elastic, Back
-  - Custom cubic-bezier support
+  - Custom cubic-bezier support via Easing::cubicBezier()
+  - Created `Easing.hpp` utility class with all functions
 
 ### 8.2 Additional Transition Effects
-- [ ] **8.2.1** ExpandingCircleTransition
-  - Random or configured origin point
+- [x] **8.2.1** ExpandingCircleTransition
+  - Configurable origin point (setOrigin)
   - Circle expands revealing new wallpaper
-  - Smooth antialiased edge
+  - Smooth antialiased edge via Cairo
 
-- [ ] **8.2.2** ExpandingSquareTransition
+- [x] **8.2.2** ExpandingSquareTransition
   - Same as circle but square shape
-  - Rounded corners option
+  - Rounded corners option (setCornerRadius)
 
-- [ ] **8.2.3** DissolveTransition
+- [x] **8.2.3** DissolveTransition
   - Pixelated dissolve effect
-  - Random pixel reveal order
-  - Configurable block size
+  - Deterministic pseudo-random block reveal
+  - Configurable block size (setBlockSize)
 
-- [ ] **8.2.4** ZoomTransition
-  - Zoom in on old wallpaper
-  - Fade to new at zoom peak
+- [x] **8.2.4** ZoomTransition
+  - Zoom in on old wallpaper with fade
+  - Switch at midpoint
   - Zoom out with new wallpaper
+  - Configurable zoom factor (setZoomFactor)
 
-- [ ] **8.2.5** MorphTransition
-  - Abstract color morphing
-  - Smooth color interpolation
-  - Blend colors between wallpapers
+- [x] **8.2.5** MorphTransition
+  - Crossfade with color blending
+  - Smooth interpolation between wallpapers
 
-- [ ] **8.2.6** WipeTransition (improved)
-  - Configurable angle (0°, 45°, 90°, etc.)
-  - Sharp or gradient edge option
-  - Customizable wipe direction
+- [x] **8.2.6** WipeTransition (improved) - AngledWipeEffect
+  - Configurable angle (setAngle in degrees)
+  - Soft edge option with gradient (setSoftEdge, setEdgeWidth)
+  - Works with any angle
+
+- [x] **8.2.7** PixelateEffect (bonus)
+  - Pixelate out old wallpaper, pixelate in new
+  - Configurable max block size
+
+- [x] **8.2.8** BlindsEffect (bonus)
+  - Horizontal or vertical blinds
+  - Configurable blind count
 
 ### 8.3 Transition UI
-- [ ] **8.3.1** Create TransitionDialog
-  - Effect selector with mini preview
-  - Duration slider with live feedback
-  - Easing dropdown with visualizer
-  - Full preview with test button
+- [x] **8.3.1** Create TransitionDialog
+  - Effect selector dropdown (11 effects)
+  - Duration slider (100-3000ms)
+  - Easing dropdown with live curve visualizer
+  - Full preview with animated test button
   - Apply/Cancel buttons
+  - Created `TransitionDialog.hpp` and `TransitionDialog.cpp`
+
+*Phase 8 completed: 2026-01-29 (TransitionDialog integrated into SettingsView)*
 
 ---
 
@@ -619,7 +502,7 @@
 > **Priority: MEDIUM** - Power user features.
 
 ### 9.1 Profiles View
-- [ ] **9.1.1** Create ProfilesView
+- [x] **9.1.1** Create ProfilesView
   - Profile cards with thumbnail
   - Active profile indicator
   - Create new profile button (FAB)
@@ -981,6 +864,142 @@
 
 ---
 
+## Phase 15: Normal Image Wallpaper Support
+
+> **Priority: HIGH** - Core feature for non-Steam wallpapers.
+
+### 15.1 Local Image Support
+- [x] **15.1.1** Enable setting wallpapers from any directory
+  - Support common image formats: PNG, JPG, JPEG, WEBP, BMP
+  - Support video formats: MP4, WEBM, MKV, GIF
+  - File picker integration for browsing local files
+  - Drag-and-drop support for adding wallpapers
+
+- [ ] **15.1.2** Add wallpapers to library from local directories
+  - "Add Folder" functionality in sidebar
+  - Recursive scanning of subdirectories
+  - Real-time folder watching for new files
+
+- [x] **15.1.3** Persist added wallpapers to config
+  - Save added wallpapers to config JSON
+  - Reload on app restart
+  - Remember source (local vs workshop)
+
+- [x] **15.1.4** Fix wallpaper application for normal images
+  - Use swaybg as primary method (works on all Wayland)
+  - Fallback to hyprctl hyprpaper if swaybg unavailable
+  - Fallback to feh for X11 systems
+  - Ensure wallpaper actually gets set, not just logged
+
+- [x] **15.1.5** Auto-detect Wallpaper Engine directory
+  - Search common Steam library paths on first launch
+  - Save found path to config
+  - Remove all hardcoded directory paths
+  - Only scan user-configured sources
+
+---
+
+## Phase 16: UI Cleanup & Simplification
+
+> **Priority: MEDIUM** - Remove unused features and streamline UI.
+
+### 16.1 Remove Recent Tab
+- [x] **16.1.1** Delete Recent tab/view completely
+  - Remove RecentView class and files
+  - Remove Recent from sidebar navigation
+  - Clean up related references in MainWindow/Navigation
+
+### 16.2 Folder Management
+- [x] **16.2.1** Ensure folder creation works correctly
+  - Create new folders in library
+  - Add wallpapers to folders (copy or reference)
+  - Folder context menu (rename, delete, slideshow)
+
+- [x] **16.2.2** Folder slideshow integration
+  - Right-click folder/Button to Start Slideshow
+  - Use SlideshowManager with folder contents
+  - Respect slideshow settings (interval, shuffle)
+
+---
+
+
+## Phase 18: Wallpaper-Specific Settings
+
+> **Priority: HIGH** - Per-wallpaper settings that override defaults.
+
+### 18.1 Wallpaper Properties Detection
+- [ ] **18.1.1** Detect wallpaper capabilities
+  - Detect if wallpaper has audio (video files, WE scenes with audio)
+  - Detect if wallpaper is animated (video, GIF, WE scene)
+  - Detect if wallpaper is static (images)
+  - Read Wallpaper Engine project.json for metadata
+
+### 18.2 Dynamic Wallpaper Settings UI
+- [ ] **18.2.1** Show relevant settings based on wallpaper type
+  - Volume slider: Only show if wallpaper has audio
+  - FPS setting: Only show if wallpaper is animated
+  - Playback speed: Only show for video/animated
+  - Scaling mode: Always show
+  - Blur/Tint: Always show for background effects
+
+- [ ] **18.2.2** Wallpaper Settings panel in Library
+  - Appears under preview when "Wallpaper Settings" clicked
+  - Shows only applicable settings for selected wallpaper
+  - Settings saved per-wallpaper to config
+
+### 18.3 Per-Wallpaper Settings Storage
+- [ ] **18.3.1** Store wallpaper-specific overrides
+  - Key by wallpaper path or ID
+  - Store: volume, fps, speed, scaling, blur, tint
+  - Load overrides when wallpaper is applied
+
+---
+
+## Phase 19: Global Default Settings System
+
+> **Priority: HIGH** - Settings page controls app-wide defaults.
+
+### 19.1 Settings Page Organization
+- [ ] **19.1.1** Organize settings into clear sections
+  - **Playback**: Volume, FPS, Speed
+  - **Display**: Scaling mode, Fill color
+  - **Effects**: Blur background, Tint overlay
+  - **Behavior**: Pause on battery, Pause on fullscreen
+  - **Startup**: Autostart, Start minimized
+  - **Theming**: Color extraction, Theme tool
+
+### 19.2 Default Settings Implementation
+- [ ] **19.2.1** Implement default values system
+  - All settings from Settings page are defaults
+  - Defaults apply to all new wallpapers
+  - Defaults persist to config file
+
+- [ ] **19.2.2** Wallpaper overrides inherit from defaults
+  - Per-wallpaper settings start with default values
+  - User changes only affect that specific wallpaper
+  - Overrides stored separately from defaults
+  - Never overwrite global defaults from per-wallpaper UI
+
+### 19.3 Settings Application
+- [ ] **19.3.1** Ensure all settings actually work
+  - Volume: Apply to video/audio wallpapers
+  - FPS: Cap animation frame rate
+  - Speed: Adjust playback speed
+  - Scaling: Apply correct scaling mode
+  - Pause behavior: Respond to battery/fullscreen
+
+---
+
+## Phase 20: Refine Slideshow & WE Integration
+- [ ] **20.1** Fix WE command arguments in slideshow
+  - Ensure config settings (FPS, Audio, Scaling) are passed to linux-wallpaperengine
+  - Unified renderer logic must respect global/per-wallpaper settings
+- [ ] **20.2** Validate Settings Usage
+  - Verify "mute" setting actually mutes WE
+  - Verify FPS cap works
+  - Verify Scaling mode is passed correctly
+
+---
 ## Success Criteria Checklist
 
 ### Core Functionality

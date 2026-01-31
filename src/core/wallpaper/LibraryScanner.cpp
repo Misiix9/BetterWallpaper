@@ -336,6 +336,9 @@ bool LibraryScanner::scanWorkshopItem(const std::filesystem::path &dir) {
           info.type = WallpaperType::WEVideo;
         else if (type == "web")
           info.type = WallpaperType::WEWeb;
+
+        // Parse metadata if available (future proofing)
+        // info.settings.fps = j.value("fps", 60); // Example
       }
     } catch (...) {
       // JSON parse failed, use defaults

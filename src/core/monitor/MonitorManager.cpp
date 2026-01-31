@@ -45,6 +45,10 @@ MonitorManager::~MonitorManager() {
 }
 
 bool MonitorManager::initialize() {
+  if (m_display) {
+    return true;
+  }
+
   m_display = wl_display_connect(nullptr);
   if (!m_display) {
     LOG_ERROR("Failed to connect to Wayland display");
@@ -55,17 +59,32 @@ bool MonitorManager::initialize() {
   wl_registry_add_listener(m_registry, &registry_listener, this);
 
   // Roundtrip to get initials
-  wl_display_roundtrip(m_display);
+  LOG_DEBUG("Performing Wayland roundtrip 1...");
+  if (wl_display_roundtrip(m_display) == -1) {
+    LOG_ERROR("Roundtrip 1 failed");
+    return false;
+  }
 
   // Roundtrip again to get events
-  wl_display_roundtrip(m_display);
+  LOG_DEBUG("Performing Wayland roundtrip 2...");
+  if (wl_display_roundtrip(m_display) == -1) {
+    LOG_ERROR("Roundtrip 2 failed");
+    return false;
+  }
 
+  LOG_INFO("MonitorManager initialized.");
   return true;
 }
 
 void MonitorManager::update() {
   if (m_display) {
     wl_display_dispatch(m_display);
+  }
+}
+
+void MonitorManager::processPending() {
+  if (m_display) {
+    wl_display_dispatch_pending(m_display);
   }
 }
 

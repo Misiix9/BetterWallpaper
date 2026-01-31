@@ -1,4 +1,5 @@
 #include "../core/ipc/DBusService.hpp"
+#include "../core/slideshow/SlideshowManager.hpp"
 #include "../core/utils/Logger.hpp"
 #include "../core/wallpaper/WallpaperManager.hpp"
 #include <gtk/gtk.h>
@@ -45,28 +46,27 @@ private:
 
     self->m_dbusService->setNextHandler([](const std::string &monitor) {
       LOG_INFO("IPC Command: Next on " + monitor);
-      // TODO: bwp::wallpaper::WallpaperManager::getInstance().next(monitor);
+      bwp::core::SlideshowManager::getInstance().next();
     });
 
     self->m_dbusService->setPreviousHandler([](const std::string &monitor) {
       LOG_INFO("IPC Command: Previous on " + monitor);
-      // TODO:
-      // bwp::wallpaper::WallpaperManager::getInstance().previous(monitor);
+      bwp::core::SlideshowManager::getInstance().previous();
     });
 
     self->m_dbusService->setPauseHandler([](const std::string &monitor) {
       LOG_INFO("IPC Command: Pause on " + monitor);
-      // bwp::wallpaper::WallpaperManager::getInstance().pause(monitor);
+      bwp::wallpaper::WallpaperManager::getInstance().pause(monitor);
     });
 
     self->m_dbusService->setResumeHandler([](const std::string &monitor) {
       LOG_INFO("IPC Command: Resume on " + monitor);
-      // bwp::wallpaper::WallpaperManager::getInstance().resume(monitor);
+      bwp::wallpaper::WallpaperManager::getInstance().resume(monitor);
     });
 
     self->m_dbusService->setStopHandler([](const std::string &monitor) {
       LOG_INFO("IPC Command: Stop on " + monitor);
-      // bwp::wallpaper::WallpaperManager::getInstance().stop(monitor);
+      bwp::wallpaper::WallpaperManager::getInstance().stop(monitor);
     });
 
     if (!self->m_dbusService->initialize()) {

@@ -9,11 +9,16 @@
 #include <gtk/gtk.h>
 #include <memory>
 
+namespace bwp::wallpaper {
+class WallpaperEngineRenderer;
+}
+
 namespace bwp::gui {
 
 class SettingsView;
 class FavoritesView;
-class RecentView;
+class ProfilesView;
+class ScheduleView;
 
 class MainWindow {
 public:
@@ -32,6 +37,8 @@ private:
   void ensureWorkshopView();
   void ensureFavoritesView();
   void ensureRecentView();
+  void ensureProfilesView();
+  void ensureScheduleView();
 
   // Callback for window close
   static gboolean onCloseRequest(GtkWindow *window, gpointer user_data);
@@ -51,13 +58,17 @@ private:
   LazyView<WorkshopView> m_workshopView;
   LazyView<SettingsView> m_settingsView;
   LazyView<FavoritesView> m_favoritesView;
-  LazyView<RecentView> m_recentView;
+  LazyView<ProfilesView> m_profilesView;
+  LazyView<ScheduleView> m_scheduleView;
+
+  std::unique_ptr<bwp::wallpaper::WallpaperEngineRenderer> m_weRenderer;
 
   // Track if lazy views have been added to stack
   bool m_workshopViewAdded = false;
   bool m_settingsViewAdded = false;
   bool m_favoritesViewAdded = false;
-  bool m_recentViewAdded = false;
+  bool m_profilesViewAdded = false;
+  bool m_scheduleViewAdded = false;
 };
 
 } // namespace bwp::gui

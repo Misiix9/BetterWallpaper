@@ -23,6 +23,7 @@ public:
 
   std::optional<WallpaperInfo> getWallpaper(const std::string &id) const;
   std::vector<WallpaperInfo> getAllWallpapers() const;
+  std::vector<std::string> getAllTags() const;
 
   // Query
   std::vector<WallpaperInfo> search(const std::string &query) const;

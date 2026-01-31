@@ -22,6 +22,7 @@ public:
 
   virtual void setVolume(float volume) {}
   virtual void setPlaybackSpeed(float speed) {}
+  virtual void setMuted(bool muted) {}
 
   virtual bool isPlaying() const { return false; }
   virtual bool hasAudio() const { return false; }

@@ -1,5 +1,7 @@
+#include "../widgets/TransitionDialog.hpp"
 #include <adwaita.h>
 #include <gtk/gtk.h>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -14,19 +16,34 @@ public:
 
 private:
   void setupUi();
-  void setupLibraryPage();
-  void setupGeneralPage();
-  void setupAppearancePage();
-  void setupPerformancePage();
+
+  // Build the categorized Pages
+  GtkWidget *createGeneralPage();
+  GtkWidget *createControlsPage();
+  GtkWidget *createGraphicsPage();
+  GtkWidget *createAudioPage();
+  GtkWidget *createPlaybackPage();
+  GtkWidget *createSourcesPage();
+  GtkWidget *createAboutPage();
+
+  // Helpers
+  void setupLibraryList(GtkWidget *group);
+  void updateLibraryList(GtkWidget *group); // Modified to take group
+  void onAddSource(GtkWidget *group);
+  void onRemoveSource(GtkWidget *group, const std::string &path);
 
   GtkWidget *m_content;
-  GtkWidget *m_preferencesPage;
-  GtkWidget *m_libraryGroup; // Store group to update list dynamically
-  std::vector<GtkWidget *> m_libraryRows;
+  GtkWidget *m_splitView; // AdwOverlaySplitView or container
+  GtkWidget *m_stack;     // AdwViewStack
+  GtkWidget *m_sidebarList;
 
-  void updateLibraryList();
-  void onAddSource();
-  void onRemoveSource(const std::string &path);
+  // Track library rows for dynamic updates (might need mapping to group)
+  // Or simply rebuild the group content?
+  // Let's store the current library group pointer if needed.
+  GtkWidget *m_currentLibraryGroup = nullptr;
+
+  // Transition preview dialog
+  std::unique_ptr<TransitionDialog> m_transitionDialog;
 };
 
 } // namespace bwp::gui

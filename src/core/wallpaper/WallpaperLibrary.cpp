@@ -3,6 +3,7 @@
 #include "../utils/FileUtils.hpp"
 #include "../utils/Logger.hpp"
 #include "../utils/StringUtils.hpp"
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 
@@ -58,6 +59,16 @@ void WallpaperLibrary::load() {
       // ... load other fields
       info.rating = item.value("rating", 0);
       info.favorite = item.value("favorite", false);
+      info.play_count = item.value("play_count", 0);
+
+      if (item.contains("added")) {
+        info.added = std::chrono::system_clock::time_point(
+            std::chrono::seconds(item["added"]));
+      }
+      if (item.contains("last_used")) {
+        info.last_used = std::chrono::system_clock::time_point(
+            std::chrono::seconds(item["last_used"]));
+      }
 
       if (item.contains("tags")) {
         for (const auto &tag : item["tags"]) {
@@ -65,9 +76,29 @@ void WallpaperLibrary::load() {
         }
       }
 
-      if (!info.id.empty()) {
-        m_wallpapers[info.id] = info;
+      // Load Settings
+      if (item.contains("settings")) {
+        const auto &s = item["settings"];
+        info.settings.fps = s.value("fps", 0);
+        info.settings.volume = s.value("volume", 100);
+        info.settings.muted = s.value("muted", false);
+        info.settings.playback_speed = s.value("playback_speed", 1.0f);
+        info.settings.scaling =
+            static_cast<ScalingMode>(s.value("scaling", 1)); // Default Fill
       }
+
+      if (!info.id.empty()) {
+        if (std::filesystem::exists(info.path)) {
+          m_wallpapers[info.id] = info;
+        } else {
+          LOG_WARN("Removed missing wallpaper from library: " + info.path);
+          m_dirty = true;
+        }
+      }
+    }
+
+    if (m_dirty) {
+      save(); // Commit removal immediately
     }
 
     LOG_INFO("Loaded " + std::to_string(m_wallpapers.size()) +
@@ -91,8 +122,23 @@ void WallpaperLibrary::save() {
       item["type"] = static_cast<int>(info.type);
       item["rating"] = info.rating;
       item["favorite"] = info.favorite;
+      item["play_count"] = info.play_count;
+      item["added"] = std::chrono::duration_cast<std::chrono::seconds>(
+                          info.added.time_since_epoch())
+                          .count();
+      item["last_used"] = std::chrono::duration_cast<std::chrono::seconds>(
+                              info.last_used.time_since_epoch())
+                              .count();
       item["tags"] = info.tags;
-      // ... other fields
+
+      // Save Settings
+      nlohmann::json settings;
+      settings["fps"] = info.settings.fps;
+      settings["volume"] = info.settings.volume;
+      settings["muted"] = info.settings.muted;
+      settings["playback_speed"] = info.settings.playback_speed;
+      settings["scaling"] = static_cast<int>(info.settings.scaling);
+      item["settings"] = settings;
 
       j["wallpapers"].push_back(item);
     }
@@ -112,23 +158,39 @@ void WallpaperLibrary::addWallpaper(const WallpaperInfo &info) {
     m_wallpapers[info.id] = info;
     m_dirty = true;
   }
-  // Don't auto-save on every add - too slow and causes issues
-  // save();
+  // Auto-save for local wallpapers to ensure persistence
+  if (info.source == "local") {
+    save();
+  }
 }
 
 void WallpaperLibrary::updateWallpaper(const WallpaperInfo &info) {
-  std::lock_guard<std::mutex> lock(m_mutex);
-  if (m_wallpapers.count(info.id)) {
-    m_wallpapers[info.id] = info;
-    m_dirty = true;
+  bool needsSave = false;
+  {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (m_wallpapers.count(info.id)) {
+      m_wallpapers[info.id] = info;
+      m_dirty = true;
+      needsSave = true;
+    }
+  }
+  // Call save outside the lock to avoid deadlock
+  if (needsSave) {
     save();
   }
 }
 
 void WallpaperLibrary::removeWallpaper(const std::string &id) {
-  std::lock_guard<std::mutex> lock(m_mutex);
-  if (m_wallpapers.erase(id)) {
-    m_dirty = true;
+  bool needsSave = false;
+  {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (m_wallpapers.erase(id)) {
+      m_dirty = true;
+      needsSave = true;
+    }
+  }
+  // Call save outside the lock to avoid deadlock
+  if (needsSave) {
     save();
   }
 }
@@ -191,6 +253,27 @@ std::vector<WallpaperInfo> WallpaperLibrary::filter(
     }
   }
   return result;
+}
+
+std::vector<std::string> WallpaperLibrary::getAllTags() const {
+  std::lock_guard<std::mutex> lock(m_mutex);
+  std::vector<std::string> tags;
+  for (const auto &pair : m_wallpapers) {
+    for (const auto &tag : pair.second.tags) {
+      bool found = false;
+      for (const auto &existing : tags) {
+        if (existing == tag) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        tags.push_back(tag);
+      }
+    }
+  }
+  std::sort(tags.begin(), tags.end());
+  return tags;
 }
 
 std::filesystem::path WallpaperLibrary::getDataDirectory() const {

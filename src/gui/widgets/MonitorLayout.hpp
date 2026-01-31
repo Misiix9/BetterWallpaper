@@ -16,6 +16,7 @@ public:
 
   void setMonitors(const std::vector<bwp::monitor::MonitorInfo> &monitors);
   void selectMonitor(const std::string &name);
+  const std::string &getSelectedMonitor() const { return m_selectedMonitor; }
 
   using SelectionCallback = std::function<void(const std::string &)>;
   void setCallback(SelectionCallback callback);

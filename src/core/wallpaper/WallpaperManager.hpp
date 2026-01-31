@@ -2,10 +2,12 @@
 #include "../monitor/MonitorInfo.hpp"
 #include "WallpaperRenderer.hpp"
 #include "WallpaperWindow.hpp"
+#include <atomic>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 
 namespace bwp::wallpaper {
 
@@ -21,11 +23,28 @@ public:
 
   // Set global pause
   void setPaused(bool paused);
+  void setMuted(bool muted);
+
+  // Per-monitor controls
+  void pause(const std::string &monitorName);
+  void resume(const std::string &monitorName);
+  void stop(const std::string &monitorName);
 
   std::string getCurrentWallpaper(const std::string &monitorName) const;
 
   // Called when monitors change
   void handleMonitorUpdate(const monitor::MonitorInfo &info, bool connected);
+
+  // Persistence - save/load wallpaper state
+  void saveState();
+  void loadState();
+
+  // Write to hyprpaper.conf for native persistence
+  void writeHyprpaperConfig();
+
+  // Resource Management
+  void startResourceMonitor();
+  void stopResourceMonitor();
 
 private:
   WallpaperManager();
@@ -41,9 +60,15 @@ private:
 
   void killConflictingWallpapers();
 
-  mutable std::mutex m_mutex;
   std::map<std::string, MonitorState> m_monitors; // Key: monitor name
+  mutable std::mutex m_mutex;
   bool m_paused = false;
+
+  // Resource Monitor
+  std::thread m_monitorThread;
+  std::atomic<bool> m_stopMonitor = false;
+  void resourceMonitorLoop();
+  void fallbackToStatic();
 };
 
 } // namespace bwp::wallpaper

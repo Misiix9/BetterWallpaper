@@ -145,8 +145,10 @@ GdkPixbuf *ThumbnailCache::generateSync(const std::string &wallpaperPath,
       (ext == ".mp4" || ext == ".webm" || ext == ".mkv" || ext == ".avi");
   bool isImage = (ext == ".jpg" || ext == ".jpeg" || ext == ".png" ||
                   ext == ".gif" || ext == ".bmp" || ext == ".webp");
+  bool isScene = (ext == ".pkg" || ext == ".json");
 
-  if (isVideo) {
+  if (isVideo || isScene) {
+    // Videos and scene packages use preview images from the same folder
     pixbuf = generateFromVideo(wallpaperPath, size);
   } else if (isImage) {
     pixbuf = generateFromImage(wallpaperPath, size);
@@ -273,60 +275,26 @@ bool ThumbnailCache::saveToCache(GdkPixbuf *pixbuf,
 
 void ThumbnailCache::getAsync(const std::string &wallpaperPath, Size size,
                               ThumbnailCallback callback) {
-  // First check if already cached
+  // First check if already cached (memory or disk)
   GdkPixbuf *cached = getSync(wallpaperPath, size);
   if (cached) {
-    // Call callback on main thread
-    struct CallbackData {
-      GdkPixbuf *pixbuf;
-      ThumbnailCallback callback;
-    };
-
-    auto *data = new CallbackData{cached, callback};
-
-    g_idle_add(
-        [](gpointer user_data) -> gboolean {
-          auto *d = static_cast<CallbackData *>(user_data);
-          if (d->callback) {
-            d->callback(d->pixbuf);
-          }
-          if (d->pixbuf) {
-            g_object_unref(d->pixbuf);
-          }
-          delete d;
-          return G_SOURCE_REMOVE;
-        },
-        data);
-
+    // Already cached - call callback directly (we're on main thread)
+    if (callback) {
+      callback(cached);
+    }
+    g_object_unref(cached);
     return;
   }
 
-  // Generate in background thread
-  std::thread([this, wallpaperPath, size, callback]() {
-    GdkPixbuf *pixbuf = generateSync(wallpaperPath, size);
-
-    // Call callback on main thread
-    struct CallbackData {
-      GdkPixbuf *pixbuf;
-      ThumbnailCallback callback;
-    };
-
-    auto *data = new CallbackData{pixbuf, callback};
-
-    g_idle_add(
-        [](gpointer user_data) -> gboolean {
-          auto *d = static_cast<CallbackData *>(user_data);
-          if (d->callback) {
-            d->callback(d->pixbuf);
-          }
-          if (d->pixbuf) {
-            g_object_unref(d->pixbuf);
-          }
-          delete d;
-          return G_SOURCE_REMOVE;
-        },
-        data);
-  }).detach();
+  // Not cached - try to generate synchronously for now
+  // This blocks but ensures reliability
+  GdkPixbuf *generated = generateSync(wallpaperPath, size);
+  if (callback) {
+    callback(generated);
+  }
+  if (generated) {
+    g_object_unref(generated);
+  }
 }
 
 void ThumbnailCache::invalidate(const std::string &wallpaperPath) {

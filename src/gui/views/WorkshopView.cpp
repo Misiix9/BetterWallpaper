@@ -167,20 +167,34 @@ void WorkshopView::updateBrowseGrid(
   }
 }
 
-void WorkshopView::onDownloadClicked(GtkButton *button, gpointer user_data) {
+void WorkshopView::onDownloadClicked(GtkButton * /*button*/,
+                                     gpointer user_data) {
   ItemData *data = static_cast<ItemData *>(user_data);
   WorkshopView *self = data->view;
 
   gtk_progress_bar_pulse(GTK_PROGRESS_BAR(self->m_progressBar));
 
   bwp::steam::SteamWorkshopClient::getInstance().download(
-      data->id, [self](double p) {},
-      [self](bool success, const std::string &path) {
+      data->id,
+      [self](const bwp::steam::DownloadProgress &prog) {
+        // Update progress bar from main thread
+        g_idle_add(
+            [](gpointer d) -> gboolean {
+              auto *pair = static_cast<std::pair<WorkshopView *, double> *>(d);
+              gtk_progress_bar_set_fraction(
+                  GTK_PROGRESS_BAR(pair->first->m_progressBar), pair->second);
+              delete pair;
+              return G_SOURCE_REMOVE;
+            },
+            new std::pair<WorkshopView *, double>(self, prog.progress));
+      },
+      [self](bool /*success*/, const std::string & /*path*/) {
         g_idle_add(
             [](gpointer d) -> gboolean {
               auto *s = static_cast<WorkshopView *>(d);
               gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(s->m_progressBar),
                                             1.0);
+              s->refreshInstalled();
               return G_SOURCE_REMOVE;
             },
             self);

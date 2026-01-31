@@ -21,7 +21,8 @@ public:
   static MonitorManager &getInstance();
 
   bool initialize();
-  void update(); // Process events
+  void update();         // Process events (blocking if empty)
+  void processPending(); // Process only pending events (non-blocking)
 
   std::vector<MonitorInfo> getMonitors() const;
   std::optional<MonitorInfo> getMonitor(const std::string &name) const;

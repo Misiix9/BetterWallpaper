@@ -9,16 +9,21 @@ add_executable(betterwallpaper
     widgets/MonitorLayout.cpp
     widgets/MonitorConfigPanel.cpp
     widgets/PreviewPanel.cpp
-    dialogs/TagDialog.cpp
+    widgets/TagEditorDialog.cpp
+    widgets/TransitionDialog.cpp
+    widgets/ProfileEditDialog.cpp
+    widgets/ScheduleDialog.cpp
     models/WallpaperObject.cpp
     views/LibraryView.cpp
-    views/MonitorsView.cpp
     views/MonitorsView.cpp
     views/FolderView.cpp
     views/WorkshopView.cpp
     views/SettingsView.cpp
     views/FavoritesView.cpp
-    views/RecentView.cpp
+
+    views/ProfilesView.cpp
+    views/ScheduleView.cpp
+    dialogs/SetupDialog.cpp
 )
 
 target_link_libraries(betterwallpaper PRIVATE

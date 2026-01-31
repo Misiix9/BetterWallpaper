@@ -28,6 +28,14 @@ private:
   void handleWorkspaceChange(const std::string &data);
   void handleMonitorAdded(const std::string &data);
 
+  void loadConfig();
+  void saveConfig();
+
+public:
+  // Generate hyprland.conf snippet for keybinds
+  std::string generateConfigSnippet() const;
+
+private:
   std::map<int, std::string> m_workspaceWallpapers; // WorkspaceID -> Path
 
   std::string m_activeMonitorName; // Last active monitor

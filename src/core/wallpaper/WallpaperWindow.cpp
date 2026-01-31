@@ -9,6 +9,8 @@ namespace bwp::wallpaper {
 WallpaperWindow::WallpaperWindow(const monitor::MonitorInfo &monitor)
     : m_monitor(monitor) {
   m_window = gtk_window_new();
+  gtk_window_set_decorated(GTK_WINDOW(m_window), FALSE);
+  gtk_window_set_title(GTK_WINDOW(m_window), "BetterWallpaper-Renderer");
 
   // Initialize Layer Shell
   gtk_layer_init_for_window(GTK_WINDOW(m_window));
@@ -62,7 +64,15 @@ void WallpaperWindow::setRenderer(std::weak_ptr<WallpaperRenderer> renderer) {
   gtk_widget_queue_draw(m_drawingArea);
 }
 
-void WallpaperWindow::show() { gtk_widget_show(m_window); }
+void WallpaperWindow::show() {
+  if (gtk_layer_is_layer_window(GTK_WINDOW(m_window))) {
+    gtk_widget_show(m_window);
+  } else {
+    LOG_ERROR("Window is not a layer surface! strict layer shell compliance "
+              "enabled. Hiding window.");
+    // Optional: Destroy? Or just keep hidden.
+  }
+}
 
 void WallpaperWindow::hide() { gtk_widget_hide(m_window); }
 
@@ -72,13 +82,25 @@ void WallpaperWindow::updateMonitor(const monitor::MonitorInfo &monitor) {
 
 void WallpaperWindow::transitionTo(
     std::shared_ptr<WallpaperRenderer> nextRenderer) {
+  // If no current renderer or drawing area not ready, just set directly
   if (!m_drawingArea || m_renderer.expired()) {
+    LOG_INFO("Setting renderer directly (no transition)");
     setRenderer(nextRenderer);
     return;
   }
 
   int width = gtk_widget_get_width(m_drawingArea);
   int height = gtk_widget_get_height(m_drawingArea);
+
+  // If dimensions are invalid, skip transition and set directly
+  if (width <= 0 || height <= 0) {
+    LOG_WARN("Drawing area has invalid dimensions, setting renderer directly");
+    setRenderer(nextRenderer);
+    return;
+  }
+
+  LOG_INFO("Transitioning to new wallpaper (" + std::to_string(width) + "x" +
+           std::to_string(height) + ")");
 
   // Snapshots
   cairo_surface_t *from =
@@ -97,13 +119,14 @@ void WallpaperWindow::transitionTo(
   }
   cairo_destroy(crTo);
 
-  // Start transition (Fade default)
+  // Start transition (Fade default with easeInOut)
   auto effect = std::make_shared<bwp::transition::FadeEffect>();
-  m_transitionEngine.start(from, to, effect, 600, [this, nextRenderer]() {
-    setRenderer(nextRenderer);
-    if (nextRenderer)
-      nextRenderer->play();
-  });
+  m_transitionEngine.start(from, to, effect, 600, "easeInOut",
+                           [this, nextRenderer]() {
+                             setRenderer(nextRenderer);
+                             if (nextRenderer)
+                               nextRenderer->play();
+                           });
 
   cairo_surface_destroy(from);
   cairo_surface_destroy(to);

@@ -3,18 +3,21 @@ window.background {
     background-color: @window_bg_color;
 }
 
-/* Sidebar - fixed width */
+/* --- Sidebar --- */
 .sidebar {
     background-color: @headerbar_bg_color;
     border-right: 1px solid @borders;
-    min-width: 180px;
+    min-width: 220px;
+    /* Slight increase for breathing room */
 }
 
 .navigation-sidebar row {
-    padding: 0;
-    margin: 4px 12px;
+    padding: 8px 12px;
+    margin: 4px 8px;
     border-radius: 8px;
-    transition: background-color 200ms ease;
+    transition: background-color 200ms ease, color 200ms ease;
+    border-left: 3px solid transparent;
+    /* Indicator placeholder */
 }
 
 .navigation-sidebar row:hover {
@@ -22,68 +25,129 @@ window.background {
 }
 
 .navigation-sidebar row:selected {
-    background-color: @accent_bg_color;
-    color: @accent_fg_color;
+    background-color: alpha(@accent_bg_color, 0.15);
+    /* Subtle tint */
+    color: @window_fg_color;
+    font-weight: bold;
+    border-left-color: @accent_bg_color;
+    /* Left indicator */
 }
 
-/* Wallpaper Cards */
+.navigation-sidebar label.heading {
+    font-weight: 800;
+    opacity: 0.6;
+    letter-spacing: 0.5px;
+    font-size: 11px;
+    text-transform: uppercase;
+    margin-top: 16px;
+    margin-bottom: 8px;
+}
+
+/* --- Wallpaper Cards --- */
+@keyframes card-enter {
+    from {
+        opacity: 0;
+        transform: translateY(15px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 .wallpaper-card {
     background-color: @card_bg_color;
-    border: 1px solid @borders;
+    border: 1px solid alpha(@borders, 0.5);
     border-radius: 12px;
     padding: 0;
-    overflow: hidden;
-    transition: transform 150ms ease, box-shadow 150ms ease;
+    /* Note: overflow not supported in GTK4 CSS */
+    transition:
+        transform 200ms cubic-bezier(0.2, 0, 0.2, 1),
+        box-shadow 200ms cubic-bezier(0.2, 0, 0.2, 1),
+        border-color 200ms ease;
+
+    /* Entry animation */
+    animation: card-enter 400ms cubic-bezier(0.2, 0, 0.2, 1) both;
 }
 
 .wallpaper-card:hover {
-    transform: scale(1.02);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-    border-color: @accent_bg_color;
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 12px 24px -8px rgba(0, 0, 0, 0.4);
+    border-color: alpha(@accent_bg_color, 0.5);
+}
+
+.wallpaper-card:active {
+    transform: translateY(0) scale(0.98);
+    box-shadow: 0 4px 12px -4px rgba(0, 0, 0, 0.3);
+    transition-duration: 50ms;
 }
 
 /* Card image */
 .card-image {
     border-radius: 12px 12px 0 0;
-    background-color: #1a1a1a;
+    background-color: #1e1e1e;
+    /* Dark placeholder */
+}
+
+/* No thumbnail placeholder */
+.card-image.no-thumbnail {
+    background-color: #2a2a2a;
+    background-image: url("resource:///org/gnome/Adwaita/icons/symbolic/image-missing-symbolic.svg");
+    background-size: 48px 48px;
+    background-repeat: no-repeat;
+    background-position: center;
+    opacity: 0.5;
 }
 
 /* Black bottom bar */
 .card-bottom-bar {
-    background-color: rgba(0, 0, 0, 0.9);
-    min-height: 28px;
+    background-color: rgba(20, 20, 20, 0.95);
+    min-height: 32px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .card-title {
     color: white;
-    font-size: 12px;
-    font-weight: 500;
+    font-size: 13px;
+    font-weight: 600;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 /* Type badge */
 .card-badge {
-    background-color: rgba(0, 0, 0, 0.75);
+    background-color: rgba(0, 0, 0, 0.65);
     color: white;
     border-radius: 6px;
-    padding: 3px 5px;
+    padding: 4px 6px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    margin: 6px;
+    /* Glass effect - backdrop-filter not supported in GTK4 */
 }
 
 /* Favorite button */
 .favorite-btn {
-    color: rgba(255, 255, 255, 0.5);
-    min-width: 24px;
-    min-height: 24px;
+    color: rgba(255, 255, 255, 0.4);
+    min-width: 28px;
+    min-height: 28px;
+    border-radius: 50%;
+    transition: all 200ms ease;
 }
 
 .favorite-btn:hover {
     color: white;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.favorite-btn:active {
+    transform: scale(0.9);
 }
 
 .favorite-btn.favorited {
     color: #ffd700;
 }
 
-/* Grid */
+/* --- Grid --- */
 scrolledwindow {
     background-color: transparent;
 }
@@ -97,23 +161,246 @@ flowboxchild {
     margin: 0;
     background-color: transparent;
     border-radius: 12px;
+    transition: background-color 150ms ease;
 }
 
 flowboxchild:selected {
-    background-color: transparent;
     outline: 2px solid @accent_bg_color;
-    outline-offset: 2px;
+    outline-offset: 4px;
     border-radius: 12px;
 }
 
-/* Preview Panel */
+/* --- Preview Panel --- */
 .preview-frame {
-    border-radius: 8px;
+    border-radius: 12px;
     background-color: #1a1a1a;
     border: 1px solid @borders;
-    overflow: hidden;
+    /* Note: overflow not supported in GTK4 CSS */
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
 }
 
 .preview-frame picture {
+    border-radius: 12px;
+}
+
+/* --- Toggle Switch Animations --- */
+switch {
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 16px;
+    min-width: 50px;
+    min-height: 26px;
+    background-color: alpha(@window_fg_color, 0.2);
+    border: 2px solid transparent;
+}
+
+switch:hover {
+    background-color: alpha(@window_fg_color, 0.25);
+}
+
+switch:checked {
+    background-color: @accent_bg_color;
+}
+
+switch:checked:hover {
+    background-color: shade(@accent_bg_color, 1.1);
+}
+
+switch slider {
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    background-color: @window_bg_color;
+    border-radius: 50%;
+    min-width: 20px;
+    min-height: 20px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+switch:checked slider {
+    background-color: white;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+switch:active slider {
+    min-width: 24px;
+}
+
+/* --- Dropdown Animations --- */
+dropdown {
+    transition: all 150ms ease;
+}
+
+dropdown > popover {
+    /* Animate opacity for fade effect */
+    transition: opacity 150ms ease;
+}
+
+dropdown > popover.menu {
+    padding: 6px;
+    border-radius: 12px;
+    background-color: @popover_bg_color;
+    box-shadow:
+        0 8px 24px -4px rgba(0, 0, 0, 0.3),
+        0 4px 8px -2px rgba(0, 0, 0, 0.2);
+}
+
+dropdown > popover listview row {
+    padding: 8px 12px;
     border-radius: 8px;
+    transition: background-color 100ms ease;
+    margin: 2px;
+}
+
+dropdown > popover listview row:hover {
+    background-color: alpha(@window_fg_color, 0.08);
+}
+
+dropdown > popover listview row:selected {
+    background-color: alpha(@accent_bg_color, 0.2);
+}
+
+/* Arrow rotation */
+dropdown > button > box > image:last-child {
+    transition: transform 150ms ease;
+}
+
+/* Note: :open pseudo-class not available in GTK4, arrow handled by widget */
+
+/* --- Skeleton Loading Animation --- */
+@keyframes skeleton-pulse {
+    0% {
+        opacity: 0.4;
+    }
+    50% {
+        opacity: 0.6;
+    }
+    100% {
+        opacity: 0.4;
+    }
+}
+
+.skeleton {
+    background: linear-gradient(
+        110deg,
+        alpha(@window_fg_color, 0.08) 0%,
+        alpha(@window_fg_color, 0.15) 50%,
+        alpha(@window_fg_color, 0.08) 100%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+    border-radius: 8px;
+}
+
+.skeleton-card {
+    background-color: alpha(@window_fg_color, 0.06);
+    border: 1px solid alpha(@borders, 0.3);
+    border-radius: 12px;
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.skeleton-text {
+    min-height: 14px;
+    border-radius: 4px;
+    background-color: alpha(@window_fg_color, 0.1);
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+/* --- Page Slide Transitions --- */
+.slide-right {
+    transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1), opacity 300ms ease;
+}
+
+.slide-left {
+    transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1), opacity 300ms ease;
+}
+
+/* --- Button Animations --- */
+button {
+    transition:
+        background-color 150ms ease,
+        color 150ms ease,
+        box-shadow 150ms ease,
+        transform 100ms ease;
+}
+
+button:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+button:active {
+    transform: scale(0.96);
+    transition-duration: 50ms;
+}
+
+button.suggested-action:active,
+button.destructive-action:active {
+    transform: scale(0.96);
+    box-shadow: 0 0 0 3px alpha(@accent_bg_color, 0.3);
+}
+
+/* Spinner animation for async loading buttons */
+button spinner {
+    opacity: 0;
+    transition: opacity 200ms ease;
+}
+
+button.loading spinner {
+    opacity: 1;
+}
+
+button.loading > label {
+    opacity: 0.5;
+}
+
+/* --- Search Entry --- */
+entry {
+    transition: all 200ms ease;
+    border-radius: 8px;
+    min-height: 36px;
+}
+
+entry:focus {
+    box-shadow: 0 0 0 3px alpha(@accent_bg_color, 0.25);
+}
+
+/* --- Progress Bar Animations --- */
+progressbar {
+    border-radius: 4px;
+}
+
+progressbar progress {
+    transition: all 250ms ease;
+    border-radius: 4px;
+}
+
+/* --- Revealer Transitions --- */
+revealer {
+    transition-duration: 250ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* --- Scale/Slider Animations --- */
+scale {
+    transition: all 150ms ease;
+}
+
+scale slider {
+    transition: all 150ms ease;
+    border-radius: 50%;
+}
+
+scale slider:hover {
+    transform: scale(1.1);
+}
+
+scale slider:active {
+    transform: scale(0.95);
+}
+
+scale trough {
+    border-radius: 4px;
+    transition: background-color 150ms ease;
+}
+
+scale trough highlight {
+    transition: all 150ms ease;
+    border-radius: 4px;
 }

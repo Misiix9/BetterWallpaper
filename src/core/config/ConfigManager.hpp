@@ -15,7 +15,10 @@ public:
   bool save();
 
   // Generic getters/setters
+  // Generic getters/setters
   template <typename T> T get(const std::string &key) const;
+  template <typename T>
+  T get(const std::string &key, const T &defaultValue) const;
 
   template <typename T> void set(const std::string &key, const T &value);
 
@@ -64,6 +67,18 @@ template <typename T> T ConfigManager::get(const std::string &key) const {
   // Traverse defaults with same key logic (simplified here)
   // For now returning default constructed T if not found
   return T{};
+}
+
+template <typename T>
+T ConfigManager::get(const std::string &key, const T &defaultValue) const {
+  const nlohmann::json *ptr = getValuePtr(key);
+  if (ptr) {
+    try {
+      return ptr->get<T>();
+    } catch (...) {
+    }
+  }
+  return defaultValue;
 }
 
 template <typename T>

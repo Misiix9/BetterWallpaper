@@ -1,6 +1,6 @@
 #pragma once
+
 #include "../../core/monitor/MonitorInfo.hpp"
-#include "../../core/wallpaper/WallpaperInfo.hpp"
 #include <adwaita.h>
 #include <functional>
 #include <gtk/gtk.h>
@@ -15,20 +15,29 @@ public:
 
   GtkWidget *getWidget() const { return m_box; }
 
+  // Update the panel with details of the selected monitor
   void setMonitor(const bwp::monitor::MonitorInfo &info);
-  void setWallpaperInfo(const bwp::wallpaper::WallpaperInfo &info);
+
+  // Clear the panel (when no monitor is selected)
+  void clear();
+
+  using ChangeWallpaperCallback =
+      std::function<void(const std::string &)>; // returns monitor name
+  void setCallback(ChangeWallpaperCallback callback);
 
 private:
+  void setupUi();
+
   GtkWidget *m_box;
-  GtkWidget *m_titleLabel;
-  GtkWidget *m_specsLabel;
+  GtkWidget *m_nameLabel;
+  GtkWidget *m_resLabel;
+  GtkWidget *m_scaleLabel;
+  GtkWidget *m_wallpaperLabel;
+  GtkWidget *m_changeButton;
+  GtkWidget *m_modeDropdown;
 
-  // Controls
-  GtkWidget *m_scalingRow; // AdwComboRow
-  GtkWidget *m_volumeRow;  // AdwActionRow with scale
-  GtkWidget *m_speedRow;   // AdwActionRow with scale
-
-  bwp::monitor::MonitorInfo m_currentMonitor;
+  std::string m_currentMonitorName;
+  ChangeWallpaperCallback m_callback;
 };
 
 } // namespace bwp::gui

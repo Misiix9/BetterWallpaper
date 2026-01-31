@@ -18,6 +18,7 @@ public:
 private:
   void setupUi();
   void loadWallpapers();
+  void onAddWallpaper();
 
   GtkWidget *m_box;
   GtkWidget *m_toolbarView; // AdwToolbarView
@@ -25,6 +26,9 @@ private:
   std::unique_ptr<SearchBar> m_searchBar;
   std::unique_ptr<WallpaperGrid> m_grid;
   std::unique_ptr<PreviewPanel> m_previewPanel;
+  GtkWidget *m_previewRevealer = nullptr;
+  GtkWidget *m_filterCombo = nullptr;
+  GtkStringList *m_tagList = nullptr;
 };
 
 } // namespace bwp::gui

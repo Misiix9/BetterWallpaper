@@ -1,4 +1,5 @@
 #include "HyprlandManager.hpp"
+#include "../config/ConfigManager.hpp"
 #include "../utils/Logger.hpp"
 #include "../wallpaper/WallpaperManager.hpp"
 #include <iostream>
@@ -26,6 +27,39 @@ void HyprlandManager::initialize() {
     // Initial state sync could be done here (querying monitors/workspaces)
     // For now, reliance on events is sufficient for dynamic changes
   }
+
+  loadConfig();
+}
+
+void HyprlandManager::loadConfig() {
+  auto &conf = bwp::config::ConfigManager::getInstance();
+  auto json = conf.getJson(); // Direct access or iterate?
+  // ConfigManager doesn't expose generic map get easily without type
+  // Let's use getJson() or get<json>
+  if (json.contains("hyprland")) {
+    if (json["hyprland"].contains("workspaces")) {
+      for (const auto &item : json["hyprland"]["workspaces"].items()) {
+        try {
+          int id = std::stoi(item.key());
+          std::string path = item.value();
+          m_workspaceWallpapers[id] = path;
+        } catch (...) {
+        }
+      }
+    }
+  }
+}
+
+void HyprlandManager::saveConfig() {
+  auto &conf = bwp::config::ConfigManager::getInstance();
+  nlohmann::json j;
+  {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    for (const auto &[id, path] : m_workspaceWallpapers) {
+      j[std::to_string(id)] = path;
+    }
+  }
+  conf.set("hyprland.workspaces", j); // Will trigger save
 }
 
 bool HyprlandManager::isActive() const {
@@ -39,6 +73,8 @@ void HyprlandManager::setWorkspaceWallpaper(int workspaceId,
   // If currently active workspace is this one, apply immediately?
   // Logic complicates here without full state tracking, let's assume next
   // switch handles it
+
+  saveConfig();
 }
 
 std::string HyprlandManager::getWorkspaceWallpaper(int workspaceId) const {
@@ -67,8 +103,7 @@ void HyprlandManager::onEvent(const std::string &event,
       std::lock_guard<std::mutex> lock(m_mutex);
       m_activeMonitorName = monName;
 
-      // Treat as workspace change to update wallpaper if needed
-      // Try to parse ID from name if it's a number, else we need a map Name->ID
+      // Try to parse ID from name if it's a number
       try {
         m_activeWorkspaceId = std::stoi(wsName);
         std::string wp = getWorkspaceWallpaper(m_activeWorkspaceId);
@@ -80,6 +115,11 @@ void HyprlandManager::onEvent(const std::string &event,
         // Ignore non-numeric workspaces for now
       }
     }
+  } else if (event == "activewindow") {
+    // data is WINDOWCLASS,WINDOWTITLE
+    // Simple heuristic: if data has meaningful content, a window is focused.
+    bool hasWindow = (data.length() > 1);
+    bwp::wallpaper::WallpaperManager::getInstance().setMuted(hasWindow);
   }
 }
 
@@ -115,3 +155,17 @@ void HyprlandManager::handleWorkspaceChange(const std::string &data) {
 }
 
 } // namespace bwp::hyprland
+
+std::string bwp::hyprland::HyprlandManager::generateConfigSnippet() const {
+  std::stringstream ss;
+  ss << "# BetterWallpaper Keybinds for Hyprland\n";
+  ss << "# Add these to your ~/.config/hypr/hyprland.conf\n\n";
+  ss << "# Next wallpaper\n";
+  ss << "bind = SUPER, N, exec, bwp next\n\n";
+  ss << "# Previous wallpaper\n";
+  ss << "bind = SUPER, B, exec, bwp prev\n\n";
+  ss << "# Pause/Resume\n";
+  ss << "bind = SUPER SHIFT, P, exec, bwp pause\n";
+  ss << "bind = SUPER SHIFT, R, exec, bwp resume\n";
+  return ss.str();
+}

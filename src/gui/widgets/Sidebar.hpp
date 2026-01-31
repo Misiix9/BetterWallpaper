@@ -16,6 +16,7 @@ public:
 
   using NavigationCallback = std::function<void(const std::string &page)>;
   void setCallback(NavigationCallback callback);
+  void refresh();
 
 private:
   void setupUi();

@@ -43,6 +43,15 @@ struct WallpaperInfo {
   std::chrono::system_clock::time_point last_used;
   std::chrono::system_clock::time_point added;
   std::vector<std::string> colors;
+
+  // Settings Overrides
+  struct Settings {
+    int fps = 0;      // 0 = default/unlimited
+    int volume = 100; // 0-100
+    bool muted = false;
+    float playback_speed = 1.0f;
+    ScalingMode scaling = ScalingMode::Fill;
+  } settings;
 };
 
 } // namespace bwp::wallpaper

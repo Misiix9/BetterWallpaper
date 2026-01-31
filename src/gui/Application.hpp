@@ -59,6 +59,11 @@ private:
   static GtkCssProvider *s_cssProvider;
   static GFileMonitor *s_cssMonitor;
   static std::string s_currentCssPath;
+
+  // Background service management
+  static void ensureBackgroundServices();
+  static bool spawnProcess(const std::string &name,
+                           const std::string &relativePath);
 };
 
 } // namespace bwp::gui

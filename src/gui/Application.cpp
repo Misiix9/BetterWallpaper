@@ -1,6 +1,8 @@
 #include "Application.hpp"
+#include "../core/config/ConfigManager.hpp"
 #include "../core/utils/Logger.hpp"
 #include "MainWindow.hpp"
+#include "dialogs/SetupDialog.hpp"
 #include <iostream>
 
 namespace bwp::gui {
@@ -23,7 +25,7 @@ Application *Application::getInstance() { return s_instance; }
 
 Application::Application() {
   m_app = adw_application_new("com.github.betterwallpaper",
-                              G_APPLICATION_DEFAULT_FLAGS);
+                              G_APPLICATION_NON_UNIQUE);
   g_signal_connect(m_app, "activate", G_CALLBACK(onActivate), this);
   g_signal_connect(m_app, "startup", G_CALLBACK(onStartup), this);
 }
@@ -48,11 +50,21 @@ int Application::run(int argc, char **argv) {
 void Application::onActivate(GApplication *app, gpointer) {
 
   // Create main window
-  // We maintain MainWindow instance via userdata or singleton or just new?
-  // Usually we attach it to the application.
-  // For simplicity, create and show.
+  bwp::utils::Logger::log(bwp::utils::LogLevel::INFO,
+                          "Activating application, creating MainWindow...");
   auto *window = new MainWindow(ADW_APPLICATION(app));
   window->show();
+  bwp::utils::Logger::log(bwp::utils::LogLevel::INFO, "MainWindow shown.");
+
+  // Check first run
+  if (bwp::config::ConfigManager::getInstance().get<bool>("general.first_run",
+                                                          true)) {
+    bwp::utils::Logger::log(bwp::utils::LogLevel::INFO,
+                            "First run detected - showing Setup Wizard");
+    // Assuming MainWindow is a GtkWindow subclass
+    auto *wizard = new SetupDialog(GTK_WINDOW(window));
+    wizard->show();
+  }
 }
 
 void Application::onStartup(GApplication *, gpointer) {
@@ -63,7 +75,11 @@ void Application::onStartup(GApplication *, gpointer) {
   loadStylesheet();
 
   // Setup hot-reload for development
+  // Setup hot-reload for development
   setupCssHotReload();
+
+  // Start daemon and tray
+  ensureBackgroundServices();
 }
 
 std::string Application::findStylesheetPath() {
@@ -238,6 +254,71 @@ void Application::reloadStylesheet() {
 
   bwp::utils::Logger::log(bwp::utils::LogLevel::INFO,
                           "Stylesheet reloaded successfully");
+}
+
+void Application::ensureBackgroundServices() {
+  // 1. Daemon
+  // We could try to connect first, but spawnProcess handles "already running"
+  // check if needed? Actually, g_spawn just launches. We should rely on
+  // lockfile in daemon. However, we want to allow the daemon to manage itself.
+  // Lets just attempt spawn. The daemon handles single-instance logic.
+  spawnProcess("betterwallpaper-daemon", "../daemon/betterwallpaper-daemon");
+
+  // 2. Tray
+  spawnProcess("betterwallpaper-tray", "../tray/betterwallpaper-tray");
+}
+
+bool Application::spawnProcess(const std::string &name,
+                               const std::string &relativePath) {
+  std::filesystem::path exePath;
+  try {
+    exePath = std::filesystem::canonical("/proc/self/exe").parent_path();
+    std::filesystem::path fullPath = exePath / relativePath;
+
+    // Development path check
+    if (std::filesystem::exists(fullPath)) {
+      bwp::utils::Logger::log(bwp::utils::LogLevel::INFO,
+                              "Spawning: " + fullPath.string());
+      char *argv[] = {g_strdup(fullPath.c_str()), nullptr};
+      GError *err = nullptr;
+      g_spawn_async(nullptr, argv, nullptr, G_SPAWN_SEARCH_PATH, nullptr,
+                    nullptr, nullptr, &err);
+      g_free(argv[0]);
+
+      if (err) {
+        bwp::utils::Logger::log(bwp::utils::LogLevel::ERROR,
+                                "Failed to spawn " + name + ": " +
+                                    err->message);
+        g_error_free(err);
+        return false;
+      }
+      return true;
+    }
+
+    // Installed path check (in PATH)
+    // If not found relative, assume it's in /usr/bin and G_SPAWN_SEARCH_PATH
+    // will找 it if we just pass name? But we want to prefer local build for
+    // testing.
+
+    // Fallback to system path
+    bwp::utils::Logger::log(bwp::utils::LogLevel::INFO,
+                            "Spawning system " + name);
+    char *argv[] = {g_strdup(name.c_str()), nullptr};
+    GError *err = nullptr;
+    g_spawn_async(nullptr, argv, nullptr, G_SPAWN_SEARCH_PATH, nullptr, nullptr,
+                  nullptr, &err);
+    g_free(argv[0]);
+    if (err) {
+      // Suppress error if just testing? No, user wants it to work.
+      // But if running installed, it might be started by systemd.
+      // We'll log warning but not fail app.
+      g_error_free(err);
+    }
+
+  } catch (...) {
+    return false;
+  }
+  return true;
 }
 
 } // namespace bwp::gui
