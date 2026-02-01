@@ -29,12 +29,53 @@ SteamWorkshopClient::SteamWorkshopClient() {
 SteamWorkshopClient::~SteamWorkshopClient() { curl_global_cleanup(); }
 
 bool SteamWorkshopClient::initialize() {
-  // Check if steamcmd exists
-  if (system("which steamcmd > /dev/null 2>&1") != 0) {
-    LOG_WARN(
-        "steamcmd not found in PATH. Direct downloads will use HTTP fallback.");
-  }
+  // Just perform initial setup, steamcmd check is done on-demand
   return true;
+}
+
+bool SteamWorkshopClient::isSteamCmdAvailable() const {
+  return system("which steamcmd > /dev/null 2>&1") == 0;
+}
+
+std::string SteamWorkshopClient::getDistroName() const {
+  // Try to detect Linux distribution
+  FILE *fp = popen("cat /etc/os-release 2>/dev/null | grep '^ID=' | cut -d= "
+                   "-f2 | tr -d '\"'",
+                   "r");
+  if (!fp)
+    return "unknown";
+
+  char buffer[128];
+  std::string distro;
+  if (fgets(buffer, sizeof(buffer), fp) != nullptr) {
+    distro = buffer;
+    // Remove newline
+    if (!distro.empty() && distro.back() == '\n') {
+      distro.pop_back();
+    }
+  }
+  pclose(fp);
+  return distro.empty() ? "unknown" : distro;
+}
+
+std::string SteamWorkshopClient::getInstallCommand() const {
+  std::string distro = getDistroName();
+
+  if (distro == "arch" || distro == "manjaro" || distro == "endeavouros") {
+    return "yay -S steamcmd";
+  } else if (distro == "ubuntu" || distro == "debian" ||
+             distro == "linuxmint" || distro == "pop") {
+    return "sudo dpkg --add-architecture i386 && sudo apt update && sudo apt "
+           "install steamcmd";
+  } else if (distro == "fedora") {
+    return "sudo dnf install steamcmd";
+  } else if (distro == "opensuse" || distro == "opensuse-tumbleweed" ||
+             distro == "opensuse-leap") {
+    return "sudo zypper install steamcmd";
+  } else {
+    return "# Install steamcmd from your distribution's package manager or "
+           "https://developer.valvesoftware.com/wiki/SteamCMD";
+  }
 }
 
 std::string SteamWorkshopClient::makeApiUrl(const std::string &endpoint) const {
@@ -306,7 +347,22 @@ void SteamWorkshopClient::download(const std::string &workshopId,
                                    FinishCallback finish) {
   if (m_downloading) {
     if (finish) {
-      finish(false, "Download already in progress");
+      DownloadResult result;
+      result.error = DownloadError::Unknown;
+      result.message = "Download already in progress";
+      finish(result);
+    }
+    return;
+  }
+
+  // Check steamcmd availability first
+  if (!isSteamCmdAvailable()) {
+    if (finish) {
+      DownloadResult result;
+      result.error = DownloadError::SteamCmdMissing;
+      result.message = "steamcmd is not installed";
+      result.installCmd = getInstallCommand();
+      finish(result);
     }
     return;
   }
@@ -334,7 +390,10 @@ void SteamWorkshopClient::download(const std::string &workshopId,
     if (!pipe) {
       m_downloading = false;
       if (finish) {
-        finish(false, "Failed to execute steamcmd");
+        DownloadResult result;
+        result.error = DownloadError::Unknown;
+        result.message = "Failed to execute steamcmd";
+        finish(result);
       }
       return;
     }
@@ -348,7 +407,10 @@ void SteamWorkshopClient::download(const std::string &workshopId,
         pclose(pipe);
         m_downloading = false;
         if (finish) {
-          finish(false, "Download cancelled");
+          DownloadResult result;
+          result.error = DownloadError::Unknown;
+          result.message = "Download cancelled";
+          finish(result);
         }
         return;
       }
@@ -374,6 +436,18 @@ void SteamWorkshopClient::download(const std::string &workshopId,
     int ret = pclose(pipe);
     m_downloading = false;
 
+    // Parse output for specific errors
+    bool licenseError = output.find("license") != std::string::npos ||
+                        output.find("403") != std::string::npos ||
+                        output.find("Access Denied") != std::string::npos ||
+                        output.find("No subscription") != std::string::npos;
+    bool notFoundError =
+        output.find("not found") != std::string::npos ||
+        output.find("ERROR! Failed to download") != std::string::npos;
+    bool networkError = output.find("network") != std::string::npos ||
+                        output.find("connection") != std::string::npos ||
+                        output.find("timeout") != std::string::npos;
+
     if (ret == 0 || (WIFEXITED(ret) && WEXITSTATUS(ret) == 0)) {
       // Success - find the download path
       const char *home = std::getenv("HOME");
@@ -391,11 +465,37 @@ void SteamWorkshopClient::download(const std::string &workshopId,
       }
 
       if (finish) {
-        finish(true, path);
+        DownloadResult result;
+        result.error = DownloadError::Success;
+        result.path = path;
+        result.message = "Download completed successfully";
+        finish(result);
       }
     } else {
+      // Failed - determine error type
+      DownloadResult result;
+
+      if (licenseError) {
+        result.error = DownloadError::LicenseRequired;
+        result.message =
+            "This wallpaper requires Wallpaper Engine on Steam.\n\n"
+            "To download Workshop content, you need to:\n"
+            "1. Own Wallpaper Engine on Steam\n"
+            "2. Have the item subscribed in your Steam library";
+      } else if (notFoundError) {
+        result.error = DownloadError::NotFound;
+        result.message = "Workshop item not found or has been removed";
+      } else if (networkError) {
+        result.error = DownloadError::NetworkError;
+        result.message = "Network error - please check your connection";
+      } else {
+        result.error = DownloadError::Unknown;
+        result.message =
+            "steamcmd failed with exit code: " + std::to_string(ret);
+      }
+
       if (finish) {
-        finish(false, "steamcmd failed with exit code: " + std::to_string(ret));
+        finish(result);
       }
     }
   }).detach();

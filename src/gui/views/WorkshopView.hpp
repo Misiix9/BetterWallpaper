@@ -24,6 +24,11 @@ private:
   void performSearch(const std::string &query);
   void updateBrowseGrid(const std::vector<bwp::steam::WorkshopItem> &items);
 
+  void showSteamLoginDialog();
+  void showLogoutDialog();
+  void showSteamcmdInstallDialog();
+  void refreshLoginState();
+
   static void onSearchEnter(GtkEntry *entry, gpointer user_data);
   static void onDownloadClicked(GtkButton *button, gpointer user_data);
 
@@ -36,6 +41,8 @@ private:
   GtkWidget *m_progressBar;
   GtkWidget *m_browseGrid;
   GtkWidget *m_browseScrolled;
+  GtkWidget *m_loginButton = nullptr;
+  GtkWidget *m_steamcmdBanner = nullptr;
 
   // Installed
   GtkWidget *m_installedPage;

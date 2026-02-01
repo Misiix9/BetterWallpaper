@@ -19,9 +19,11 @@ private:
 
   // Callbacks
   static void onNext(GtkMenuItem *item, gpointer user_data);
+  static void onPrevious(GtkMenuItem *item, gpointer user_data);
   static void onPause(GtkMenuItem *item, gpointer user_data);
   static void onQuit(GtkMenuItem *item, gpointer user_data);
   static void onShow(GtkMenuItem *item, gpointer user_data);
+  static void onSettings(GtkMenuItem *item, gpointer user_data);
 
   AppIndicator *m_indicator;
   GtkWidget *m_menu;

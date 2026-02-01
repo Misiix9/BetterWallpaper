@@ -1,5 +1,6 @@
 #pragma once
 #include "../../core/wallpaper/WallpaperInfo.hpp"
+#include <functional>
 #include <gtk/gtk.h>
 #include <memory>
 #include <string>
@@ -23,6 +24,11 @@ public:
   void showSkeleton();
   void hideSkeleton();
 
+  // Set wallpaper callback for context menu
+  void setWallpaperCallback(std::function<void(const std::string &)> cb) {
+    m_setWallpaperCallback = cb;
+  }
+
 private:
   void setupActions();
   void setupContextMenu();
@@ -34,9 +40,11 @@ private:
   GtkWidget *m_overlay;
   GtkWidget *m_favoriteBtn;
   GtkWidget *m_skeletonOverlay; // Skeleton placeholder for loading state
+  GtkWidget *m_contextMenu = nullptr;
 
   bwp::wallpaper::WallpaperInfo m_info;
   std::shared_ptr<bool> m_aliveToken;
+  std::function<void(const std::string &)> m_setWallpaperCallback;
   bool m_isLoading = true;
 };
 

@@ -365,6 +365,15 @@ void WallpaperManager::resourceMonitorLoop() {
       LOG_WARN("High memory usage detected: " +
                bwp::utils::SystemUtils::formatBytes(rss) + " > " +
                std::to_string(limitMB) + "MB");
+
+      // Send system notification
+      bwp::core::NotificationManager::getInstance().sendSystemNotification(
+          "Wallpaper Paused",
+          "High memory usage detected (" +
+              bwp::utils::SystemUtils::formatBytes(rss) +
+              "). Wallpaper has been paused to save resources.",
+          bwp::core::NotificationType::Warning);
+
       fallbackToStatic();
 
       // Wait longer after fallback to allow cleanup

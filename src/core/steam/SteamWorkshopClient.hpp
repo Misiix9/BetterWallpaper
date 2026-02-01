@@ -75,18 +75,44 @@ struct DownloadProgress {
   bool isCancelled = false;
 };
 
+// Download error types
+enum class DownloadError {
+  Success,
+  SteamCmdMissing,
+  LicenseRequired,
+  NotFound,
+  NetworkError,
+  Unknown
+};
+
+// Download result
+struct DownloadResult {
+  DownloadError error = DownloadError::Unknown;
+  std::string path;       // Path to downloaded content (if success)
+  std::string message;    // Error message or info
+  std::string installCmd; // Install command for steamcmd (if missing)
+};
+
 class SteamWorkshopClient {
 public:
   using SearchCallback = std::function<void(const SearchResult &result)>;
   using ProgressCallback =
       std::function<void(const DownloadProgress &progress)>;
-  using FinishCallback =
-      std::function<void(bool success, const std::string &path)>;
+  using FinishCallback = std::function<void(const DownloadResult &result)>;
 
   static SteamWorkshopClient &getInstance();
 
   // Initialize (check steamcmd existence)
   bool initialize();
+
+  // Check if steamcmd is available
+  bool isSteamCmdAvailable() const;
+
+  // Get distro-specific install command for steamcmd
+  std::string getInstallCommand() const;
+
+  // Get detected distro name
+  std::string getDistroName() const;
 
   // Set API key (optional, enables more features)
   void setApiKey(const std::string &key) { m_apiKey = key; }
@@ -110,6 +136,15 @@ public:
   // Check if downloading
   bool isDownloading() const { return m_downloading; }
 
+  // Login management (simulated for UI config)
+  void login(const std::string &username) {
+    m_username = username;
+    // Save to config?
+  }
+  void logout() { m_username.clear(); }
+  bool isLoggedIn() const { return !m_username.empty(); }
+  std::string getUsername() const { return m_username; }
+
 private:
   SteamWorkshopClient();
   ~SteamWorkshopClient();
@@ -122,6 +157,7 @@ private:
   WorkshopItemType parseItemType(const std::string &typeStr);
 
   std::string m_apiKey;
+  std::string m_username;
   std::atomic<bool> m_downloading{false};
   std::atomic<bool> m_cancelRequested{false};
   std::mutex m_mutex;

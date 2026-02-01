@@ -1,0 +1,18 @@
+betterwallpaper (0.2.0-1) unstable; urgency=medium
+
+  * Initial release
+  * Setup Wizard for first-run configuration
+  * Scheduler for automatic wallpaper changes
+  * Slideshow mode with configurable intervals
+  * Profile system for saving wallpaper configurations
+  * Theme integration (color extraction)
+  * Advanced transitions with multiple effects
+  * Native wallpaper setter support (swaybg, hyprpaper, swww)
+  * Resource monitoring with automatic fallback
+  * Smart audio mute based on window focus
+  * Error dialogs and crash recovery
+  * Steam Workshop integration with error handling
+  * Fuzzy search for tags
+  * Favorites view with empty state
+
+ -- Onxy <onxy@example.com>  Fri, 31 Jan 2026 10:00:00 +0100

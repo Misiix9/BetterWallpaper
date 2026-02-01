@@ -1,6 +1,8 @@
 #include "WallpaperCard.hpp"
+#include "../../core/hyprland/HyprlandManager.hpp"
 #include "../../core/wallpaper/ThumbnailCache.hpp"
 #include "../../core/wallpaper/WallpaperLibrary.hpp"
+#include "../dialogs/WorkspaceSelectionDialog.hpp"
 #include <algorithm>
 #include <filesystem>
 #include <gdk-pixbuf/gdk-pixbuf.h>
@@ -115,7 +117,126 @@ WallpaperCard::~WallpaperCard() { *m_aliveToken = false; }
 // Context menu handled by WallpaperGrid controller
 void WallpaperCard::setupActions() {}
 
-void WallpaperCard::setupContextMenu() {}
+void WallpaperCard::setupContextMenu() {
+  // Create popover menu
+  GMenu *menu = g_menu_new();
+
+  // Set Wallpaper
+  g_menu_append(menu, "Set as Wallpaper", "card.set-wallpaper");
+
+  // Set for Workspace
+  g_menu_append(menu, "Set for Workspace...", "card.set-for-workspace");
+
+  // Favorite
+  g_menu_append(menu, "Toggle Favorite", "card.toggle-favorite");
+
+  // Separator and more options
+  GMenu *moreSection = g_menu_new();
+  g_menu_append(moreSection, "Edit Tags", "card.edit-tags");
+  g_menu_append(moreSection, "Show in Files", "card.show-in-files");
+  g_menu_append_section(menu, NULL, G_MENU_MODEL(moreSection));
+
+  // Create popover
+  m_contextMenu = gtk_popover_menu_new_from_model(G_MENU_MODEL(menu));
+  gtk_widget_set_parent(m_contextMenu, m_mainBox);
+  gtk_popover_set_has_arrow(GTK_POPOVER(m_contextMenu), FALSE);
+
+  // Create action group
+  GSimpleActionGroup *actions = g_simple_action_group_new();
+
+  // Set Wallpaper action
+  GSimpleAction *setAction = g_simple_action_new("set-wallpaper", NULL);
+  g_object_set_data(G_OBJECT(setAction), "card", this);
+  g_signal_connect(setAction, "activate",
+                   G_CALLBACK(+[](GSimpleAction *, GVariant *, gpointer data) {
+                     auto *card = static_cast<WallpaperCard *>(
+                         g_object_get_data(G_OBJECT(data), "card"));
+                     if (card && card->m_setWallpaperCallback) {
+                       card->m_setWallpaperCallback(card->m_info.path);
+                     }
+                   }),
+                   setAction);
+  g_action_map_add_action(G_ACTION_MAP(actions), G_ACTION(setAction));
+
+  // Toggle Favorite action
+  GSimpleAction *favAction = g_simple_action_new("toggle-favorite", NULL);
+  g_object_set_data(G_OBJECT(favAction), "card", this);
+  g_signal_connect(
+      favAction, "activate",
+      G_CALLBACK(+[](GSimpleAction *, GVariant *, gpointer data) {
+        auto *card = static_cast<WallpaperCard *>(
+            g_object_get_data(G_OBJECT(data), "card"));
+        if (card) {
+          bool newFav = !card->m_info.favorite;
+          card->m_info.favorite = newFav;
+          card->setFavorite(newFav);
+          bwp::wallpaper::WallpaperLibrary::getInstance().updateWallpaper(
+              card->m_info);
+        }
+      }),
+      favAction);
+  g_action_map_add_action(G_ACTION_MAP(actions), G_ACTION(favAction));
+
+  // Set for Workspace action
+  GSimpleAction *wsAction = g_simple_action_new("set-for-workspace", NULL);
+  g_object_set_data(G_OBJECT(wsAction), "card", this);
+  g_signal_connect(wsAction, "activate",
+                   G_CALLBACK(+[](GSimpleAction *action, GVariant *, gpointer) {
+                     auto *card = static_cast<WallpaperCard *>(
+                         g_object_get_data(G_OBJECT(action), "card"));
+                     if (card) {
+                       GtkWidget *toplevel = gtk_widget_get_ancestor(
+                           card->getWidget(), GTK_TYPE_WINDOW);
+                       if (GTK_IS_WINDOW(toplevel)) {
+                         auto *dialog = new WorkspaceSelectionDialog(
+                             GTK_WINDOW(toplevel), card->getInfo().path);
+                         dialog->show([](const std::set<int> &) {
+                           // Dialog handles application internally
+                         });
+                       }
+                     }
+                   }),
+                   NULL);
+  g_action_map_add_action(G_ACTION_MAP(actions), G_ACTION(wsAction));
+
+  // Show in Files action
+  GSimpleAction *filesAction = g_simple_action_new("show-in-files", NULL);
+  g_object_set_data(G_OBJECT(filesAction), "card", this);
+  g_signal_connect(
+      filesAction, "activate",
+      G_CALLBACK(+[](GSimpleAction *, GVariant *, gpointer data) {
+        auto *card = static_cast<WallpaperCard *>(
+            g_object_get_data(G_OBJECT(data), "card"));
+        if (card) {
+          std::string cmd =
+              "xdg-open \"" +
+              std::filesystem::path(card->m_info.path).parent_path().string() +
+              "\"";
+          system(cmd.c_str());
+        }
+      }),
+      filesAction);
+  g_action_map_add_action(G_ACTION_MAP(actions), G_ACTION(filesAction));
+
+  gtk_widget_insert_action_group(m_mainBox, "card", G_ACTION_GROUP(actions));
+
+  // Right-click gesture
+  GtkGesture *rightClick = gtk_gesture_click_new();
+  gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(rightClick),
+                                GDK_BUTTON_SECONDARY);
+  g_signal_connect(rightClick, "pressed",
+                   G_CALLBACK(+[](GtkGestureClick *, gint, gdouble x, gdouble y,
+                                  gpointer data) {
+                     auto *self = static_cast<WallpaperCard *>(data);
+                     self->showContextMenu(x, y);
+                   }),
+                   this);
+  gtk_widget_add_controller(m_mainBox, GTK_EVENT_CONTROLLER(rightClick));
+
+  g_object_unref(menu);
+
+  g_object_unref(moreSection);
+}
 
 void WallpaperCard::setFavorite(bool favorite) {
   const char *icon = favorite ? "starred-symbolic" : "non-starred-symbolic";
@@ -128,7 +249,13 @@ void WallpaperCard::setFavorite(bool favorite) {
   }
 }
 
-void WallpaperCard::showContextMenu(double, double) {}
+void WallpaperCard::showContextMenu(double x, double y) {
+  if (m_contextMenu) {
+    GdkRectangle rect = {(int)x, (int)y, 1, 1};
+    gtk_popover_set_pointing_to(GTK_POPOVER(m_contextMenu), &rect);
+    gtk_popover_popup(GTK_POPOVER(m_contextMenu));
+  }
+}
 
 void WallpaperCard::setInfo(const bwp::wallpaper::WallpaperInfo &info) {
   m_info = info;

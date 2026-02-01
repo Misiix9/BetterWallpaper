@@ -240,6 +240,10 @@ void MainWindow::setupUi() {
       ensureScheduleView();
       adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(m_contentStack),
                                             "schedule");
+    } else if (page == "hyprland") {
+      ensureHyprlandView();
+      adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(m_contentStack),
+                                            "hyprland");
     }
   });
 
@@ -387,6 +391,22 @@ void MainWindow::ensureScheduleView() {
   });
 
   m_scheduleViewAdded = true;
+}
+
+void MainWindow::ensureHyprlandView() {
+  if (m_hyprlandViewAdded)
+    return;
+
+  m_hyprlandView = std::make_unique<HyprlandWorkspacesView>();
+#if ADW_CHECK_VERSION(1, 4, 0)
+  adw_view_stack_add_named(ADW_VIEW_STACK(m_contentStack),
+                           m_hyprlandView->getWidget(), "hyprland");
+#else
+  gtk_stack_add_named(GTK_STACK(m_contentStack), m_hyprlandView->getWidget(),
+                      "hyprland");
+#endif
+
+  m_hyprlandViewAdded = true;
 }
 
 void MainWindow::loadWindowState() {

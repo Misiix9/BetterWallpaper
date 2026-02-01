@@ -1,0 +1,15 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	dh_auto_configure -- \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX=/usr
+
+override_dh_auto_install:
+	dh_auto_install
+	# Install systemd user service
+	install -Dm644 packaging/betterwallpaper-daemon.service \
+		debian/betterwallpaper/usr/lib/systemd/user/betterwallpaper-daemon.service

@@ -13,6 +13,7 @@ add_executable(betterwallpaper
     widgets/TransitionDialog.cpp
     widgets/ProfileEditDialog.cpp
     widgets/ScheduleDialog.cpp
+    widgets/HyprlandWorkspacesView.cpp
     models/WallpaperObject.cpp
     views/LibraryView.cpp
     views/MonitorsView.cpp
@@ -24,6 +25,8 @@ add_executable(betterwallpaper
     views/ProfilesView.cpp
     views/ScheduleView.cpp
     dialogs/SetupDialog.cpp
+    dialogs/WorkspaceSelectionDialog.cpp
+    dialogs/LibrarySelectionDialog.cpp
 )
 
 target_link_libraries(betterwallpaper PRIVATE

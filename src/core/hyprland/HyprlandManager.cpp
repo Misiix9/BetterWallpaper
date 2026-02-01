@@ -68,12 +68,11 @@ bool HyprlandManager::isActive() const {
 
 void HyprlandManager::setWorkspaceWallpaper(int workspaceId,
                                             const std::string &wallpaperPath) {
-  std::lock_guard<std::mutex> lock(m_mutex);
-  m_workspaceWallpapers[workspaceId] = wallpaperPath;
-  // If currently active workspace is this one, apply immediately?
-  // Logic complicates here without full state tracking, let's assume next
-  // switch handles it
-
+  {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_workspaceWallpapers[workspaceId] = wallpaperPath;
+  }
+  // saveConfig acquires its own lock, so call outside our lock
   saveConfig();
 }
 

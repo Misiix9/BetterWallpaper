@@ -509,6 +509,90 @@ GtkWidget *SettingsView::createGraphicsPage() {
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(perfGroup), scalingRow);
 
+  // Group: Resource Management
+  GtkWidget *resourceGroup = adw_preferences_group_new();
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(resourceGroup),
+                                  "Resource Management");
+  adw_preferences_group_set_description(
+      ADW_PREFERENCES_GROUP(resourceGroup),
+      "Limit memory usage to prevent system slowdown");
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
+                           ADW_PREFERENCES_GROUP(resourceGroup));
+
+  // RAM Limit
+  GtkWidget *ramRow = adw_spin_row_new_with_range(512, 8192, 256);
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(ramRow), "RAM Limit (MB)");
+  adw_action_row_set_subtitle(
+      ADW_ACTION_ROW(ramRow),
+      "Wallpaper pauses when memory exceeds this limit");
+  int currentRam = conf.get<int>("performance.ram_limit_mb");
+  if (currentRam <= 0)
+    currentRam = 2048;
+  adw_spin_row_set_value(ADW_SPIN_ROW(ramRow), currentRam);
+  g_signal_connect(ramRow, "notify::value",
+                   G_CALLBACK(+[](AdwSpinRow *r, GParamSpec *, gpointer) {
+                     bwp::config::ConfigManager::getInstance().set(
+                         "performance.ram_limit_mb",
+                         (int)adw_spin_row_get_value(r));
+                   }),
+                   nullptr);
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(resourceGroup), ramRow);
+
+  // GPU Selection
+  GtkWidget *gpuRow = adw_combo_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(gpuRow), "GPU Preference");
+  adw_action_row_set_subtitle(ADW_ACTION_ROW(gpuRow),
+                              "Auto: iGPU for battery, dGPU for heavy scenes");
+  const char *gpu_opts[] = {"Auto", "Integrated (iGPU)", "Dedicated (dGPU)",
+                            NULL};
+  GtkStringList *gpu_model = gtk_string_list_new(gpu_opts);
+  adw_combo_row_set_model(ADW_COMBO_ROW(gpuRow), G_LIST_MODEL(gpu_model));
+  g_object_unref(gpu_model);
+  std::string gpuPref = conf.get<std::string>("performance.gpu_preference");
+  int gpuIdx = 0;
+  if (gpuPref == "igpu")
+    gpuIdx = 1;
+  else if (gpuPref == "dgpu")
+    gpuIdx = 2;
+  adw_combo_row_set_selected(ADW_COMBO_ROW(gpuRow), gpuIdx);
+  g_signal_connect(gpuRow, "notify::selected",
+                   G_CALLBACK(+[](AdwComboRow *row, GParamSpec *, gpointer) {
+                     int idx = adw_combo_row_get_selected(row);
+                     const char *v = "auto";
+                     if (idx == 1)
+                       v = "igpu";
+                     else if (idx == 2)
+                       v = "dgpu";
+                     bwp::config::ConfigManager::getInstance().set(
+                         "performance.gpu_preference", std::string(v));
+                   }),
+                   nullptr);
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(resourceGroup), gpuRow);
+
+  // Group: Content
+  GtkWidget *contentGroup = adw_preferences_group_new();
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(contentGroup),
+                                  "Content");
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
+                           ADW_PREFERENCES_GROUP(contentGroup));
+
+  // NSFW Toggle
+  GtkWidget *nsfwRow = adw_switch_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nsfwRow),
+                                "Show Adult Content");
+  adw_action_row_set_subtitle(
+      ADW_ACTION_ROW(nsfwRow),
+      "Display NSFW wallpapers in Workshop search results");
+  adw_switch_row_set_active(ADW_SWITCH_ROW(nsfwRow),
+                            conf.get<bool>("content.show_nsfw"));
+  g_signal_connect(nsfwRow, "notify::active",
+                   G_CALLBACK(+[](AdwSwitchRow *r, GParamSpec *, gpointer) {
+                     bwp::config::ConfigManager::getInstance().set(
+                         "content.show_nsfw", adw_switch_row_get_active(r));
+                   }),
+                   nullptr);
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(contentGroup), nsfwRow);
+
   // Group: Slideshow
   GtkWidget *slideGroup = adw_preferences_group_new();
   adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(slideGroup),

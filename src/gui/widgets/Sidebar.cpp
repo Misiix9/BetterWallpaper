@@ -90,6 +90,7 @@ void Sidebar::refresh() {
   gtk_list_box_append(GTK_LIST_BOX(m_listBox), monHeaderRow);
 
   addRow("monitors", "video-display-symbolic", "Monitors");
+  addRow("hyprland", "preferences-desktop-remote-desktop-symbolic", "Hyprland");
   addRow("profiles", "document-properties-symbolic", "Profiles");
   addRow("schedule", "alarm-symbolic", "Schedule");
   addRow("settings", "emblem-system-symbolic", "Settings");

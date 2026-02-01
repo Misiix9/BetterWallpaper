@@ -195,7 +195,8 @@ void DownloadQueue::processNext() {
               m_progressCallback(workshopId, prog);
             }
           },
-          [this, workshopId](bool success, const std::string &path) {
+          [this, workshopId](const DownloadResult &result) {
+            bool success = (result.error == DownloadError::Success);
             {
               std::lock_guard<std::mutex> lock(m_mutex);
               for (auto &item : m_queue) {
@@ -203,7 +204,7 @@ void DownloadQueue::processNext() {
                   item.status = success ? QueueItem::Status::Completed
                                         : QueueItem::Status::Failed;
                   if (!success) {
-                    item.errorMessage = path; // Error message is in path
+                    item.errorMessage = result.message;
                   }
                   break;
                 }
@@ -212,7 +213,7 @@ void DownloadQueue::processNext() {
             }
 
             if (m_completeCallback) {
-              m_completeCallback(workshopId, success, path);
+              m_completeCallback(workshopId, success, result.path);
             }
 
             notifyQueueChange();

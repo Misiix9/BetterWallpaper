@@ -4,6 +4,7 @@
 #include "views/LibraryView.hpp"
 #include "views/MonitorsView.hpp"
 #include "views/WorkshopView.hpp"
+#include "widgets/HyprlandWorkspacesView.hpp"
 #include "widgets/Sidebar.hpp"
 #include <adwaita.h>
 #include <gtk/gtk.h>
@@ -39,6 +40,7 @@ private:
   void ensureRecentView();
   void ensureProfilesView();
   void ensureScheduleView();
+  void ensureHyprlandView();
 
   // Callback for window close
   static gboolean onCloseRequest(GtkWindow *window, gpointer user_data);
@@ -62,6 +64,7 @@ private:
   LazyView<ScheduleView> m_scheduleView;
 
   std::unique_ptr<bwp::wallpaper::WallpaperEngineRenderer> m_weRenderer;
+  std::unique_ptr<HyprlandWorkspacesView> m_hyprlandView;
 
   // Track if lazy views have been added to stack
   bool m_workshopViewAdded = false;
@@ -69,6 +72,7 @@ private:
   bool m_favoritesViewAdded = false;
   bool m_profilesViewAdded = false;
   bool m_scheduleViewAdded = false;
+  bool m_hyprlandViewAdded = false;
 };
 
 } // namespace bwp::gui
