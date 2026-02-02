@@ -9,10 +9,10 @@ namespace bwp::gui {
 
 Sidebar::Sidebar() {
   m_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-  gtk_widget_set_size_request(m_box, 200, -1);
+  gtk_widget_set_size_request(m_box, 240, -1);
 
   m_listBox = gtk_list_box_new();
-  gtk_widget_add_css_class(m_listBox, "navigation-sidebar");
+  gtk_widget_add_css_class(m_listBox, "sidebar");
 
   g_signal_connect(m_listBox, "row-activated", G_CALLBACK(onRowActivated),
                    this);

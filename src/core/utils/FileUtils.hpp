@@ -16,6 +16,8 @@ public:
 
   // Expands ~ to home directory
   static std::filesystem::path expandPath(const std::string &pathVal);
+  
+  static std::filesystem::path getUserHomeDir();
 
   static std::string getMimeType(const std::filesystem::path &path);
   static std::string calculateHash(const std::filesystem::path &path); // SHA256

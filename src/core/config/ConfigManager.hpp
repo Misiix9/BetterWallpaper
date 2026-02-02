@@ -4,6 +4,7 @@
 #include <functional>
 #include <map>
 #include <mutex>
+#include "../utils/Logger.hpp"
 
 namespace bwp::config {
 
@@ -51,14 +52,15 @@ private:
 
 // Template implementation must be in header
 template <typename T> T ConfigManager::get(const std::string &key) const {
-  // std::lock_guard<std::mutex> lock(m_mutex); // Recursive lock needed if not
-  // careful, sticking to simple
+  std::lock_guard<std::mutex> lock(m_mutex);
+
 
   const nlohmann::json *ptr = getValuePtr(key);
   if (ptr) {
     try {
       return ptr->get<T>();
-    } catch (...) {
+    } catch (const std::exception &e) {
+      LOG_ERROR("Config get error for key " + key + ": " + e.what());
     }
   }
 
@@ -75,7 +77,8 @@ T ConfigManager::get(const std::string &key, const T &defaultValue) const {
   if (ptr) {
     try {
       return ptr->get<T>();
-    } catch (...) {
+    } catch (const std::exception &e) {
+      LOG_ERROR("Config get error for key " + key + ": " + e.what());
     }
   }
   return defaultValue;
@@ -88,10 +91,6 @@ void ConfigManager::set(const std::string &key, const T &value) {
     nlohmann::json *ptr = getValuePtr(key);
     if (ptr) {
       *ptr = value;
-    } else {
-      // Key hierarchy doesn't exist? Create key path logic is complex,
-      // but assuming schema structure exists, we might need to drill down.
-      // Simplified: only support existing schema keys for now or flat
     }
   }
   save();

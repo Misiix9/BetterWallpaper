@@ -1,6 +1,10 @@
 #pragma once
 #include <functional>
+#ifdef _WIN32
+typedef unsigned int guint;
+#else
 #include <glib.h>
+#endif
 #include <string>
 #include <vector>
 

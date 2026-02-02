@@ -9,7 +9,14 @@
 
 namespace bwp::utils {
 
-enum class LogLevel { DEBUG, INFO, WARNING, ERROR, FATAL };
+#ifdef _WIN32
+#undef ERROR
+#undef WARNING
+#undef INFO
+#undef DEBUG
+#endif
+
+enum class LogLevel { DBUG, INFO, WARN, ERR, FATAL };
 
 class Logger {
 public:
@@ -39,14 +46,14 @@ private:
 
 // Macros for convenience
 #define LOG_DEBUG(msg)                                                         \
-  ::bwp::utils::Logger::log(::bwp::utils::LogLevel::DEBUG, msg, __FILE__,      \
+  ::bwp::utils::Logger::log(::bwp::utils::LogLevel::DBUG, msg, __FILE__,      \
                             __LINE__)
 #define LOG_INFO(msg)                                                          \
   ::bwp::utils::Logger::log(::bwp::utils::LogLevel::INFO, msg)
 #define LOG_WARN(msg)                                                          \
-  ::bwp::utils::Logger::log(::bwp::utils::LogLevel::WARNING, msg)
+  ::bwp::utils::Logger::log(::bwp::utils::LogLevel::WARN, msg)
 #define LOG_ERROR(msg)                                                         \
-  ::bwp::utils::Logger::log(::bwp::utils::LogLevel::ERROR, msg, __FILE__,      \
+  ::bwp::utils::Logger::log(::bwp::utils::LogLevel::ERR, msg, __FILE__,      \
                             __LINE__)
 #define LOG_FATAL(msg)                                                         \
   ::bwp::utils::Logger::log(::bwp::utils::LogLevel::FATAL, msg, __FILE__,      \

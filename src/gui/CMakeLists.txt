@@ -1,3 +1,19 @@
+if(WIN32)
+    add_executable(betterwallpaper WIN32
+        WindowsMain.cpp
+        windows/WindowsMainWindow.cpp
+        ../core/utils/Logger.cpp
+    )
+    target_link_libraries(betterwallpaper PRIVATE
+        bwp_core
+        user32
+        gdi32
+    )
+    install(TARGETS betterwallpaper DESTINATION ${CMAKE_INSTALL_BINDIR})
+    return()
+endif()
+
+# Linux / GTK4 Build
 add_executable(betterwallpaper 
     main.cpp
     Application.cpp

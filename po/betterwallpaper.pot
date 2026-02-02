@@ -1,0 +1,74 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: betterwallpaper 1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-02-02 16:38+0100\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: src/gui/views/LibraryView.cpp
+msgid "Add Wallpaper"
+msgstr ""
+
+#: src/gui/views/LibraryView.cpp
+msgid "Favorites"
+msgstr ""
+
+#: src/gui/views/LibraryView.cpp
+msgid "All Tags"
+msgstr ""
+
+#: src/gui/views/KeybindsView.cpp
+msgid "Keyboard Shortcuts"
+msgstr ""
+
+#: src/gui/views/KeybindsView.cpp
+msgid "Reset to Defaults"
+msgstr ""
+
+#: src/tray/TrayIcon.cpp
+msgid "Open BetterWallpaper"
+msgstr ""
+
+#: src/tray/TrayIcon.cpp
+msgid "Next Wallpaper"
+msgstr ""
+
+#: src/tray/TrayIcon.cpp
+msgid "Previous Wallpaper"
+msgstr ""
+
+#: src/tray/TrayIcon.cpp
+msgid "Pause/Resume"
+msgstr ""
+
+#: src/tray/TrayIcon.cpp
+msgid "Settings"
+msgstr ""
+
+#: src/tray/TrayIcon.cpp
+msgid "Quit"
+msgstr ""
+
+#: src/tray/TrayIcon.cpp
+msgid "Mute"
+msgstr ""
+
+#: src/tray/TrayIcon.cpp
+msgid "Volume Up"
+msgstr ""
+
+#: src/tray/TrayIcon.cpp
+msgid "Volume Down"
+msgstr ""

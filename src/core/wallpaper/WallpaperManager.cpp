@@ -10,6 +10,9 @@
 #include "renderers/StaticRenderer.hpp"
 #include "renderers/VideoRenderer.hpp"
 #include "renderers/WallpaperEngineRenderer.hpp"
+#ifdef _WIN32
+#include "WindowsWallpaperSetter.hpp"
+#endif
 #include <cstdlib>
 #include <fstream>
 
@@ -39,9 +42,12 @@ void WallpaperManager::initialize() {
     handleMonitorUpdate(m, true);
   }
 
+
+
+#ifndef _WIN32
   // Initialize Hyprland integration
   ::bwp::hyprland::HyprlandManager::getInstance().initialize();
-
+#endif
   // Start Resource Monitor
   startResourceMonitor();
 }
@@ -49,6 +55,7 @@ void WallpaperManager::initialize() {
 void WallpaperManager::handleMonitorUpdate(const monitor::MonitorInfo &info,
                                            bool connected) {
   std::lock_guard<std::mutex> lock(m_mutex);
+#ifndef _WIN32
   if (connected) {
     if (m_monitors.find(info.name) == m_monitors.end()) {
       LOG_INFO("Initializing wallpaper window for monitor: " + info.name);
@@ -63,10 +70,43 @@ void WallpaperManager::handleMonitorUpdate(const monitor::MonitorInfo &info,
       m_monitors.erase(info.name);
     }
   }
+#else
+  // Windows: Keep track of monitor presence but don't create custom windows
+  if (connected) {
+     if (m_monitors.find(info.name) == m_monitors.end()) {
+         m_monitors[info.name] = MonitorState();
+     }
+  }
+#endif
 }
 
 bool WallpaperManager::setWallpaper(const std::string &monitorName,
                                     const std::string &path) {
+  LOG_INFO("WallpaperManager::setWallpaper called for " + monitorName +
+           " with path: " + path);
+           
+#ifdef _WIN32
+  // Windows Implementation
+  // Bypassing renderers and windows for now
+  std::lock_guard<std::mutex> lock(m_mutex);
+  
+  // Track metadata
+  if (m_monitors.find(monitorName) == m_monitors.end()) {
+      m_monitors[monitorName] = MonitorState();
+  }
+  m_monitors[monitorName].currentPath = path;
+  
+  WindowsWallpaperSetter setter;
+  bool result = setter.setWallpaper(path, monitorName); // Assuming method call valid
+  if(result) {
+      LOG_INFO("Windows wallpaper set successfully.");
+      saveState();
+  } else {
+      LOG_ERROR("Failed to set Windows wallpaper.");
+  }
+  return result;
+#else
+
   LOG_INFO("WallpaperManager::setWallpaper called for " + monitorName +
            " with path: " + path);
 
@@ -123,23 +163,11 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
     renderer->play();
   }
 
-  // Kill other wallpaper managers NOW, to overwrite them visually
-  killConflictingWallpapers();
-
-  // For static images, also use native setter as backup (swaybg, etc.)
-  // This ensures the wallpaper is visible even if our window has issues
-  std::string mime = utils::FileUtils::getMimeType(path);
-  std::string ext = utils::FileUtils::getExtension(path);
-  bool isStaticImage = (mime.find("image/") != std::string::npos &&
-                        mime.find("gif") == std::string::npos) ||
-                       (ext == "png" || ext == "jpg" || ext == "jpeg" ||
-                        ext == "webp" || ext == "bmp");
-
-  if (isStaticImage) {
-    LOG_INFO("Using native wallpaper setter for static image: " + path);
-    NativeWallpaperSetter::getInstance().setWallpaper(path, monitorName);
+  // Apply settings
+  if (m_scalingModes.count(monitorName)) {
+    renderer->setScalingMode(static_cast<ScalingMode>(m_scalingModes[monitorName]));
   }
-
+  
   LOG_INFO("Wallpaper set successfully!");
 
   // Save state for persistence (without app running)
@@ -147,6 +175,7 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
   writeHyprpaperConfig();
 
   return true;
+#endif
 }
 
 std::shared_ptr<WallpaperRenderer>
@@ -191,11 +220,33 @@ void WallpaperManager::setPaused(bool paused) {
 
 void WallpaperManager::setMuted(bool muted) {
   std::lock_guard<std::mutex> lock(m_mutex);
-  for (auto &[name, state] : m_monitors) {
-    if (state.renderer) {
-      state.renderer->setMuted(muted);
+  // Global mute
+  for (auto &pair : m_monitors) {
+    if (pair.second.renderer) {
+      pair.second.renderer->setMuted(muted);
     }
   }
+}
+
+void WallpaperManager::setMuted(const std::string &monitorName, bool muted) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (m_monitors.find(monitorName) != m_monitors.end()) {
+        if (m_monitors[monitorName].renderer) {
+            m_monitors[monitorName].renderer->setMuted(muted);
+        }
+    }
+}
+
+void WallpaperManager::setVolume(const std::string &monitorName, int volume) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (m_monitors.find(monitorName) != m_monitors.end()) {
+        if (m_monitors[monitorName].renderer) {
+            // Volume typically 0.0 - 1.0 or 0 - 100
+            // Assuming 0-100 input, renderer expects float 0-1?
+            // Actually BaseRenderer has setVolume(float). Let's assume input is 0-100.
+            m_monitors[monitorName].renderer->setVolume(static_cast<float>(volume) / 100.0f);
+        }
+    }
 }
 
 void WallpaperManager::pause(const std::string &monitorName) {
@@ -284,6 +335,7 @@ void WallpaperManager::loadState() {
 }
 
 void WallpaperManager::writeHyprpaperConfig() {
+#ifndef _WIN32
   // Get config path
   const char *configHome = std::getenv("XDG_CONFIG_HOME");
   std::string base;
@@ -328,6 +380,7 @@ void WallpaperManager::writeHyprpaperConfig() {
 
   file.close();
   LOG_INFO("Wrote hyprpaper.conf for native persistence: " + hyprpaperPath);
+#endif
 }
 
 void WallpaperManager::startResourceMonitor() {
@@ -356,7 +409,7 @@ void WallpaperManager::resourceMonitorLoop() {
       break;
 
     uint64_t rss = bwp::utils::SystemUtils::getProcessRSS();
-    // Default 2GB limit if not set
+    // Check if paused via config or other means
     uint64_t limitMB = bwp::config::ConfigManager::getInstance().get<uint64_t>(
         "performance.ram_limit_mb", 2048);
     uint64_t limitBytes = limitMB * 1024 * 1024;
@@ -438,6 +491,22 @@ void WallpaperManager::fallbackToStatic() {
         "Wallpapers switched to static placeholders to save memory.",
         bwp::core::NotificationType::Warning);
   }
+}
+
+
+void WallpaperManager::setScalingMode(const std::string &monitorName, int mode) {
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_scalingModes[monitorName] = mode;
+  
+  auto it = m_monitors.find(monitorName);
+  if (it != m_monitors.end() && it->second.renderer) {
+    it->second.renderer->setScalingMode(static_cast<ScalingMode>(mode));
+  }
+}
+
+void WallpaperManager::setFpsLimit(int fps) {
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_fpsLimit = fps;
 }
 
 } // namespace bwp::wallpaper

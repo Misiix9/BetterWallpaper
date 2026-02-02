@@ -34,7 +34,7 @@ std::filesystem::path WallpaperLibrary::getDatabasePath() const {
     if (home) {
       dataDir = std::filesystem::path(home) / ".local" / "share";
     } else {
-      return "library.json";
+      return std::filesystem::current_path() / "library.json";
     }
   }
   return dataDir / "betterwallpaper" / "library.json";
@@ -62,12 +62,11 @@ void WallpaperLibrary::load() {
       info.play_count = item.value("play_count", 0);
 
       if (item.contains("added")) {
-        info.added = std::chrono::system_clock::time_point(
-            std::chrono::seconds(item["added"]));
+        // Warning: This expects seconds precision.
+        info.added = (long long)item["added"]; // It is a long long in struct
       }
       if (item.contains("last_used")) {
-        info.last_used = std::chrono::system_clock::time_point(
-            std::chrono::seconds(item["last_used"]));
+        info.last_used = (long long)item["last_used"];
       }
 
       if (item.contains("tags")) {
@@ -123,12 +122,8 @@ void WallpaperLibrary::save() {
       item["rating"] = info.rating;
       item["favorite"] = info.favorite;
       item["play_count"] = info.play_count;
-      item["added"] = std::chrono::duration_cast<std::chrono::seconds>(
-                          info.added.time_since_epoch())
-                          .count();
-      item["last_used"] = std::chrono::duration_cast<std::chrono::seconds>(
-                              info.last_used.time_since_epoch())
-                              .count();
+      item["added"] = info.added;
+      item["last_used"] = info.last_used;
       item["tags"] = info.tags;
 
       // Save Settings
@@ -161,6 +156,10 @@ void WallpaperLibrary::addWallpaper(const WallpaperInfo &info) {
   // Auto-save for local wallpapers to ensure persistence
   if (info.source == "local") {
     save();
+  }
+
+  if (m_changeCallback) {
+      m_changeCallback(info);
   }
 }
 
@@ -253,6 +252,11 @@ std::vector<WallpaperInfo> WallpaperLibrary::filter(
     }
   }
   return result;
+}
+
+void WallpaperLibrary::setChangeCallback(ChangeCallback cb) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_changeCallback = cb;
 }
 
 std::vector<std::string> WallpaperLibrary::getAllTags() const {

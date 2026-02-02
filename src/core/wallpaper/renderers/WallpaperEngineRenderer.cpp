@@ -183,7 +183,9 @@ void WallpaperEngineRenderer::monitorProcess() {
 
 void WallpaperEngineRenderer::pause() {
   if (m_pid != -1) {
-    kill(m_pid, SIGSTOP);
+    if (kill(m_pid, SIGSTOP) != 0) {
+      LOG_WARN("Failed to pause process " + std::to_string(m_pid));
+    }
     m_isPlaying = false;
   }
 }
@@ -237,6 +239,13 @@ void WallpaperEngineRenderer::setMuted(bool muted) {
     if (m_isPlaying)
       play(); // Restart
   }
+}
+
+void WallpaperEngineRenderer::setAudioData(const std::vector<float>& /*audioBands*/) {
+  // Wallpaper Engine (linux port) typically captures audio internally via PulseAudio.
+  // We don't need to pass FFT data manually unless we are injecting it.
+  // For now, this is a no-op as the external process handles it.
+  // If we need to send data, we would write to a pipe/socket here.
 }
 
 WallpaperType WallpaperEngineRenderer::getType() const {

@@ -8,6 +8,21 @@
 
 namespace bwp::wallpaper {
 
+#ifdef _WIN32
+#define G_SOURCE_REMOVE 0
+// Simple stub that runs immediately. Not thread safe properly but works for MVP without main loop.
+// Simple stub that runs immediately. Not thread safe properly but works for MVP without main loop.
+// Callback expected is gboolean (*)(gpointer) which is int (*)(void*)
+// We define it exactly as used or cast it. using a void* func pointer is safest to accept anything
+inline void g_idle_add(void* func, void* data) {
+    if(func) {
+        // Cast and call
+        using CallbackType = int (*)(void*);
+        ((CallbackType)func)(data);
+    }
+}
+#endif
+
 // Helper structs for idle callbacks
 struct ProgressData {
   ScanProgress progress;

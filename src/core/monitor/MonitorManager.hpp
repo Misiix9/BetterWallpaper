@@ -44,7 +44,11 @@ private:
   wl_registry *m_registry = nullptr;
 
   mutable std::mutex m_mutex;
+#ifdef _WIN32
+  // Windows stubs or implementation details
+#else
   std::map<uint32_t, std::shared_ptr<WaylandMonitor>> m_monitors;
+#endif
   MonitorCallback m_callback;
 };
 

@@ -4,7 +4,9 @@
 #include <algorithm>
 #include <chrono>
 #include <ctime>
+#ifndef _WIN32
 #include <gtk/gtk.h>
+#endif
 
 namespace bwp::core {
 
@@ -51,6 +53,10 @@ void Scheduler::start() {
   m_running = true;
 
   // Check every minute
+#ifdef _WIN32
+  // Windows Timer Stub (TODO: Implement using SetTimer or similar)
+  // For now, no scheduling on Windows
+#else
   m_timerId = g_timeout_add_seconds(
       60,
       [](gpointer data) -> gboolean {
@@ -59,6 +65,7 @@ void Scheduler::start() {
         return G_SOURCE_CONTINUE;
       },
       this);
+#endif
 
   LOG_INFO("Scheduler started with " + std::to_string(m_schedules.size()) +
            " schedules");
@@ -72,7 +79,9 @@ void Scheduler::stop() {
     return;
 
   if (m_timerId > 0) {
+#ifndef _WIN32
     g_source_remove(m_timerId);
+#endif
     m_timerId = 0;
   }
 

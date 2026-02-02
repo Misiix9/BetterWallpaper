@@ -40,6 +40,8 @@ private:
   GtkWidget *m_overlay;
   GtkWidget *m_favoriteBtn;
   GtkWidget *m_skeletonOverlay; // Skeleton placeholder for loading state
+  GtkWidget *m_scanOverlay; // Spinner container
+  GtkWidget *m_autoTagBadge; // Icon
   GtkWidget *m_contextMenu = nullptr;
 
   bwp::wallpaper::WallpaperInfo m_info;

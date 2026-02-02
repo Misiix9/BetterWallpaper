@@ -1,17 +1,18 @@
 #pragma once
-#include "ipc/DBusClient.hpp"
+#include "ITrayIcon.hpp"
+#include "../core/ipc/LinuxIPCClient.hpp"
 #include <gtk/gtk.h>
 #include <libappindicator/app-indicator.h>
 #include <string>
 
 namespace bwp::tray {
 
-class TrayIcon {
+class LinuxTrayIcon : public ITrayIcon {
 public:
-  TrayIcon();
-  ~TrayIcon();
+  LinuxTrayIcon();
+  ~LinuxTrayIcon() override;
 
-  void run();
+  void run() override;
 
 private:
   void setupMenu();
@@ -24,10 +25,13 @@ private:
   static void onQuit(GtkMenuItem *item, gpointer user_data);
   static void onShow(GtkMenuItem *item, gpointer user_data);
   static void onSettings(GtkMenuItem *item, gpointer user_data);
+  static void onVolumeUp(GtkMenuItem *item, gpointer user_data);
+  static void onVolumeDown(GtkMenuItem *item, gpointer user_data);
+  static void onMute(GtkMenuItem *item, gpointer user_data);
 
   AppIndicator *m_indicator;
   GtkWidget *m_menu;
-  bwp::ipc::DBusClient m_client;
+  bwp::ipc::LinuxIPCClient m_client;
 };
 
 } // namespace bwp::tray

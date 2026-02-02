@@ -5,7 +5,9 @@
 #include <cstring>
 #include <fstream>
 #include <functional>
+#ifndef _WIN32
 #include <gtk/gtk.h>
+#endif
 #include <iomanip>
 #include <sstream>
 #include <thread>
@@ -17,6 +19,7 @@ ThumbnailCache &ThumbnailCache::getInstance() {
   return instance;
 }
 
+#ifndef _WIN32
 ThumbnailCache::ThumbnailCache() { initCacheDir(); }
 
 ThumbnailCache::~ThumbnailCache() {
@@ -424,5 +427,27 @@ void ThumbnailCache::pruneCache() {
   LOG_INFO("Thumbnail cache pruned to " +
            std::to_string(totalSize / (1024 * 1024)) + " MB");
 }
+#else
+// Windows Stubs
+ThumbnailCache::ThumbnailCache() {}
+ThumbnailCache::~ThumbnailCache() {}
+
+GdkPixbuf* ThumbnailCache::getSync(const std::string&, Size) { return nullptr; }
+GdkPixbuf* ThumbnailCache::generateSync(const std::string&, Size) { return nullptr; }
+void ThumbnailCache::getAsync(const std::string&, Size, ThumbnailCallback) {}
+bool ThumbnailCache::isCached(const std::string&, Size) const { return false; }
+void ThumbnailCache::clearCache() {}
+void ThumbnailCache::setMaxCacheSize(size_t) {}
+ThumbnailCache::CacheStats ThumbnailCache::getStats() const { return {}; }
+void ThumbnailCache::invalidate(const std::string&) {}
+void ThumbnailCache::initCacheDir() {}
+void ThumbnailCache::pruneCache() {}
+std::string ThumbnailCache::generateCacheKey(const std::string& wallpaperPath) const { return ""; }
+std::filesystem::path ThumbnailCache::getCachePath(const std::string&, Size) const { return ""; }
+GdkPixbuf* ThumbnailCache::generateFromImage(const std::string&, Size) { return nullptr; }
+GdkPixbuf* ThumbnailCache::generateFromVideo(const std::string&, Size) { return nullptr; }
+GdkPixbuf* ThumbnailCache::loadFromCache(const std::filesystem::path&) { return nullptr; }
+bool ThumbnailCache::saveToCache(GdkPixbuf*, const std::filesystem::path&) { return false; }
+#endif
 
 } // namespace bwp::wallpaper

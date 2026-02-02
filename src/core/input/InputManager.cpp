@@ -1,4 +1,5 @@
 #include "InputManager.hpp"
+#include "KeybindManager.hpp"
 #include "../../core/slideshow/SlideshowManager.hpp"
 #include "../../core/utils/Logger.hpp"
 
@@ -25,38 +26,33 @@ void InputManager::setup(GtkWindow *window) {
 gboolean InputManager::onKeyPressed(GtkEventControllerKey *controller,
                                     guint keyval, guint keycode,
                                     GdkModifierType state) {
-  // Check modifiers (mask minimal set)
-  bool ctrl = (state & GDK_CONTROL_MASK);
-
   GtkWidget *widget =
       gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(controller));
   GtkWindow *window = GTK_WINDOW(widget);
 
-  if (ctrl && keyval == GDK_KEY_Right) {
-    LOG_INFO("Input: Next Wallpaper");
+  // Use KeybindManager for dynamic keybind matching
+  std::string action = KeybindManager::getInstance().match(keyval, state);
+  
+  if (action.empty()) {
+    return FALSE;
+  }
+  
+  LOG_INFO("Input: Action triggered: " + action);
+  
+  if (action == "next_wallpaper") {
     actionNextWallpaper();
     return TRUE;
   }
-  if (ctrl && keyval == GDK_KEY_Left) {
-    LOG_INFO("Input: Prev Wallpaper");
+  if (action == "prev_wallpaper") {
     actionPrevWallpaper();
     return TRUE;
   }
-  if (ctrl && (keyval == GDK_KEY_w || keyval == GDK_KEY_W)) {
-    LOG_INFO("Input: Hide Window");
-    actionHideWindow(window);
+  if (action == "toggle_pause") {
+    actionTogglePause();
     return TRUE;
   }
-  if (keyval == GDK_KEY_space &&
-      !(state & (GDK_CONTROL_MASK | GDK_SHIFT_MASK | GDK_ALT_MASK))) {
-    // Only if not focused on a text entry?
-    // Gtk handles distinct focus, but global window handler might catch it
-    // first if capture phase, or last if bubble phase. If a text box has focus,
-    // it usually consumes Space. We are in bubble phase (default). So if a text
-    // box doesn't handle it, we get it. But text boxes DO handle space. So this
-    // is safe.
-    LOG_INFO("Input: Toggle Pause");
-    actionTogglePause();
+  if (action == "hide_window") {
+    actionHideWindow(window);
     return TRUE;
   }
 

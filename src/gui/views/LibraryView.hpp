@@ -19,6 +19,7 @@ private:
   void setupUi();
   void loadWallpapers();
   void onAddWallpaper();
+  void onSourceFilterChanged(const std::string &source);
 
   GtkWidget *m_box;
   GtkWidget *m_toolbarView; // AdwToolbarView

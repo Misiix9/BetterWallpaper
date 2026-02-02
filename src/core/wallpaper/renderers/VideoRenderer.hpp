@@ -1,12 +1,31 @@
-#pragma once
 #include "../WallpaperRenderer.hpp"
+#ifndef _WIN32
 #include <cairo.h>
 #include <mpv/client.h>
 #include <mpv/render.h>
+#endif
 #include <mutex>
 
 namespace bwp::wallpaper {
 
+#ifdef _WIN32
+class VideoRenderer : public WallpaperRenderer {
+public:
+  VideoRenderer() {}
+  ~VideoRenderer() override {}
+  bool load(const std::string &path) override { return true; }
+  void render(cairo_t *cr, int width, int height) override {}
+  void setScalingMode(ScalingMode mode) override {}
+  void play() override {}
+  void pause() override {}
+  void stop() override {}
+  void setVolume(float volume) override {}
+  void setPlaybackSpeed(float speed) override {}
+  bool isPlaying() const override { return false; }
+  bool hasAudio() const override { return true; }
+  WallpaperType getType() const override { return WallpaperType::Video; }
+};
+#else
 class VideoRenderer : public WallpaperRenderer {
 public:
   VideoRenderer();
@@ -39,5 +58,6 @@ private:
   int m_bufWidth = 0;
   int m_bufHeight = 0;
 };
+#endif
 
 } // namespace bwp::wallpaper

@@ -1,4 +1,4 @@
-#include "../core/ipc/DBusClient.hpp"
+#include "../core/ipc/IPCClientFactory.hpp"
 #include <iostream>
 #include <string>
 #include <vector>
@@ -37,8 +37,8 @@ int main(int argc, char **argv) {
     }
   }
 
-  bwp::ipc::DBusClient client;
-  if (!client.connect()) {
+  auto client = bwp::ipc::IPCClientFactory::createClient();
+  if (!client || !client->connect()) {
     std::cerr << "Error: Could not connect to BetterWallpaper daemon."
               << std::endl;
     return 1;
@@ -49,30 +49,30 @@ int main(int argc, char **argv) {
       std::cerr << "Error: 'set' requires a wallpaper path." << std::endl;
       return 1;
     }
-    if (client.setWallpaper(path, monitor)) {
+    if (client->setWallpaper(path, monitor)) {
       std::cout << "Wallpaper set on " << monitor << std::endl;
     } else {
       std::cerr << "Failed to set wallpaper." << std::endl;
       return 1;
     }
   } else if (command == "get") {
-    std::string p = client.getWallpaper(monitor);
+    std::string p = client->getWallpaper(monitor);
     if (p.empty())
       std::cout << "No wallpaper set or daemon error." << std::endl;
     else
       std::cout << p << std::endl;
   } else if (command == "next") {
-    client.nextWallpaper(monitor);
+    client->nextWallpaper(monitor);
   } else if (command == "prev") {
-    client.previousWallpaper(monitor);
+    client->previousWallpaper(monitor);
   } else if (command == "pause") {
-    client.pauseWallpaper(monitor);
+    client->pauseWallpaper(monitor);
   } else if (command == "resume") {
-    client.resumeWallpaper(monitor);
+    client->resumeWallpaper(monitor);
   } else if (command == "stop") {
-    client.stopWallpaper(monitor);
+    client->stopWallpaper(monitor);
   } else if (command == "version") {
-    std::cout << client.getDaemonVersion() << std::endl;
+    std::cout << client->getDaemonVersion() << std::endl;
   } else {
     printUsage();
     return 1;

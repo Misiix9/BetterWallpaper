@@ -1,0 +1,26 @@
+app-id: org.bwp.BetterWallpaper
+runtime: org.gnome.Platform
+runtime-version: '45'
+sdk: org.gnome.Sdk
+command: betterwallpaper
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --filesystem=host # Needs access to user wallpapers
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.gnome.SettingsDaemon.MediaKeys
+  - --talk-name=org.kde.StatusNotifierWatcher
+modules:
+  - name: betterwallpaper
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - type: dir
+        path: .
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/man

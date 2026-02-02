@@ -2,6 +2,7 @@
 #include "../../core/ipc/DBusClient.hpp"
 #include "../../core/monitor/MonitorManager.hpp"
 #include "../../core/slideshow/SlideshowManager.hpp"
+#include "../../core/wallpaper/WallpaperManager.hpp"
 #include "../../core/utils/Logger.hpp"
 #include "../../core/wallpaper/NativeWallpaperSetter.hpp"
 #include "../../core/wallpaper/WallpaperLibrary.hpp"
@@ -331,169 +332,67 @@ std::string PreviewPanel::getSettingsFlags() {
   return flags;
 }
 
-bool PreviewPanel::setWallpaperWithTool(const std::string &path,
-                                        const std::string &monitor) {
-  std::filesystem::path wpPath(path);
-  std::string parentName = wpPath.parent_path().filename().string();
-
-  // Check if this is a Wallpaper Engine workshop item (has numeric folder name)
-  bool isWorkshopItem =
-      !parentName.empty() &&
-      std::all_of(parentName.begin(), parentName.end(),
-                  [](unsigned char c) { return std::isdigit(c); });
-
-  // Check wallpaper type from info
-  bool isWallpaperEngine =
-      isWorkshopItem || m_currentInfo.source == "workshop" ||
-      m_currentInfo.type == bwp::wallpaper::WallpaperType::WEScene ||
-      m_currentInfo.type == bwp::wallpaper::WallpaperType::WEVideo;
-
-  // Check file extension
-  std::string ext = wpPath.extension().string();
-  if (!ext.empty() && ext[0] == '.')
-    ext = ext.substr(1);
-  std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-
-  bool isSimpleImage = (ext == "png" || ext == "jpg" || ext == "jpeg" ||
-                        ext == "webp" || ext == "bmp");
-
-  // For normal images (NOT Wallpaper Engine), use NativeWallpaperSetter
-  // (swaybg)
-  if (isSimpleImage && !isWallpaperEngine) {
-    LOG_INFO("Using NativeWallpaperSetter for normal image: " + path);
-    std::cerr << "[BWP] Using swaybg for normal image: " << path << std::endl;
-
-    bool result =
-        bwp::wallpaper::NativeWallpaperSetter::getInstance().setWallpaper(
-            path, monitor);
-    std::cerr << "[BWP] Result: " << (result ? "SUCCESS" : "FAILED")
-              << std::endl;
-    return result;
-  }
-
-  // For Wallpaper Engine wallpapers, use linux-wallpaperengine
-  LOG_INFO("Using linux-wallpaperengine: " + path + " on " + monitor);
-  std::cerr << "[BWP] Using linux-wallpaperengine for: " << path << std::endl;
-
-  // Kill any existing linux-wallpaperengine process first
-  system("pkill -9 linux-wallpaper 2>/dev/null");
-
-  // Build linux-wallpaperengine command
-  std::string cmd = "linux-wallpaperengine";
-
-  // The wallpaper path - for workshop items, use the workshop ID
-  std::string wallpaperArg;
-
-  if (isWorkshopItem) {
-    // Use the workshop ID (folder name)
-    wallpaperArg = parentName;
-  } else {
-    // Use full path for non-workshop items (quoted for spaces)
-    wallpaperArg = "\"" + path + "\"";
-  }
-
-  // Screen/monitor selection with background
-  cmd += " --screen-root " + monitor;
-  cmd += " --bg " + wallpaperArg;
-
-  // Audio settings
-  if (gtk_check_button_get_active(GTK_CHECK_BUTTON(m_silentCheck))) {
-    cmd += " --silent";
-  } else {
-    // Volume (only if not silent)
-    int vol = static_cast<int>(gtk_range_get_value(GTK_RANGE(m_volumeScale)));
-    cmd += " --volume " + std::to_string(vol);
-  }
-
-  if (gtk_check_button_get_active(GTK_CHECK_BUTTON(m_noAudioProcCheck))) {
-    cmd += " --no-audio-processing";
-  }
-
-  if (gtk_check_button_get_active(GTK_CHECK_BUTTON(m_disableMouseCheck))) {
-    cmd += " --disable-mouse";
-  }
-
-  if (gtk_check_button_get_active(GTK_CHECK_BUTTON(m_noAutomuteCheck))) {
-    cmd += " --noautomute";
-  }
-
-  // FPS limit
-  int fps = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(m_fpsSpin));
-  cmd += " --fps " + std::to_string(fps);
-
-  // Scaling mode
-  guint scaling = gtk_drop_down_get_selected(GTK_DROP_DOWN(m_scalingDropdown));
-  switch (scaling) {
-  case 1:
-    cmd += " --scaling stretch";
-    break;
-  case 2:
-    cmd += " --scaling fit";
-    break;
-  case 3:
-    cmd += " --scaling fill";
-    break;
-  default:
-    // Default scaling, don't add flag
-    break;
-  }
-
-  LOG_INFO("Executing: " + cmd);
-
-  // Run in background with nohup to detach from terminal
-  cmd = "nohup " + cmd + " > /dev/null 2>&1 &";
-
-  int result = system(cmd.c_str());
-
-  if (result == 0) {
-    LOG_INFO("linux-wallpaperengine started successfully");
-    return true;
-  } else {
-    LOG_ERROR("Failed to start linux-wallpaperengine, exit code: " +
-              std::to_string(result));
-    return false;
-  }
+// Internal helper removed
+/*
+bool PreviewPanel::setWallpaperWithTool(const std::string &path, ...) {
+  // Removed in favor of WallpaperManager
 }
+*/
 
 void PreviewPanel::onApplyClicked() {
   LOG_INFO("Apply button clicked!");
-
-  // Stop any active slideshow
-  bwp::core::SlideshowManager::getInstance().stop();
 
   if (m_currentInfo.path.empty()) {
     LOG_ERROR("Cannot set wallpaper: path is empty");
     gtk_label_set_text(GTK_LABEL(m_statusLabel), "✗ No wallpaper selected");
     return;
   }
-
-  LOG_INFO("Setting wallpaper path: " + m_currentInfo.path);
-
+  
+  auto& wm = bwp::wallpaper::WallpaperManager::getInstance();
+  
+  // 1. Configure settings
+  // Mute
+  bool muted = gtk_check_button_get_active(GTK_CHECK_BUTTON(m_silentCheck));
+  wm.setMuted(muted);
+  
+  // FPS
+  int fps = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(m_fpsSpin));
+  if (fps > 0) wm.setFpsLimit(fps);
+  
+  // Monitor
   guint selected = gtk_drop_down_get_selected(GTK_DROP_DOWN(m_monitorDropdown));
   std::string monitor = "eDP-1";
   if (selected < m_monitorNames.size()) {
     monitor = m_monitorNames[selected];
   }
-
-  LOG_INFO("Target monitor: " + monitor);
-
-  gtk_label_set_text(GTK_LABEL(m_statusLabel), "Setting wallpaper...");
-  while (g_main_context_iteration(nullptr, FALSE)) {
+  
+  // Scaling
+  guint scalingIdx = gtk_drop_down_get_selected(GTK_DROP_DOWN(m_scalingDropdown));
+  // Map index to ScalingMode enum (assuming order matches: Default, Stretch, Fit, Fill)
+  // 0: Default (Fill?), 1: Stretch, 2: Fit, 3: Fill
+  // Enum: 0: Stretch, 1: Fit, 2: Fill, 3: Center, 4: Tile, 5: Zoom
+  int scalingMode = 2; // Default Fill
+  switch (scalingIdx) {
+    case 1: scalingMode = 0; break; // Stretch
+    case 2: scalingMode = 1; break; // Fit
+    case 3: scalingMode = 2; break; // Fill
   }
+  wm.setScalingMode(monitor, scalingMode);
 
-  bool success = setWallpaperWithTool(m_currentInfo.path, monitor);
-  if (success) {
+  LOG_INFO("Setting wallpaper via Manager: " + m_currentInfo.path + " on " + monitor);
+  
+  gtk_label_set_text(GTK_LABEL(m_statusLabel), "Setting wallpaper...");
+  while (g_main_context_iteration(nullptr, FALSE)) {}
+
+  if (wm.setWallpaper(monitor, m_currentInfo.path)) {
     gtk_label_set_text(GTK_LABEL(m_statusLabel), "✓ Wallpaper set!");
-    LOG_INFO("Set wallpaper successfully: " + m_currentInfo.path);
   } else {
-    gtk_label_set_text(GTK_LABEL(m_statusLabel), "✗ Failed to connect");
-    LOG_ERROR("Failed to set wallpaper: " + m_currentInfo.path);
-
+    gtk_label_set_text(GTK_LABEL(m_statusLabel), "✗ Failed to set");
+    
     GtkRoot *root = gtk_widget_get_root(GTK_WIDGET(m_applyButton));
     if (root && GTK_IS_WINDOW(root)) {
       ErrorDialog::show(GTK_WINDOW(root), "Failed to set wallpaper",
-                        "Could not apply " + m_currentInfo.path +
-                            ".\nCheck logs for details.");
+                        "Could not apply " + m_currentInfo.path);
     }
   }
 }

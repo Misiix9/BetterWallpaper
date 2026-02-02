@@ -1,12 +1,17 @@
 #include "MonitorManager.hpp"
 #include "../utils/Logger.hpp"
+#ifndef _WIN32
 #include "WaylandMonitor.hpp"
+#endif
 #include <cstring>
 #include <iostream>
+#ifndef _WIN32
 #include <wayland-client.h>
+#endif
 
 namespace bwp::monitor {
 
+#ifndef _WIN32
 // Registry listeners
 static void registry_handle_global(void *data, wl_registry *registry,
                                    uint32_t name, const char *interface,
@@ -29,6 +34,7 @@ static void registry_handle_global_remove(void *data, wl_registry *,
 
 static const struct wl_registry_listener registry_listener = {
     registry_handle_global, registry_handle_global_remove};
+#endif
 
 MonitorManager &MonitorManager::getInstance() {
   static MonitorManager instance;
@@ -38,13 +44,20 @@ MonitorManager &MonitorManager::getInstance() {
 MonitorManager::MonitorManager() = default;
 
 MonitorManager::~MonitorManager() {
+#ifndef _WIN32
   if (m_registry)
     wl_registry_destroy(m_registry);
   if (m_display)
     wl_display_disconnect(m_display);
+#endif
 }
 
 bool MonitorManager::initialize() {
+#ifdef _WIN32
+  // Windows initialization (COM, etc can go here if needed later)
+  LOG_INFO("MonitorManager initialized (Windows Stub).");
+  return true;
+#else
   if (m_display) {
     return true;
   }
@@ -74,20 +87,26 @@ bool MonitorManager::initialize() {
 
   LOG_INFO("MonitorManager initialized.");
   return true;
+#endif
 }
 
 void MonitorManager::update() {
+#ifndef _WIN32
   if (m_display) {
     wl_display_dispatch(m_display);
   }
+#endif
 }
 
 void MonitorManager::processPending() {
+#ifndef _WIN32
   if (m_display) {
     wl_display_dispatch_pending(m_display);
   }
+#endif
 }
 
+#ifndef _WIN32
 void MonitorManager::addMonitor(uint32_t id, wl_output *output) {
   std::lock_guard<std::mutex> lock(m_mutex);
   auto monitor = std::make_shared<WaylandMonitor>(id, output);
@@ -111,24 +130,32 @@ void MonitorManager::removeMonitor(uint32_t id) {
     }
   }
 }
+#else
+void MonitorManager::addMonitor(uint32_t id, wl_output* output) {}
+void MonitorManager::removeMonitor(uint32_t id) {}
+#endif
 
 std::vector<MonitorInfo> MonitorManager::getMonitors() const {
   std::lock_guard<std::mutex> lock(m_mutex);
   std::vector<MonitorInfo> result;
+#ifndef _WIN32
   for (const auto &[id, monitor] : m_monitors) {
     result.push_back(monitor->getInfo());
   }
+#endif
   return result;
 }
 
 std::optional<MonitorInfo>
 MonitorManager::getMonitor(const std::string &name) const {
   std::lock_guard<std::mutex> lock(m_mutex);
+#ifndef _WIN32
   for (const auto &[id, monitor] : m_monitors) {
     if (monitor->getInfo().name == name) {
       return monitor->getInfo();
     }
   }
+#endif
   return std::nullopt;
 }
 
@@ -137,9 +164,11 @@ std::optional<MonitorInfo> MonitorManager::getPrimaryMonitor() const {
   // Wayland doesn't explicitly have "primary" concept in standard protocol
   // consistently exposed easily, usually position 0,0 is primary logic or
   // compositor specific. For now, return first.
+#ifndef _WIN32
   if (!m_monitors.empty()) {
     return m_monitors.begin()->second->getInfo();
   }
+#endif
   return std::nullopt;
 }
 

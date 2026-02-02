@@ -1,0 +1,58 @@
+{
+    "current_profile": "default",
+    "defaults": {
+        "audio_enabled": false,
+        "audio_volume": 50,
+        "loop_enabled": true,
+        "playback_speed": 1.0,
+        "scaling_mode": "fill"
+    },
+    "general": {
+        "autostart": true,
+        "autostart_method": "systemd",
+        "check_updates": true,
+        "close_to_tray": true,
+        "language": "en",
+        "start_minimized": true,
+        "window_mode": "tiling"
+    },
+    "hyprland": {
+        "smooth_transitions": true,
+        "special_workspace_enabled": false,
+        "workspace_wallpapers": true
+    },
+    "library": {
+        "auto_remove_missing": true,
+        "duplicate_handling": "ask",
+        "paths": [],
+        "scan_recursive": true,
+        "thumbnail_size": 256
+    },
+    "notifications": {
+        "enabled": true,
+        "in_app_toasts": true,
+        "on_error": true,
+        "on_wallpaper_change": false,
+        "system_notifications": true
+    },
+    "performance": {
+        "fps_limit": 60,
+        "fullscreen_exceptions": [],
+        "gpu_acceleration": true,
+        "pause_on_battery": true,
+        "pause_on_fullscreen": true
+    },
+    "theming": {
+        "auto_apply": true,
+        "enabled": true,
+        "palette_size": 16,
+        "tool": "auto"
+    },
+    "transitions": {
+        "default_effect": "expanding_circle",
+        "duration_ms": 500,
+        "easing": "ease_out",
+        "enabled": true
+    },
+    "version": "1.0.0"
+}

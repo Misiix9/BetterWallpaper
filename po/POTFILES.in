@@ -1,0 +1,9 @@
+# List of source files containing translatable strings
+# Used by xgettext to extract strings
+
+src/gui/views/LibraryView.cpp
+src/gui/views/SettingsView.cpp
+src/gui/views/KeybindsView.cpp
+src/gui/widgets/WallpaperCard.cpp
+src/gui/MainWindow.cpp
+src/tray/TrayIcon.cpp

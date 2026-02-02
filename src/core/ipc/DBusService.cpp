@@ -153,28 +153,35 @@ GVariant *DBusService::handle_get_property(GDBusConnection *, const char *,
   return nullptr;
 }
 
-void DBusService::setSetWallpaperHandler(SetWallpaperHandler handler) {
+void DBusService::setSetWallpaperHandler(BoolHandler handler) {
   m_setWallpaperHandler = handler;
 }
 
-void DBusService::setGetWallpaperHandler(GetWallpaperHandler handler) {
+void DBusService::setGetWallpaperHandler(GetStringHandler handler) {
   m_getWallpaperHandler = handler;
 }
 
-void DBusService::setNextHandler(VoidMonitorHandler handler) {
+void DBusService::setNextHandler(VoidHandler handler) {
   m_nextHandler = handler;
 }
-void DBusService::setPreviousHandler(VoidMonitorHandler handler) {
+
+void DBusService::setPreviousHandler(VoidHandler handler) {
   m_prevHandler = handler;
 }
-void DBusService::setPauseHandler(VoidMonitorHandler handler) {
+
+void DBusService::setPauseHandler(VoidHandler handler) {
   m_pauseHandler = handler;
 }
-void DBusService::setResumeHandler(VoidMonitorHandler handler) {
+
+void DBusService::setResumeHandler(VoidHandler handler) {
   m_resumeHandler = handler;
 }
-void DBusService::setStopHandler(VoidMonitorHandler handler) {
+
+void DBusService::setStopHandler(VoidHandler handler) {
   m_stopHandler = handler;
 }
+
+void DBusService::setSetVolumeHandler(VolumeHandler) {} // Not implemented in DBusService yet
+void DBusService::setSetMutedHandler(MuteHandler) {} // Not implemented in DBusService yet
 
 } // namespace bwp::ipc

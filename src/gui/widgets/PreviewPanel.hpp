@@ -22,8 +22,6 @@ private:
   void onApplyClicked();
   void updateMonitorList();
   void loadThumbnail(const std::string &path);
-  bool setWallpaperWithTool(const std::string &path,
-                            const std::string &monitor);
   std::string getSettingsFlags();
 
   GtkWidget *m_box;

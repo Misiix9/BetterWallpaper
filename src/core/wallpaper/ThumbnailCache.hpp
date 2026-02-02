@@ -3,7 +3,11 @@
 #include <chrono>
 #include <filesystem>
 #include <functional>
+#ifdef _WIN32
+typedef struct _GdkPixbuf GdkPixbuf;
+#else
 #include <gdk-pixbuf/gdk-pixbuf.h>
+#endif
 #include <mutex>
 #include <string>
 #include <unordered_map>

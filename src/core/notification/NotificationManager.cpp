@@ -7,7 +7,9 @@
 #include <libnotify/notify.h>
 #endif
 
+#ifndef _WIN32
 #include <gio/gio.h>
+#endif
 
 namespace bwp::core {
 
@@ -30,10 +32,15 @@ bool NotificationManager::initialize(const std::string &appName) {
   m_initialized = true;
   LOG_INFO("NotificationManager initialized with libnotify");
 #else
+#ifdef _WIN32
+    m_initialized = true;
+    LOG_INFO("NotificationManager initialized (Windows stub)");
+#else
   // Fallback: use GNotification (GIO)
   m_initialized = true;
   LOG_INFO("NotificationManager initialized (libnotify not available, using "
            "GNotification)");
+#endif
 #endif
 
   loadSettings();
@@ -70,6 +77,10 @@ void NotificationManager::sendSystemNotification(const std::string &title,
   if (!m_systemEnabled)
     return;
 
+#ifdef _WIN32
+    LOG_INFO("[Windows Notification] " + title + ": " + message);
+    // Could use Toast Notification API here later
+#else
 #ifdef HAVE_LIBNOTIFY
   if (!m_initialized) {
     initialize();
@@ -113,7 +124,7 @@ void NotificationManager::sendSystemNotification(const std::string &title,
 
   (void)system(cmd.c_str());
 #endif
-
+#endif
   LOG_DEBUG("System notification: " + title);
 }
 

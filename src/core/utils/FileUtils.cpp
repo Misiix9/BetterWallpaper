@@ -3,11 +3,25 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#ifndef _WIN32
 #include <pwd.h>
+#endif
 #include <sstream>
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <unistd.h>
+#endif
 
 namespace bwp::utils {
+
+#ifdef _WIN32
+std::filesystem::path FileUtils::getUserHomeDir() {
+    const char* home = std::getenv("USERPROFILE");
+    if (home) return std::filesystem::path(home);
+    return std::filesystem::path("C:\\");
+}
+#endif
 
 bool FileUtils::exists(const std::filesystem::path &path) {
   return std::filesystem::exists(path);
@@ -40,6 +54,9 @@ bool FileUtils::writeFile(const std::filesystem::path &path,
   if (!f.is_open())
     return false;
   f << content;
+  if (f.fail()) return false;
+  f.close();
+  if (f.fail()) return false;
   return true;
 }
 
@@ -48,6 +65,13 @@ std::filesystem::path FileUtils::expandPath(const std::string &pathVal) {
     return "";
 
   if (pathVal[0] == '~') {
+#ifdef _WIN32
+    std::string result = getUserHomeDir().string();
+    if (pathVal.length() > 1 && (pathVal[1] == '/' || pathVal[1] == '\\')) {
+        result += "\\" + pathVal.substr(2); // Skip ~/
+    }
+    return std::filesystem::path(result);
+#else
     const char *home = std::getenv("HOME");
     if (!home) {
       struct passwd *pw = getpwuid(getuid());
@@ -64,6 +88,7 @@ std::filesystem::path FileUtils::expandPath(const std::string &pathVal) {
       }
       return std::filesystem::path(result);
     }
+#endif
   }
   return std::filesystem::path(pathVal);
 }
@@ -93,6 +118,11 @@ std::string FileUtils::getMimeType(const std::filesystem::path &path) {
 }
 
 std::string FileUtils::calculateHash(const std::filesystem::path &path) {
+#ifdef _WIN32
+    // Use certutil? Or just stub for now to compile.
+    // implementing certutil call is messy. Stubbing.
+    return ""; 
+#else
   // Using simple shell command for now to avoid OpenSSL dependency complexity
   // in this phase Sha256sum
   std::string cmd = "sha256sum \"" + path.string() + "\" 2>/dev/null";
@@ -111,6 +141,7 @@ std::string FileUtils::calculateHash(const std::filesystem::path &path) {
   std::string hash;
   iss >> hash;
   return hash;
+#endif
 }
 
 std::string FileUtils::getExtension(const std::filesystem::path &path) {

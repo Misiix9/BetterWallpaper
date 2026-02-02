@@ -2,7 +2,12 @@
 #include <atomic>
 #include <filesystem>
 #include <functional>
+#ifdef _WIN32
+typedef void* gboolean;
+typedef void* gpointer;
+#else
 #include <gtk/gtk.h>
+#endif
 #include <mutex>
 #include <string>
 #include <thread>

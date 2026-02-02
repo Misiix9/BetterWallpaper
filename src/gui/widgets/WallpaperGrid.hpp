@@ -14,6 +14,14 @@ public:
   WallpaperGrid();
   ~WallpaperGrid();
 
+  enum class SortOrder {
+    NameAsc,
+    NameDesc,
+    DateNewest,
+    DateOldest,
+    RatingDesc
+  };
+
   GtkWidget *getWidget() const { return m_scrolledWindow; }
 
   void clear();
@@ -23,8 +31,9 @@ public:
   void filter(const std::string &query);
   void setFilterFavoritesOnly(bool onlyFavorites);
   void setFilterTag(const std::string &tag);
+  void setFilterSource(const std::string &source);
 
-  void setSortOrder(int sortInfo); // Enum todo
+  void setSortOrder(SortOrder sortInfo);
 
   using SelectionCallback =
       std::function<void(const bwp::wallpaper::WallpaperInfo &)>;
@@ -53,6 +62,8 @@ private:
   std::string m_filterQuery;
   bool m_filterFavorites = false;
   std::string m_filterTag;
+  std::string m_filterSource = "all";
+  SortOrder m_currentSort = SortOrder::NameAsc;
 
   // Duplicate tracking (faster than iterating store)
   std::unordered_set<std::string> m_existingPaths;

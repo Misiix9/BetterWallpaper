@@ -20,6 +20,35 @@ LibraryView::LibraryView() {
         self->loadWallpapers();
         return G_SOURCE_REMOVE;
       },
+  g_idle_add(
+      [](gpointer data) -> gboolean {
+        auto *self = static_cast<LibraryView *>(data);
+        self->loadWallpapers();
+        
+        // Listen for updates
+        auto &lib = bwp::wallpaper::WallpaperLibrary::getInstance();
+        lib.setChangeCallback([self](const bwp::wallpaper::WallpaperInfo &info){
+            // Update grid in thread-safe way? Callback might be on any thread? 
+            // AutoTagService runs on main thread via g_timeout.
+            // But good practice to ensure main thread.
+            g_idle_add(+[](gpointer d) -> gboolean {
+                 auto* sInfo = static_cast<bwp::wallpaper::WallpaperInfo*>(d);
+                 // We don't have easy access to self here without capturing it in data
+                 // But wait, the lambda captured 'self' in the closure, which is C++ specific.
+                 // We can't pass a closure to g_idle_add (C API).
+                 // We need to pass data relative to the update.
+                 // Actually, if we are on main thread, we can update directly.
+                 return G_SOURCE_REMOVE;
+            }, nullptr);
+            
+            // For now, assuming main thread (GTK generic)
+             if (self->m_grid) {
+                 self->m_grid->addWallpaper(info); // Update or add
+             }
+        });
+        
+        return G_SOURCE_REMOVE;
+      },
       this);
 }
 
@@ -64,6 +93,40 @@ void LibraryView::setupUi() {
 
   gtk_box_append(GTK_BOX(headerBox), favBtn);
 
+  // Source Filter Toggles (Linked)
+  GtkWidget *sourceBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  gtk_widget_add_css_class(sourceBox, "linked");
+  gtk_widget_set_margin_start(sourceBox, 12);
+
+  auto createToggle = [&](const char *label, const char *id, bool active, GtkToggleButton *group) {
+      GtkWidget *btn = gtk_toggle_button_new_with_label(label);
+      if (group) gtk_toggle_button_set_group(GTK_TOGGLE_BUTTON(btn), group);
+      gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(btn), active);
+      
+      // Pass ID as data
+      std::string *sId = new std::string(id);
+      g_object_set_data_full(G_OBJECT(btn), "source_id", sId, [](gpointer d){ delete static_cast<std::string*>(d); });
+
+      g_signal_connect(btn, "toggled", G_CALLBACK(+[](GtkToggleButton *b, gpointer data){
+          LibraryView *self = static_cast<LibraryView*>(data);
+          if (gtk_toggle_button_get_active(b)) {
+              std::string *sid = static_cast<std::string*>(g_object_get_data(G_OBJECT(b), "source_id"));
+              if (sid) self->onSourceFilterChanged(*sid);
+          }
+      }), this);
+      
+      return btn;
+  };
+
+  GtkWidget *btnAll = createToggle("All", "all", true, nullptr);
+  GtkWidget *btnLocal = createToggle("Local", "local", false, GTK_TOGGLE_BUTTON(btnAll));
+  GtkWidget *btnSteam = createToggle("Steam", "steam", false, GTK_TOGGLE_BUTTON(btnAll));
+
+  gtk_box_append(GTK_BOX(sourceBox), btnAll);
+  gtk_box_append(GTK_BOX(sourceBox), btnLocal);
+  gtk_box_append(GTK_BOX(sourceBox), btnSteam);
+  gtk_box_append(GTK_BOX(headerBox), sourceBox);
+
   // Tag Filter Dropdown
   m_tagList = gtk_string_list_new(nullptr);
   gtk_string_list_append(m_tagList, "All Tags");
@@ -96,6 +159,45 @@ void LibraryView::setupUi() {
       this);
 
   gtk_box_append(GTK_BOX(headerBox), m_filterCombo);
+
+  // Sort Dropdown
+  const char* sortOptions[] = {"Name (A-Z)", "Name (Z-A)", "Date Added (Newest)", "Date Added (Oldest)", "Rating", nullptr};
+  GtkWidget *sortCombo = gtk_drop_down_new_from_strings(sortOptions);
+  gtk_widget_set_margin_start(sortCombo, 8);
+  g_signal_connect(sortCombo, "notify::selected", G_CALLBACK(+[](GObject *object, GParamSpec *, gpointer data){
+      auto *self = static_cast<LibraryView *>(data);
+      guint selected = gtk_drop_down_get_selected(GTK_DROP_DOWN(object));
+      if (self->m_grid) {
+          WallpaperGrid::SortOrder order = WallpaperGrid::SortOrder::NameAsc;
+          switch(selected) {
+              case 0: order = WallpaperGrid::SortOrder::NameAsc; break;
+              case 1: order = WallpaperGrid::SortOrder::NameDesc; break;
+              case 2: order = WallpaperGrid::SortOrder::DateNewest; break;
+              case 3: order = WallpaperGrid::SortOrder::DateOldest; break;
+              case 4: order = WallpaperGrid::SortOrder::RatingDesc; break;
+          }
+          self->m_grid->setSortOrder(order);
+      }
+  }), this);
+  gtk_box_append(GTK_BOX(headerBox), sortCombo);
+
+  // Simulate Scan Button (Mock)
+  GtkWidget *scanBtn = gtk_button_new_from_icon_name("system-search-symbolic");
+  gtk_widget_set_tooltip_text(scanBtn, "Simulate AI Scan");
+  gtk_widget_set_margin_start(scanBtn, 8);
+  g_signal_connect(scanBtn, "clicked", G_CALLBACK(+[](GtkButton *, gpointer data){
+      // Trigger scan on random wallpaper
+      LOG_INFO("Simulating AI Scan...");
+      auto& lib = bwp::wallpaper::WallpaperLibrary::getInstance();
+      auto wallpapers = lib.getAllWallpapers();
+      if (!wallpapers.empty()) {
+           size_t idx = rand() % wallpapers.size();
+           // Use the service
+           #include "../../core/services/AutoTagService.hpp"
+           bwp::core::services::AutoTagService::getInstance().scan(wallpapers[idx].id);
+      }
+  }), this);
+  gtk_box_append(GTK_BOX(headerBox), scanBtn);
 
   // Add Wallpaper Button (opens file picker for local images)
   GtkWidget *addBtn = gtk_button_new_from_icon_name("list-add-symbolic");
@@ -372,6 +474,15 @@ void LibraryView::onAddWallpaper() {
       this);
 
   g_object_unref(dialog);
+}
+
+  g_object_unref(dialog);
+}
+
+void LibraryView::onSourceFilterChanged(const std::string &source) {
+    if (m_grid) {
+        m_grid->setFilterSource(source);
+    }
 }
 
 } // namespace bwp::gui

@@ -1,5 +1,10 @@
 #pragma once
+#ifdef _WIN32
+typedef struct _cairo cairo_t;
+typedef struct _cairo_surface cairo_surface_t;
+#else
 #include <cairo.h>
+#endif
 #include <string>
 
 namespace bwp::transition {

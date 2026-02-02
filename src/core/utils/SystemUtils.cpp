@@ -3,11 +3,23 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#ifdef _WIN32
+#include <windows.h>
+#include <psapi.h>
+#else
 #include <unistd.h>
+#endif
 
 namespace bwp::utils {
 
 uint64_t SystemUtils::getProcessRSS() {
+#ifdef _WIN32
+    PROCESS_MEMORY_COUNTERS pmc;
+    if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
+        return pmc.WorkingSetSize;
+    }
+    return 0;
+#else
   std::ifstream f("/proc/self/statm");
   if (f.is_open()) {
     long size, resident; // pages
@@ -18,6 +30,7 @@ uint64_t SystemUtils::getProcessRSS() {
     }
   }
   return 0;
+#endif
 }
 
 std::string SystemUtils::formatBytes(uint64_t bytes) {

@@ -144,8 +144,22 @@ gboolean WallpaperWindow::onExtractFrame(GtkWidget *widget,
     return G_SOURCE_CONTINUE;
   }
 
+  // Calculate FPS
+  static auto lastLog = std::chrono::steady_clock::now();
+  static int frameCount = 0;
+  frameCount++;
+  
+  auto now = std::chrono::steady_clock::now();
+  if (std::chrono::duration_cast<std::chrono::seconds>(now - lastLog).count() >= 5) {
+    double fps = frameCount / 5.0;
+    LOG_DEBUG("Render FPS: " + std::to_string(fps));
+    frameCount = 0;
+    lastLog = now;
+  }
+
   // If renderer requires animation loop, queue draw
   if (auto renderer = self->m_renderer.lock()) {
+    // ...
     if (renderer->isPlaying()) {
       gtk_widget_queue_draw(widget);
       return G_SOURCE_CONTINUE;

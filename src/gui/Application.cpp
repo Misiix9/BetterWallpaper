@@ -99,21 +99,19 @@ std::string Application::findStylesheetPath() {
   }
 
   // 2. System data directories
+  // 2. System data directories (XDG_DATA_DIRS)
   const char *xdgDataDirs = std::getenv("XDG_DATA_DIRS");
-  if (xdgDataDirs && std::strlen(xdgDataDirs) > 0) {
-    std::string dirs(xdgDataDirs);
-    size_t pos = 0;
-    while ((pos = dirs.find(':')) != std::string::npos) {
-      std::string dir = dirs.substr(0, pos);
-      searchPaths.push_back(dir + "/betterwallpaper/ui/style.css");
-      dirs.erase(0, pos + 1);
-    }
-    if (!dirs.empty()) {
-      searchPaths.push_back(dirs + "/betterwallpaper/ui/style.css");
-    }
-  } else {
-    searchPaths.push_back("/usr/local/share/betterwallpaper/ui/style.css");
-    searchPaths.push_back("/usr/share/betterwallpaper/ui/style.css");
+  // Default to /usr/local/share:/usr/share if not set
+  std::string dataDirs = xdgDataDirs ? xdgDataDirs : "/usr/local/share:/usr/share";
+  
+  size_t pos = 0;
+  while ((pos = dataDirs.find(':')) != std::string::npos) {
+    std::string dir = dataDirs.substr(0, pos);
+    if (!dir.empty()) searchPaths.push_back(dir + "/betterwallpaper/ui/style.css");
+    dataDirs.erase(0, pos + 1);
+  }
+  if (!dataDirs.empty()) {
+    searchPaths.push_back(dataDirs + "/betterwallpaper/ui/style.css");
   }
 
   // 3. Development paths (relative to executable)

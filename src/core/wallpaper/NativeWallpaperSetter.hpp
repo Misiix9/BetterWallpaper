@@ -14,6 +14,8 @@ public:
     Swaybg,     // Universal Wayland
     Hyprctl,    // Hyprland native
     Swww,       // Another Wayland option
+    Gnome,      // Gnome D-Bus
+    Kde,        // KDe Plasma D-Bus
     Feh,        // X11
     Xwallpaper, // X11 alternative
     Internal    // Our gtk4-layer-shell window

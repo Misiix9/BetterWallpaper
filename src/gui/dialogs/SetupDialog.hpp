@@ -19,6 +19,7 @@ private:
 
   // Pages
   void createWelcomePage();
+  void createMonitorsPage();
   void createLibraryPage();
   void createFinishPage();
 

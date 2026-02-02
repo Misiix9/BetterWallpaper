@@ -46,16 +46,16 @@ void Logger::log(LogLevel level, const std::string &message, const char *file,
   // Console color codes
   const char *color = "\033[0m";
   switch (level) {
-  case LogLevel::DEBUG:
+  case LogLevel::DBUG:
     color = "\033[36m";
     break; // Cyan
   case LogLevel::INFO:
     color = "\033[32m";
     break; // Green
-  case LogLevel::WARNING:
+  case LogLevel::WARN:
     color = "\033[33m";
     break; // Yellow
-  case LogLevel::ERROR:
+  case LogLevel::ERR:
     color = "\033[31m";
     break; // Red
   case LogLevel::FATAL:
@@ -81,13 +81,13 @@ void Logger::log(LogLevel level, const std::string &message, const char *file,
 
 std::string Logger::levelToString(LogLevel level) {
   switch (level) {
-  case LogLevel::DEBUG:
+  case LogLevel::DBUG:
     return "DEBUG";
   case LogLevel::INFO:
     return "INFO";
-  case LogLevel::WARNING:
+  case LogLevel::WARN:
     return "WARN";
-  case LogLevel::ERROR:
+  case LogLevel::ERR:
     return "ERROR";
   case LogLevel::FATAL:
     return "FATAL";

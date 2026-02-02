@@ -5,6 +5,24 @@
 #include <algorithm>
 #include <random>
 
+#ifdef _WIN32
+// GLib Stub / Shim for Windows
+typedef int gboolean;
+typedef void* gpointer;
+typedef unsigned int guint;
+#define G_SOURCE_CONTINUE true
+#define G_SOURCE_REMOVE false
+
+// Simple timer shim that does nothing effectively for now, 
+// to allow compilation. Real implementation needs a Windows timer.
+inline guint g_timeout_add_seconds(guint interval, int (*func)(void*), void* data) {
+    return 1; // Fake ID
+}
+inline void g_source_remove(guint tag) {}
+#else
+#include <glib.h>
+#endif
+
 namespace bwp::core {
 
 SlideshowManager &SlideshowManager::getInstance() {

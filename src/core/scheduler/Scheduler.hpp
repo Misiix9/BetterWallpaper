@@ -1,6 +1,8 @@
 #pragma once
 #include <functional>
+#ifndef _WIN32
 #include <glib.h>
+#endif
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
@@ -82,7 +84,11 @@ private:
   ProfileActivateCallback m_activateCallback;
 
   bool m_running = false;
+#ifdef _WIN32
+  uintptr_t m_timerId = 0;
+#else
   guint m_timerId = 0;
+#endif
 
   std::string m_lastTriggeredProfile;
 };

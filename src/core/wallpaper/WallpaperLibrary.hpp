@@ -30,6 +30,10 @@ public:
   std::vector<WallpaperInfo>
   filter(const std::function<bool(const WallpaperInfo &)> &predicate) const;
 
+  // Signals
+  using ChangeCallback = std::function<void(const WallpaperInfo &info)>;
+  void setChangeCallback(ChangeCallback cb);
+
   // Data directory access
   std::filesystem::path getDataDirectory() const;
 
@@ -44,6 +48,7 @@ private:
   mutable std::mutex m_mutex;
   std::filesystem::path m_dbPath;
   bool m_dirty = false;
+  ChangeCallback m_changeCallback;
 };
 
 } // namespace bwp::wallpaper

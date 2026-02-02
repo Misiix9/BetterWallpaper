@@ -22,32 +22,30 @@ typedef struct _GError GError;
 
 namespace bwp::ipc {
 
-class DBusService {
+class DBusService : public IIPCService {
 public:
   DBusService();
-  ~DBusService();
+  ~DBusService() override;
 
-  bool initialize();
-  void run(); // Main loop if standalone, or integrates with GLib loop
+  bool initialize() override;
+  void run() override {} // GtkApplication runs the loop, this is event based
+  void stop() override {}
 
   // Signal emitters
   void emitWallpaperChanged(const std::string &monitor,
                             const std::string &path);
   void emitProfileChanged(const std::string &name);
 
-  // Handler callbacks setters
-  using SetWallpaperHandler = std::function<bool(std::string, std::string)>;
-  void setSetWallpaperHandler(SetWallpaperHandler handler);
-
-  using GetWallpaperHandler = std::function<std::string(std::string)>;
-  void setGetWallpaperHandler(GetWallpaperHandler handler);
-
-  using VoidMonitorHandler = std::function<void(std::string)>;
-  void setNextHandler(VoidMonitorHandler handler);
-  void setPreviousHandler(VoidMonitorHandler handler);
-  void setPauseHandler(VoidMonitorHandler handler);
-  void setResumeHandler(VoidMonitorHandler handler);
-  void setStopHandler(VoidMonitorHandler handler);
+  // Handler setters
+  void setSetWallpaperHandler(BoolHandler handler) override;
+  void setGetWallpaperHandler(GetStringHandler handler) override;
+  void setNextHandler(VoidHandler handler) override;
+  void setPreviousHandler(VoidHandler handler) override;
+  void setPauseHandler(VoidHandler handler) override;
+  void setResumeHandler(VoidHandler handler) override;
+  void setStopHandler(VoidHandler handler) override;
+  void setSetVolumeHandler(VolumeHandler handler) override;
+  void setSetMutedHandler(MuteHandler handler) override;
 
   // ... other handlers
 
@@ -77,14 +75,14 @@ private:
   GDBusConnection *m_connection = nullptr;
   GDBusNodeInfo *m_introspectionData = nullptr;
 
-  SetWallpaperHandler m_setWallpaperHandler;
-  GetWallpaperHandler m_getWallpaperHandler;
+  BoolHandler m_setWallpaperHandler;
+  GetStringHandler m_getWallpaperHandler;
 
-  VoidMonitorHandler m_nextHandler;
-  VoidMonitorHandler m_prevHandler;
-  VoidMonitorHandler m_pauseHandler;
-  VoidMonitorHandler m_resumeHandler;
-  VoidMonitorHandler m_stopHandler;
+  VoidHandler m_nextHandler;
+  VoidHandler m_prevHandler;
+  VoidHandler m_pauseHandler;
+  VoidHandler m_resumeHandler;
+  VoidHandler m_stopHandler;
 };
 
 } // namespace bwp::ipc

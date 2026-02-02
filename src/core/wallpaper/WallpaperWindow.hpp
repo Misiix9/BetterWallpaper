@@ -2,11 +2,32 @@
 #include "../monitor/MonitorInfo.hpp"
 #include "../transition/TransitionEngine.hpp"
 #include "WallpaperRenderer.hpp"
+#ifndef _WIN32
 #include <gtk/gtk.h>
+#endif
 #include <memory>
 
 namespace bwp::wallpaper {
 
+#ifdef _WIN32
+class WallpaperWindow {
+public:
+  WallpaperWindow(const monitor::MonitorInfo &monitor) {}
+  ~WallpaperWindow() {}
+
+  void setRenderer(std::weak_ptr<WallpaperRenderer> renderer) {}
+  void transitionTo(std::shared_ptr<WallpaperRenderer> nextRenderer) {}
+  void render() {} 
+
+  // Stub GtkWindow* as void* or just remove getWindow() usage if possible
+  void* getWindow() { return nullptr; }
+
+  void show() {}
+  void hide() {}
+
+  void updateMonitor(const monitor::MonitorInfo &monitor) {}
+};
+#else
 class WallpaperWindow {
 public:
   WallpaperWindow(const monitor::MonitorInfo &monitor);
@@ -36,5 +57,6 @@ private:
   std::weak_ptr<WallpaperRenderer> m_renderer;
   bwp::transition::TransitionEngine m_transitionEngine;
 };
+#endif
 
 } // namespace bwp::wallpaper

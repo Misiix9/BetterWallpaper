@@ -1,18 +1,19 @@
-#include "DBusClient.hpp"
+#include "LinuxIPCClient.hpp"
+#include "../utils/Logger.hpp"
 #include <gio/gio.h>
 #include <iostream>
 
 namespace bwp::ipc {
 
-DBusClient::DBusClient() {}
+LinuxIPCClient::LinuxIPCClient() {}
 
-DBusClient::~DBusClient() {
+LinuxIPCClient::~LinuxIPCClient() {
   if (m_connection) {
     g_object_unref(m_connection);
   }
 }
 
-bool DBusClient::connect() {
+bool LinuxIPCClient::connect() {
   GError *error = nullptr;
   m_connection = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
   if (!m_connection) {
@@ -98,59 +99,71 @@ std::string DBusClient::getDaemonVersion() {
 
   g_variant_unref(container);
   g_variant_unref(result);
-  g_variant_unref(container);
-  g_variant_unref(result);
   return v;
 }
 
-void DBusClient::nextWallpaper(const std::string &monitor) {
-  if (!m_connection)
+void LinuxIPCClient::nextWallpaper(const std::string &monitor) {
+  if (!m_connection) return;
+  g_dbus_connection_call(
+      m_connection, "org.bwp.BetterWallpaper", "/org/bwp/BetterWallpaper",
+      "org.bwp.BetterWallpaper", "Next",
+      g_variant_new("(s)", monitor.c_str()), nullptr, G_DBUS_CALL_FLAGS_NONE,
+      -1, nullptr, nullptr, nullptr);
+}
+
+void LinuxIPCClient::previousWallpaper(const std::string &monitor) {
+  if (!m_connection) return;
+  g_dbus_connection_call(
+      m_connection, "org.bwp.BetterWallpaper", "/org/bwp/BetterWallpaper",
+      "org.bwp.BetterWallpaper", "Previous",
+      g_variant_new("(s)", monitor.c_str()), nullptr, G_DBUS_CALL_FLAGS_NONE,
+      -1, nullptr, nullptr, nullptr);
+}
+
+void LinuxIPCClient::pauseWallpaper(const std::string &monitor) {
+    if (!m_connection) return;
+    g_dbus_connection_call(
+        m_connection, "org.bwp.BetterWallpaper", "/org/bwp/BetterWallpaper",
+        "org.bwp.BetterWallpaper", "Pause",
+        g_variant_new("(s)", monitor.c_str()), nullptr, G_DBUS_CALL_FLAGS_NONE,
+        -1, nullptr, nullptr, nullptr);
+}
+
+void LinuxIPCClient::resumeWallpaper(const std::string &monitor) {
+    if (!m_connection) return;
+    g_dbus_connection_call(
+        m_connection, "org.bwp.BetterWallpaper", "/org/bwp/BetterWallpaper",
+        "org.bwp.BetterWallpaper", "Resume",
+        g_variant_new("(s)", monitor.c_str()), nullptr, G_DBUS_CALL_FLAGS_NONE,
+        -1, nullptr, nullptr, nullptr);
+}
+
+void LinuxIPCClient::stopWallpaper(const std::string &monitor) {
+    if (!m_connection)
     return;
-  g_dbus_connection_call(m_connection, "com.github.BetterWallpaper",
-                         "/com/github/BetterWallpaper",
-                         "com.github.BetterWallpaper", "Next",
+  g_dbus_connection_call(m_connection, "org.bwp.BetterWallpaper",
+                         "/org/bwp/BetterWallpaper",
+                         "org.bwp.BetterWallpaper", "Stop",
                          g_variant_new("(s)", monitor.c_str()), nullptr,
                          G_DBUS_CALL_FLAGS_NONE, -1, nullptr, nullptr, nullptr);
 }
 
-void DBusClient::previousWallpaper(const std::string &monitor) {
-  if (!m_connection)
-    return;
-  g_dbus_connection_call(m_connection, "com.github.BetterWallpaper",
-                         "/com/github/BetterWallpaper",
-                         "com.github.BetterWallpaper", "Previous",
-                         g_variant_new("(s)", monitor.c_str()), nullptr,
-                         G_DBUS_CALL_FLAGS_NONE, -1, nullptr, nullptr, nullptr);
+void LinuxIPCClient::setVolume(const std::string &monitor, int volume) {
+    if (!m_connection) return;
+    g_dbus_connection_call(
+        m_connection, "org.bwp.BetterWallpaper", "/org/bwp/BetterWallpaper",
+        "org.bwp.BetterWallpaper", "SetVolume",
+        g_variant_new("(si)", monitor.c_str(), volume), nullptr, G_DBUS_CALL_FLAGS_NONE,
+        -1, nullptr, nullptr, nullptr);    
 }
 
-void DBusClient::pauseWallpaper(const std::string &monitor) {
-  if (!m_connection)
-    return;
-  g_dbus_connection_call(m_connection, "com.github.BetterWallpaper",
-                         "/com/github/BetterWallpaper",
-                         "com.github.BetterWallpaper", "Pause",
-                         g_variant_new("(s)", monitor.c_str()), nullptr,
-                         G_DBUS_CALL_FLAGS_NONE, -1, nullptr, nullptr, nullptr);
-}
-
-void DBusClient::resumeWallpaper(const std::string &monitor) {
-  if (!m_connection)
-    return;
-  g_dbus_connection_call(m_connection, "com.github.BetterWallpaper",
-                         "/com/github/BetterWallpaper",
-                         "com.github.BetterWallpaper", "Resume",
-                         g_variant_new("(s)", monitor.c_str()), nullptr,
-                         G_DBUS_CALL_FLAGS_NONE, -1, nullptr, nullptr, nullptr);
-}
-
-void DBusClient::stopWallpaper(const std::string &monitor) {
-  if (!m_connection)
-    return;
-  g_dbus_connection_call(m_connection, "com.github.BetterWallpaper",
-                         "/com/github/BetterWallpaper",
-                         "com.github.BetterWallpaper", "Stop",
-                         g_variant_new("(s)", monitor.c_str()), nullptr,
-                         G_DBUS_CALL_FLAGS_NONE, -1, nullptr, nullptr, nullptr);
+void LinuxIPCClient::setMuted(const std::string &monitor, bool muted) {
+    if (!m_connection) return;
+    g_dbus_connection_call(
+        m_connection, "org.bwp.BetterWallpaper", "/org/bwp/BetterWallpaper",
+        "org.bwp.BetterWallpaper", "SetMuted",
+        g_variant_new("(sb)", monitor.c_str(), muted), nullptr, G_DBUS_CALL_FLAGS_NONE,
+        -1, nullptr, nullptr, nullptr);    
 }
 
 } // namespace bwp::ipc

@@ -1,6 +1,11 @@
 #pragma once
 #include "WallpaperInfo.hpp"
+#ifdef _WIN32
+// Stub cairo type for Windows
+typedef struct _cairo cairo_t;
+#else
 #include <cairo.h>
+#endif
 #include <string>
 
 namespace bwp::wallpaper {
@@ -23,6 +28,9 @@ public:
   virtual void setVolume(float volume) {}
   virtual void setPlaybackSpeed(float speed) {}
   virtual void setMuted(bool muted) {}
+  
+  // Audio visualization data (frequency bands, normalized 0-1)
+  virtual void setAudioData(const std::vector<float>& /*audioBands*/) {}
 
   virtual bool isPlaying() const { return false; }
   virtual bool hasAudio() const { return false; }

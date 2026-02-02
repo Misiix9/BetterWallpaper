@@ -116,10 +116,10 @@ void WallpaperGrid::addWallpaper(const bwp::wallpaper::WallpaperInfo &info) {
 }
 
 // Helper struct to pass filter state to C callback
-struct FilterState {
   std::string query;
   bool favoritesOnly;
   std::string tag;
+  std::string source;
 };
 
 void WallpaperGrid::filter(const std::string &query) {
@@ -137,9 +137,14 @@ void WallpaperGrid::setFilterTag(const std::string &tag) {
   updateFilter();
 }
 
+void WallpaperGrid::setFilterSource(const std::string &source) {
+  m_filterSource = source;
+  updateFilter();
+}
+
 void WallpaperGrid::updateFilter() {
   FilterState *state =
-      new FilterState{m_filterQuery, m_filterFavorites, m_filterTag};
+      new FilterState{m_filterQuery, m_filterFavorites, m_filterTag, m_filterSource};
 
   auto matchFunc = [](gpointer item, gpointer user_data) -> gboolean {
     FilterState *s = static_cast<FilterState *>(user_data);
@@ -148,6 +153,17 @@ void WallpaperGrid::updateFilter() {
 
     if (!info)
       return FALSE;
+
+    // 0. Check Source
+    if (s->source != "all") {
+        if (s->source == "local") {
+            // Local means NOT steam
+             if (info->source == "steam" || info->type == bwp::wallpaper::WallpaperType::WEScene || info->type == bwp::wallpaper::WallpaperType::WEVideo) return FALSE;
+        } else if (s->source == "steam") {
+            // Steam means IS steam
+             if (info->source != "steam" && info->type != bwp::wallpaper::WallpaperType::WEScene && info->type != bwp::wallpaper::WallpaperType::WEVideo) return FALSE;
+        }
+    }
 
     // 1. Check favorites
     if (s->favoritesOnly && !info->favorite)
@@ -199,8 +215,50 @@ void WallpaperGrid::updateFilter() {
   gtk_filter_list_model_set_filter(m_filterModel, GTK_FILTER(m_filter));
 }
 
-void WallpaperGrid::setSortOrder(int /*sortInfo*/) {
-  // Todo: Implement sort sorter
+void WallpaperGrid::setSortOrder(SortOrder order) {
+    m_currentSort = order;
+
+    auto sortFunc = [](gconstpointer a, gconstpointer b, gpointer user_data) -> gint {
+        SortOrder order = static_cast<SortOrder>(reinterpret_cast<intptr_t>(user_data));
+        
+        BwpWallpaperObject *objA = BWP_WALLPAPER_OBJECT((gpointer)a);
+        BwpWallpaperObject *objB = BWP_WALLPAPER_OBJECT((gpointer)b);
+        const auto *infoA = bwp_wallpaper_object_get_info(objA);
+        const auto *infoB = bwp_wallpaper_object_get_info(objB);
+
+        if (!infoA || !infoB) return 0;
+
+        switch (order) {
+            case SortOrder::NameAsc: {
+                std::string nA = bwp::utils::StringUtils::toLower(std::filesystem::path(infoA->path).stem().string());
+                std::string nB = bwp::utils::StringUtils::toLower(std::filesystem::path(infoB->path).stem().string());
+                return nA.compare(nB);
+            }
+            case SortOrder::NameDesc: {
+                std::string nA = bwp::utils::StringUtils::toLower(std::filesystem::path(infoA->path).stem().string());
+                std::string nB = bwp::utils::StringUtils::toLower(std::filesystem::path(infoB->path).stem().string());
+                return nB.compare(nA);
+            }
+            case SortOrder::DateNewest:
+                if (infoA->added > infoB->added) return -1;
+                if (infoA->added < infoB->added) return 1;
+                return 0;
+            case SortOrder::DateOldest:
+                if (infoA->added < infoB->added) return -1;
+                if (infoA->added > infoB->added) return 1;
+                return 0;
+            case SortOrder::RatingDesc:
+                return infoB->rating - infoA->rating; // Descending
+            default:
+                return 0;
+        }
+    };
+
+    if (m_sortModel) {
+        GtkSorter *sorter = gtk_custom_sorter_new(sortFunc, reinterpret_cast<gpointer>(static_cast<intptr_t>(order)), nullptr);
+        gtk_sort_list_model_set_sorter(m_sortModel, sorter);
+        g_object_unref(sorter);
+    }
 }
 
 void WallpaperGrid::setSelectionCallback(SelectionCallback callback) {

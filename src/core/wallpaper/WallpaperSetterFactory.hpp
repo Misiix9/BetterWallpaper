@@ -1,0 +1,58 @@
+#pragma once
+#include "IWallpaperSetter.hpp"
+#ifdef _WIN32
+#include "WindowsWallpaperSetter.hpp"
+#else
+#include "GnomeWallpaperSetter.hpp"
+#include "HyprlandWallpaperSetter.hpp"
+#include "KdeWallpaperSetter.hpp"
+#include "SwayBgWallpaperSetter.hpp"
+#endif
+#include <memory>
+#include <vector>
+
+namespace bwp::wallpaper {
+
+class WallpaperSetterFactory {
+public:
+    static std::unique_ptr<IWallpaperSetter> createSetter() {
+        #ifdef _WIN32
+        auto win = std::make_unique<WindowsWallpaperSetter>();
+        if (win->isSupported()) return win;
+        #else
+        // 1. Hyprland
+        auto hypr = std::make_unique<HyprlandWallpaperSetter>();
+        if (hypr->isSupported()) return hypr;
+        
+        // 2. GNOME
+        auto gnome = std::make_unique<GnomeWallpaperSetter>();
+        if (gnome->isSupported()) return gnome;
+
+        // 3. KDE
+        auto kde = std::make_unique<KdeWallpaperSetter>();
+        if (kde->isSupported()) return kde;
+        
+        // 3. SwayBG (Generic Wayland Fallback)
+        auto sway = std::make_unique<SwayBgWallpaperSetter>();
+        if (sway->isSupported()) return sway;
+        #endif
+        
+        return nullptr;
+    }
+    
+    // Legacy support: get list of available names
+    static std::vector<std::string> getAvailableMethodNames() {
+        std::vector<std::string> methods;
+        #ifdef _WIN32
+        methods.push_back("WindowsNative");
+        #else
+        if (HyprlandWallpaperSetter().isSupported()) methods.push_back("Hyprland");
+        if (GnomeWallpaperSetter().isSupported()) methods.push_back("GNOME");
+        if (KdeWallpaperSetter().isSupported()) methods.push_back("KDE");
+        if (SwayBgWallpaperSetter().isSupported()) methods.push_back("SwayBG");
+        #endif
+        return methods;
+    }
+};
+
+} // namespace bwp::wallpaper

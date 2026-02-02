@@ -64,6 +64,7 @@ private:
   LazyView<ScheduleView> m_scheduleView;
 
   std::unique_ptr<bwp::wallpaper::WallpaperEngineRenderer> m_weRenderer;
+  bool m_userPaused = false;
   std::unique_ptr<HyprlandWorkspacesView> m_hyprlandView;
 
   // Track if lazy views have been added to stack
