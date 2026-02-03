@@ -1,12 +1,12 @@
 #pragma once
 #include "IWallpaperSetter.hpp"
 #ifdef _WIN32
-#include "WindowsWallpaperSetter.hpp"
+#include "setters/WindowsWallpaperSetter.hpp"
 #else
-#include "GnomeWallpaperSetter.hpp"
-#include "HyprlandWallpaperSetter.hpp"
-#include "KdeWallpaperSetter.hpp"
-#include "SwayBgWallpaperSetter.hpp"
+#include "setters/GnomeWallpaperSetter.hpp"
+#include "setters/HyprlandWallpaperSetter.hpp"
+#include "setters/KdeWallpaperSetter.hpp"
+#include "setters/SwayBgWallpaperSetter.hpp"
 #endif
 #include <memory>
 #include <vector>

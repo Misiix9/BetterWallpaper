@@ -1,0 +1,23 @@
+[  5%] Built target bwp_ipc
+[  6%] Building CXX object src/core/CMakeFiles/bwp_core.dir/wallpaper/NativeWallpaperSetter.cpp.o
+In file included from /home/onxy/Documents/Programming/Apps/BetterWallpaper/src/core/wallpaper/WallpaperSetterFactory.hpp:6,
+                 from /home/onxy/Documents/Programming/Apps/BetterWallpaper/src/core/wallpaper/NativeWallpaperSetter.cpp:2:
+/home/onxy/Documents/Programming/Apps/BetterWallpaper/src/core/wallpaper/setters/GnomeWallpaperSetter.hpp: In member function ‘virtual bool bwp::wallpaper::GnomeWallpaperSetter::setWallpaper(const std::string&, const std::string&)’:
+/home/onxy/Documents/Programming/Apps/BetterWallpaper/src/core/wallpaper/setters/GnomeWallpaperSetter.hpp:10:67: warning: unused parameter ‘monitor’ [-Wunused-parameter]
+   10 |     bool setWallpaper(const std::string& path, const std::string& monitor) override {
+      |                                                ~~~~~~~~~~~~~~~~~~~^~~~~~~
+In file included from /home/onxy/Documents/Programming/Apps/BetterWallpaper/src/core/wallpaper/WallpaperSetterFactory.hpp:8:
+/home/onxy/Documents/Programming/Apps/BetterWallpaper/src/core/wallpaper/setters/KdeWallpaperSetter.hpp: In member function ‘virtual bool bwp::wallpaper::KdeWallpaperSetter::setWallpaper(const std::string&, const std::string&)’:
+/home/onxy/Documents/Programming/Apps/BetterWallpaper/src/core/wallpaper/setters/KdeWallpaperSetter.hpp:10:67: warning: unused parameter ‘monitor’ [-Wunused-parameter]
+   10 |     bool setWallpaper(const std::string& path, const std::string& monitor) override {
+      |                                                ~~~~~~~~~~~~~~~~~~~^~~~~~~
+[  7%] Linking CXX static library libbwp_core.a
+[ 51%] Built target bwp_core
+[ 53%] Linking CXX executable betterwallpaper-daemon
+[ 54%] Built target betterwallpaper-daemon
+[ 55%] Linking CXX executable betterwallpaper
+[ 89%] Built target betterwallpaper
+[ 92%] Built target bwp
+[ 97%] Built target betterwallpaper-tray
+[ 98%] Linking CXX executable unit_tests
+[100%] Built target unit_tests

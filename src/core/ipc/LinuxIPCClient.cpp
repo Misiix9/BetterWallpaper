@@ -26,7 +26,7 @@ bool LinuxIPCClient::connect() {
   return true;
 }
 
-bool DBusClient::setWallpaper(const std::string &path,
+bool LinuxIPCClient::setWallpaper(const std::string &path,
                               const std::string &monitor) {
   if (!m_connection)
     return false;
@@ -52,7 +52,7 @@ bool DBusClient::setWallpaper(const std::string &path,
   return success;
 }
 
-std::string DBusClient::getWallpaper(const std::string &monitor) {
+std::string LinuxIPCClient::getWallpaper(const std::string &monitor) {
   if (!m_connection)
     return "";
 
@@ -76,7 +76,7 @@ std::string DBusClient::getWallpaper(const std::string &monitor) {
   return p;
 }
 
-std::string DBusClient::getDaemonVersion() {
+std::string LinuxIPCClient::getDaemonVersion() {
   if (!m_connection)
     return "Unknown";
 

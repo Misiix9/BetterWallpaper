@@ -1,5 +1,5 @@
 #include "PreviewPanel.hpp"
-#include "../../core/ipc/DBusClient.hpp"
+
 #include "../../core/monitor/MonitorManager.hpp"
 #include "../../core/slideshow/SlideshowManager.hpp"
 #include "../../core/wallpaper/WallpaperManager.hpp"
@@ -231,8 +231,8 @@ void PreviewPanel::setWallpaper(const bwp::wallpaper::WallpaperInfo &info) {
     details += "Unknown";
   }
 
-  if (info.workshop_id.has_value()) {
-    details += "\nID: " + std::to_string(info.workshop_id.value());
+  if (info.workshop_id != 0) {
+    details += "\nID: " + std::to_string(info.workshop_id);
   }
 
   gtk_label_set_text(GTK_LABEL(m_detailsLabel), details.c_str());

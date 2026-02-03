@@ -10,6 +10,7 @@ else()
     add_executable(betterwallpaper-tray
         main.cpp
         LinuxTrayIcon.cpp
+        ../core/utils/ProcessUtils.cpp
     )
     target_link_libraries(betterwallpaper-tray PRIVATE
         bwp_ipc

@@ -27,6 +27,8 @@ public:
   ~MainWindow();
 
   void show();
+  
+  GtkWindow *getGtkWindow() const { return GTK_WINDOW(m_window); }
 
 private:
   void setupUi();

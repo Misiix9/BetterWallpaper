@@ -153,35 +153,35 @@ GVariant *DBusService::handle_get_property(GDBusConnection *, const char *,
   return nullptr;
 }
 
-void DBusService::setSetWallpaperHandler(BoolHandler handler) {
+void DBusService::setSetWallpaperHandler(IIPCService::BoolHandler handler) {
   m_setWallpaperHandler = handler;
 }
 
-void DBusService::setGetWallpaperHandler(GetStringHandler handler) {
+void DBusService::setGetWallpaperHandler(IIPCService::GetStringHandler handler) {
   m_getWallpaperHandler = handler;
 }
 
-void DBusService::setNextHandler(VoidHandler handler) {
+void DBusService::setNextHandler(IIPCService::VoidHandler handler) {
   m_nextHandler = handler;
 }
 
-void DBusService::setPreviousHandler(VoidHandler handler) {
+void DBusService::setPreviousHandler(IIPCService::VoidHandler handler) {
   m_prevHandler = handler;
 }
 
-void DBusService::setPauseHandler(VoidHandler handler) {
+void DBusService::setPauseHandler(IIPCService::VoidHandler handler) {
   m_pauseHandler = handler;
 }
 
-void DBusService::setResumeHandler(VoidHandler handler) {
+void DBusService::setResumeHandler(IIPCService::VoidHandler handler) {
   m_resumeHandler = handler;
 }
 
-void DBusService::setStopHandler(VoidHandler handler) {
+void DBusService::setStopHandler(IIPCService::VoidHandler handler) {
   m_stopHandler = handler;
 }
 
-void DBusService::setSetVolumeHandler(VolumeHandler) {} // Not implemented in DBusService yet
-void DBusService::setSetMutedHandler(MuteHandler) {} // Not implemented in DBusService yet
+void DBusService::setSetVolumeHandler(IIPCService::VolumeHandler) {} // Not implemented in DBusService yet
+void DBusService::setSetMutedHandler(IIPCService::MuteHandler) {} // Not implemented in DBusService yet
 
 } // namespace bwp::ipc

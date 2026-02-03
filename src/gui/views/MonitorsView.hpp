@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../core/ipc/DBusClient.hpp"
+#include "../../core/ipc/LinuxIPCClient.hpp"
 #include "../widgets/MonitorConfigPanel.hpp"
 #include "../widgets/MonitorLayout.hpp"
 #include <adwaita.h>

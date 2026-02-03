@@ -76,7 +76,7 @@ private:
   // Note: WallpaperWindow is already included via "WallpaperWindow.hpp",
   // so a forward declaration here is not strictly necessary for compilation.
   // If it were needed, it would typically be at the namespace scope.
-  class WallpaperWindow; 
+  // class WallpaperWindow; // Removed to avoid shadowing/conflict 
   
   mutable std::mutex m_mutex;
   bool m_paused = false;

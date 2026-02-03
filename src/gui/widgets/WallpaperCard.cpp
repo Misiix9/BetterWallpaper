@@ -3,7 +3,7 @@
 #include "../../core/wallpaper/ThumbnailCache.hpp"
 #include "../../core/wallpaper/WallpaperLibrary.hpp"
 #include "../dialogs/WorkspaceSelectionDialog.hpp"
-#include "Constants.hpp" // Ensure this exists or use hardcoded if specific to card
+#include "../../core/utils/Constants.hpp"
 #include <algorithm>
 #include <filesystem>
 #include <gdk-pixbuf/gdk-pixbuf.h>
@@ -86,9 +86,7 @@ WallpaperCard::WallpaperCard(const bwp::wallpaper::WallpaperInfo &info)
                    this);
   gtk_overlay_add_overlay(GTK_OVERLAY(m_overlay), m_favoriteBtn);
 
-  // Badge (Video/Scene) - Top Left
-    gtk_overlay_add_overlay(GTK_OVERLAY(m_overlay), badge);
-  }
+
 
   // Auto-Tag Badge (Sparkle) - Bottom Right
   m_autoTagBadge = gtk_image_new_from_icon_name("weather-clear-night-symbolic"); // Sparkle-like

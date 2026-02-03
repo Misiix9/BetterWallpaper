@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <cstdint>
 
 namespace bwp::wallpaper {
 
@@ -19,7 +20,8 @@ enum class ScalingMode {
     Fit,
     Stretch,
     Center,
-    Tile
+    Tile,
+    Zoom
 };
 
 struct WallpaperInfo {

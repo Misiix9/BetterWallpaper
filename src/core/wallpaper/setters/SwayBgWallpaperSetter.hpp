@@ -28,7 +28,7 @@ public:
         return success;
     }
 
-    bool isSupported() override {
+    bool isSupported() const override {
         // Supporting sway or generic wayland fallback
         const char* wayland = std::getenv("WAYLAND_DISPLAY");
         return (wayland != nullptr) && utils::ProcessUtils::commandExists("swaybg");

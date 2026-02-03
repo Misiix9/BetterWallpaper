@@ -97,6 +97,7 @@ else()
         utils/Error.cpp
         utils/FileUtils.cpp
         utils/StringUtils.cpp
+        utils/ProcessUtils.cpp
         wallpaper/WallpaperManager.cpp
         wallpaper/WallpaperWindow.cpp
         wallpaper/renderers/StaticRenderer.cpp
@@ -139,6 +140,7 @@ else()
         
         # System
         input/InputManager.cpp
+        input/KeybindManager.cpp
         power/PowerManager.cpp
         system/AutostartManager.cpp
         utils/SystemUtils.cpp

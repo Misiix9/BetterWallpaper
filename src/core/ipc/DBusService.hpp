@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "IIPCService.hpp"
 
 // Forward decls to avoid full GIO headers in HPP if possible, but usually
 // typedefs

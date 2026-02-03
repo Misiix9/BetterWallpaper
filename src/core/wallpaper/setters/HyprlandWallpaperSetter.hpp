@@ -34,7 +34,7 @@ public:
         }
     }
 
-    bool isSupported() override {
+    bool isSupported() const override {
         const char* sig = std::getenv("HYPRLAND_INSTANCE_SIGNATURE");
         return (sig != nullptr) && utils::ProcessUtils::commandExists("hyprctl");
     }

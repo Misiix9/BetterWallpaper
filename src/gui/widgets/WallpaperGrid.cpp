@@ -116,6 +116,7 @@ void WallpaperGrid::addWallpaper(const bwp::wallpaper::WallpaperInfo &info) {
 }
 
 // Helper struct to pass filter state to C callback
+struct FilterState {
   std::string query;
   bool favoritesOnly;
   std::string tag;
@@ -255,7 +256,7 @@ void WallpaperGrid::setSortOrder(SortOrder order) {
     };
 
     if (m_sortModel) {
-        GtkSorter *sorter = gtk_custom_sorter_new(sortFunc, reinterpret_cast<gpointer>(static_cast<intptr_t>(order)), nullptr);
+        GtkSorter *sorter = GTK_SORTER(gtk_custom_sorter_new(sortFunc, reinterpret_cast<gpointer>(static_cast<intptr_t>(order)), nullptr));
         gtk_sort_list_model_set_sorter(m_sortModel, sorter);
         g_object_unref(sorter);
     }

@@ -28,7 +28,7 @@ public:
         return success;
     }
 
-    bool isSupported() override {
+    bool isSupported() const override {
         // Check if gsettings is available and XDG_CURRENT_DESKTOP contains GNOME
         const char* currentDesktop = std::getenv("XDG_CURRENT_DESKTOP");
         if (currentDesktop && std::string(currentDesktop).find("GNOME") != std::string::npos) {

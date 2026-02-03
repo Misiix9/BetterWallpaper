@@ -5,6 +5,7 @@
 #include "../../core/wallpaper/LibraryScanner.hpp"
 #include "../../core/wallpaper/WallpaperLibrary.hpp"
 #include <filesystem>
+#include "../../core/services/AutoTagService.hpp"
 
 namespace bwp::gui {
 
@@ -18,26 +19,12 @@ LibraryView::LibraryView() {
       [](gpointer data) -> gboolean {
         auto *self = static_cast<LibraryView *>(data);
         self->loadWallpapers();
-        return G_SOURCE_REMOVE;
-      },
-  g_idle_add(
-      [](gpointer data) -> gboolean {
-        auto *self = static_cast<LibraryView *>(data);
-        self->loadWallpapers();
         
         // Listen for updates
         auto &lib = bwp::wallpaper::WallpaperLibrary::getInstance();
         lib.setChangeCallback([self](const bwp::wallpaper::WallpaperInfo &info){
-            // Update grid in thread-safe way? Callback might be on any thread? 
-            // AutoTagService runs on main thread via g_timeout.
-            // But good practice to ensure main thread.
             g_idle_add(+[](gpointer d) -> gboolean {
-                 auto* sInfo = static_cast<bwp::wallpaper::WallpaperInfo*>(d);
-                 // We don't have easy access to self here without capturing it in data
-                 // But wait, the lambda captured 'self' in the closure, which is C++ specific.
-                 // We can't pass a closure to g_idle_add (C API).
-                 // We need to pass data relative to the update.
-                 // Actually, if we are on main thread, we can update directly.
+                 // Info logic would go here if needed, or trigger refresh
                  return G_SOURCE_REMOVE;
             }, nullptr);
             
@@ -193,7 +180,7 @@ void LibraryView::setupUi() {
       if (!wallpapers.empty()) {
            size_t idx = rand() % wallpapers.size();
            // Use the service
-           #include "../../core/services/AutoTagService.hpp"
+
            bwp::core::services::AutoTagService::getInstance().scan(wallpapers[idx].id);
       }
   }), this);
@@ -476,8 +463,7 @@ void LibraryView::onAddWallpaper() {
   g_object_unref(dialog);
 }
 
-  g_object_unref(dialog);
-}
+
 
 void LibraryView::onSourceFilterChanged(const std::string &source) {
     if (m_grid) {

@@ -86,6 +86,7 @@ NativeWallpaperSetter::getAvailableMethods() {
 }
 
 std::vector<std::string> NativeWallpaperSetter::getMonitors() {
+  LOG_DEBUG("NativeWallpaperSetter::getMonitors() start");
   std::vector<std::string> monitors;
 
 #ifdef _WIN32
@@ -96,8 +97,10 @@ std::vector<std::string> NativeWallpaperSetter::getMonitors() {
   // Check Wayland
   const char *waylandDisplay = std::getenv("WAYLAND_DISPLAY");
   if (waylandDisplay) {
+    LOG_DEBUG("Wayland detected: " + std::string(waylandDisplay));
     // Try Hyprland (hyprctl)
     if (isCommandAvailable("hyprctl")) {
+      LOG_DEBUG("Trying hyprctl...");
       FILE *pipe =
           popen("hyprctl monitors | grep 'Monitor' | awk '{print $2}'", "r");
       if (pipe) {
@@ -114,6 +117,7 @@ std::vector<std::string> NativeWallpaperSetter::getMonitors() {
     }
     // Try Sway (swaymsg)
     else if (isCommandAvailable("swaymsg")) {
+      LOG_DEBUG("Trying swaymsg...");
       FILE *pipe = popen("swaymsg -t get_outputs | grep '\"name\":' | awk "
                          "'{print $2}' | tr -d '\",'",
                          "r");
@@ -128,10 +132,13 @@ std::vector<std::string> NativeWallpaperSetter::getMonitors() {
         }
         pclose(pipe);
       }
+    } else {
+        LOG_DEBUG("No specific Wayland compositor tools found.");
     }
   }
   // Check X11 (or XWayland fallback)
   else {
+    LOG_DEBUG("Checking X11...");
     if (isCommandAvailable("xrandr")) {
       FILE *pipe =
           popen("xrandr --query | grep ' connected' | awk '{print $1}'", "r");
@@ -152,9 +159,11 @@ std::vector<std::string> NativeWallpaperSetter::getMonitors() {
 
   // Fallback if none found
   if (monitors.empty()) {
+    LOG_DEBUG("No monitors found, adding default.");
     monitors.push_back("0"); // Default index
   }
 
+  LOG_DEBUG("NativeWallpaperSetter::getMonitors() end");
   return monitors;
 }
 

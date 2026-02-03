@@ -62,7 +62,7 @@ void Application::onActivate(GApplication *app, gpointer) {
     bwp::utils::Logger::log(bwp::utils::LogLevel::INFO,
                             "First run detected - showing Setup Wizard");
     // Assuming MainWindow is a GtkWindow subclass
-    auto *wizard = new SetupDialog(GTK_WINDOW(window));
+    auto *wizard = new SetupDialog(window->getGtkWindow());
     wizard->show();
   }
 }
@@ -125,7 +125,7 @@ std::string Application::findStylesheetPath() {
     searchPaths.push_back((exePath / "../../data/ui/style.css").string());
     searchPaths.push_back((exePath / "../../../data/ui/style.css").string());
   } catch (const std::exception &e) {
-    bwp::utils::Logger::log(bwp::utils::LogLevel::WARNING,
+    bwp::utils::Logger::log(bwp::utils::LogLevel::WARN,
                             "Failed to get executable path: " +
                                 std::string(e.what()));
   }
@@ -158,7 +158,7 @@ void Application::loadStylesheet() {
 
   if (cssPath.empty()) {
     bwp::utils::Logger::log(
-        bwp::utils::LogLevel::ERROR,
+        bwp::utils::LogLevel::ERR,
         "Could not find style.css - UI may look incorrect. "
         "Searched in XDG data directories and development paths.");
     return;
@@ -177,7 +177,7 @@ void Application::loadStylesheet() {
   // Check if the provider has content by trying to get display
   GdkDisplay *display = gdk_display_get_default();
   if (!display) {
-    bwp::utils::Logger::log(bwp::utils::LogLevel::ERROR,
+    bwp::utils::Logger::log(bwp::utils::LogLevel::ERR,
                             "Could not get default display for CSS loading");
     return;
   }
@@ -192,7 +192,7 @@ void Application::loadStylesheet() {
 
 void Application::setupCssHotReload() {
   if (s_currentCssPath.empty()) {
-    bwp::utils::Logger::log(bwp::utils::LogLevel::WARNING,
+    bwp::utils::Logger::log(bwp::utils::LogLevel::WARN,
                             "Cannot setup CSS hot-reload: no CSS file loaded");
     return;
   }
@@ -206,7 +206,7 @@ void Application::setupCssHotReload() {
   g_object_unref(cssFile);
 
   if (error) {
-    bwp::utils::Logger::log(bwp::utils::LogLevel::WARNING,
+    bwp::utils::Logger::log(bwp::utils::LogLevel::WARN,
                             "Failed to setup CSS hot-reload: " +
                                 std::string(error->message));
     g_error_free(error);
@@ -242,7 +242,7 @@ void Application::onCssFileChanged(GFileMonitor *monitor, GFile *file,
 
 void Application::reloadStylesheet() {
   if (s_currentCssPath.empty() || !s_cssProvider) {
-    bwp::utils::Logger::log(bwp::utils::LogLevel::WARNING,
+    bwp::utils::Logger::log(bwp::utils::LogLevel::WARN,
                             "Cannot reload stylesheet: no CSS file loaded");
     return;
   }
@@ -284,7 +284,7 @@ bool Application::spawnProcess(const std::string &name,
       g_free(argv[0]);
 
       if (err) {
-        bwp::utils::Logger::log(bwp::utils::LogLevel::ERROR,
+        bwp::utils::Logger::log(bwp::utils::LogLevel::ERR,
                                 "Failed to spawn " + name + ": " +
                                     err->message);
         g_error_free(err);

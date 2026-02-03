@@ -2,7 +2,7 @@
 #include "ITrayIcon.hpp"
 #include "../core/ipc/LinuxIPCClient.hpp"
 #include <gtk/gtk.h>
-#include <libappindicator/app-indicator.h>
+#include <libayatana-appindicator/app-indicator.h>
 #include <string>
 
 namespace bwp::tray {

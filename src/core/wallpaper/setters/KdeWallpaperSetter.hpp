@@ -33,7 +33,7 @@ public:
         }
     }
 
-    bool isSupported() override {
+    bool isSupported() const override {
         const char* currentDesktop = std::getenv("XDG_CURRENT_DESKTOP");
         bool isKde = (currentDesktop && std::string(currentDesktop).find("KDE") != std::string::npos);
         return isKde && utils::ProcessUtils::commandExists("qdbus");

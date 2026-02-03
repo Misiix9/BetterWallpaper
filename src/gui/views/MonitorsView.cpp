@@ -136,7 +136,7 @@ void MonitorsView::setupUi() {
                 g_object_get_data(G_OBJECT(dialog), "monitor_name"));
 
             if (path && mon) {
-              bwp::ipc::DBusClient client;
+              bwp::ipc::LinuxIPCClient client;
               if (client.connect()) {
                 client.setWallpaper(path, *mon);
               } else {
@@ -240,7 +240,7 @@ void MonitorsView::applyCloneMode(const std::string &wallpaperPath) {
     return;
 
   // Apply the same wallpaper to all monitors
-  bwp::ipc::DBusClient client;
+  bwp::ipc::LinuxIPCClient client;
   if (!client.connect()) {
     LOG_ERROR("Failed to connect to daemon for Clone mode");
     return;
@@ -288,7 +288,7 @@ void MonitorsView::applySpanMode(const std::string &wallpaperPath) {
   // This requires daemon support to properly crop/position the wallpaper
   // based on each monitor's position in the combined space.
 
-  bwp::ipc::DBusClient client;
+  bwp::ipc::LinuxIPCClient client;
   if (!client.connect()) {
     LOG_ERROR("Failed to connect to daemon for Span mode");
     return;
