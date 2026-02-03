@@ -42,6 +42,16 @@ void WallpaperEngineRenderer::setScalingMode(ScalingMode mode) {
 
 void WallpaperEngineRenderer::setMonitor(const std::string &monitor) {
   m_monitor = monitor;
+  m_monitors.clear();
+  m_monitors.push_back(monitor);
+}
+
+void WallpaperEngineRenderer::setMonitors(
+    const std::vector<std::string> &monitors) {
+  m_monitors = monitors;
+  if (!monitors.empty()) {
+    m_monitor = monitors[0]; // Primary?
+  }
 }
 
 void WallpaperEngineRenderer::launchProcess() {
@@ -77,11 +87,29 @@ void WallpaperEngineRenderer::launchProcess() {
       }
     }
   }
-  args.push_back(arg);
 
-  if (!m_monitor.empty()) {
-    args.push_back("--screen-root");
-    args.push_back(m_monitor);
+  // Decide command structure based on monitor count
+  // Multi-monitor chaining: ./linux-wallpaperengine --screen-root A --bg ID
+  // --screen-root B --bg ID Single/Default: ./linux-wallpaperengine ID
+  // [--screen-root A]
+
+  if (!m_monitors.empty()) {
+    // Explicit assignment for each monitor
+    for (const auto &mon : m_monitors) {
+      args.push_back("--screen-root");
+      args.push_back(mon);
+      args.push_back("--bg"); // Explicitly assign the background
+      args.push_back(arg);
+      // TODO: Per-monitor scaling can be added here if we store it
+      // args.push_back("--scaling"); ...
+    }
+  } else {
+    // Classic single setup
+    args.push_back(arg); // Positional ID
+    if (!m_monitor.empty()) {
+      args.push_back("--screen-root");
+      args.push_back(m_monitor);
+    }
   }
 
   if (m_fpsLimit > 0) {
@@ -95,6 +123,23 @@ void WallpaperEngineRenderer::launchProcess() {
 
   pid_t pid = fork();
   if (pid == 0) {
+    // Set LD_LIBRARY_PATH to include local directory for libGLEW symlink
+    // Find where we are - assume project root for now or relative to
+    // executable? Symlink is in /home/onxy/Documents/scripts/BetterWallpaper
+    // Let's deduce it or hardcode for this fix, ideally use a relative path
+    // logic. But standard way: just getenv, append, setenv.
+
+    const char *currentLd = getenv("LD_LIBRARY_PATH");
+    std::string newLd =
+        "/home/onxy/Documents/scripts/BetterWallpaper"; // Hardcode for
+                                                        // immediate fix as user
+                                                        // is stuck here
+    if (currentLd) {
+      newLd += ":";
+      newLd += currentLd;
+    }
+    setenv("LD_LIBRARY_PATH", newLd.c_str(), 1);
+
     std::vector<char *> c_args;
     for (const auto &a : args)
       c_args.push_back(const_cast<char *>(a.c_str()));
@@ -105,18 +150,12 @@ void WallpaperEngineRenderer::launchProcess() {
     m_pid = pid;
     m_isPlaying = true;
 
-    // Wait briefly to check for immediate launch failure
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    int status;
-    pid_t result = waitpid(m_pid, &status, WNOHANG);
-    if (result == m_pid) {
-      // Process died immediately - likely GLX/OpenGL issue
-      LOG_ERROR(
-          "linux-wallpaperengine failed to start (GLX/OpenGL unavailable?)");
-      m_pid = -1;
-      m_isPlaying = false;
-      m_crashCount++;
-    }
+    m_pid = pid;
+    m_isPlaying = true;
+
+    // Do NOT block invalidating the UI. Let the watcher thread handle crashes.
+    // std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    // ... waitpid ...
   }
 }
 
@@ -166,17 +205,25 @@ void WallpaperEngineRenderer::monitorProcess() {
         m_crashCount++;
 
         m_pid = -1;
-        std::this_thread::sleep_for(std::chrono::seconds(backoff));
+
+        // Interruptible sleep
+        std::unique_lock<std::mutex> lock(m_cvMutex);
+        m_cv.wait_for(lock, std::chrono::seconds(backoff),
+                      [this] { return m_stopWatcher.load(); });
 
         if (!m_stopWatcher && m_crashCount < MAX_CRASH_COUNT) {
           launchProcess();
         }
       } else if (res == 0) {
-        // Process still running, sleep a bit
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        // Process still running, sleep a bit (interruptible)
+        std::unique_lock<std::mutex> lock(m_cvMutex);
+        m_cv.wait_for(lock, std::chrono::milliseconds(500),
+                      [this] { return m_stopWatcher.load(); });
       }
     } else {
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      std::unique_lock<std::mutex> lock(m_cvMutex);
+      m_cv.wait_for(lock, std::chrono::milliseconds(100),
+                    [this] { return m_stopWatcher.load(); });
     }
   }
 }
@@ -194,6 +241,7 @@ void WallpaperEngineRenderer::stop() { terminateProcess(); }
 
 void WallpaperEngineRenderer::terminateProcess() {
   m_stopWatcher = true;
+  m_cv.notify_all();
 
   if (m_pid != -1) {
     kill(m_pid, SIGTERM);
@@ -241,11 +289,12 @@ void WallpaperEngineRenderer::setMuted(bool muted) {
   }
 }
 
-void WallpaperEngineRenderer::setAudioData(const std::vector<float>& /*audioBands*/) {
-  // Wallpaper Engine (linux port) typically captures audio internally via PulseAudio.
-  // We don't need to pass FFT data manually unless we are injecting it.
-  // For now, this is a no-op as the external process handles it.
-  // If we need to send data, we would write to a pipe/socket here.
+void WallpaperEngineRenderer::setAudioData(
+    const std::vector<float> & /*audioBands*/) {
+  // Wallpaper Engine (linux port) typically captures audio internally via
+  // PulseAudio. We don't need to pass FFT data manually unless we are injecting
+  // it. For now, this is a no-op as the external process handles it. If we need
+  // to send data, we would write to a pipe/socket here.
 }
 
 WallpaperType WallpaperEngineRenderer::getType() const {

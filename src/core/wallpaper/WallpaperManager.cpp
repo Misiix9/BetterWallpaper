@@ -15,6 +15,7 @@
 #endif
 #include <cstdlib>
 #include <fstream>
+#include <vector>
 
 namespace bwp::wallpaper {
 
@@ -41,8 +42,6 @@ void WallpaperManager::initialize() {
   for (const auto &m : monitors) {
     handleMonitorUpdate(m, true);
   }
-
-
 
 #ifndef _WIN32
   // Initialize Hyprland integration
@@ -73,9 +72,9 @@ void WallpaperManager::handleMonitorUpdate(const monitor::MonitorInfo &info,
 #else
   // Windows: Keep track of monitor presence but don't create custom windows
   if (connected) {
-     if (m_monitors.find(info.name) == m_monitors.end()) {
-         m_monitors[info.name] = MonitorState();
-     }
+    if (m_monitors.find(info.name) == m_monitors.end()) {
+      m_monitors[info.name] = MonitorState();
+    }
   }
 #endif
 }
@@ -84,25 +83,26 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
                                     const std::string &path) {
   LOG_INFO("WallpaperManager::setWallpaper called for " + monitorName +
            " with path: " + path);
-           
+
 #ifdef _WIN32
   // Windows Implementation
   // Bypassing renderers and windows for now
   std::lock_guard<std::mutex> lock(m_mutex);
-  
+
   // Track metadata
   if (m_monitors.find(monitorName) == m_monitors.end()) {
-      m_monitors[monitorName] = MonitorState();
+    m_monitors[monitorName] = MonitorState();
   }
   m_monitors[monitorName].currentPath = path;
-  
+
   WindowsWallpaperSetter setter;
-  bool result = setter.setWallpaper(path, monitorName); // Assuming method call valid
-  if(result) {
-      LOG_INFO("Windows wallpaper set successfully.");
-      saveState();
+  bool result =
+      setter.setWallpaper(path, monitorName); // Assuming method call valid
+  if (result) {
+    LOG_INFO("Windows wallpaper set successfully.");
+    saveState();
   } else {
-      LOG_ERROR("Failed to set Windows wallpaper.");
+    LOG_ERROR("Failed to set Windows wallpaper.");
   }
   return result;
 #else
@@ -165,9 +165,10 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
 
   // Apply settings
   if (m_scalingModes.count(monitorName)) {
-    renderer->setScalingMode(static_cast<ScalingMode>(m_scalingModes[monitorName]));
+    renderer->setScalingMode(
+        static_cast<ScalingMode>(m_scalingModes[monitorName]));
   }
-  
+
   LOG_INFO("Wallpaper set successfully!");
 
   // Save state for persistence (without app running)
@@ -176,6 +177,109 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
 
   return true;
 #endif
+}
+bool WallpaperManager::setWallpaper(const std::vector<std::string> &monitors,
+                                    const std::string &path) {
+  if (monitors.empty())
+    return false;
+  if (monitors.size() == 1)
+    return setWallpaper(monitors[0], path);
+
+  // Check if type supports multi-monitor single process
+  std::string mime = utils::FileUtils::getMimeType(path);
+  bool isWE = false;
+  if (mime.find("x-wallpaper-engine") != std::string::npos)
+    isWE = true;
+  else {
+    std::string ext = utils::FileUtils::getExtension(path);
+    if (ext == "pkg" || ext == "json")
+      isWE = true;
+  }
+
+  if (!isWE) {
+    // Fallback for types that don't support multi-monitor instances (Video,
+    // Static)
+    bool allSuccess = true;
+    for (const auto &mon : monitors) {
+      if (!setWallpaper(mon, path))
+        allSuccess = false;
+    }
+    return allSuccess;
+  }
+
+  // Optimized path for Wallpaper Engine
+  LOG_INFO("Setting shared wallpaper for " + std::to_string(monitors.size()) +
+           " monitors: " + path);
+
+  std::lock_guard<std::mutex> lock(m_mutex);
+
+  // Validate monitors
+  std::vector<std::string> validMonitors;
+  for (const auto &name : monitors) {
+    if (m_monitors.find(name) != m_monitors.end()) {
+      validMonitors.push_back(name);
+    } else {
+      LOG_WARN("Monitor not found during bulk set: " + name);
+    }
+  }
+
+  if (validMonitors.empty())
+    return false;
+
+  auto renderer = createRenderer(path);
+  if (!renderer)
+    return false;
+
+  // Setup renderer
+  renderer->setMonitors(validMonitors);
+  if (!renderer->load(path)) {
+    LOG_ERROR("Failed to load shared wallpaper: " + path);
+    return false;
+  }
+
+  // Assign to all monitors
+  for (const auto &name : validMonitors) {
+    auto &state = m_monitors[name];
+
+    if (state.renderer) {
+      // If the old renderer was shared, calling stop() might stop it for
+      // others? If we are replacing it, we likely want to stop it. However,
+      // if we replace one by one, we might stop the same pointer multiple
+      // times? WallpaperRenderer::stop() calling terminateProcess() is
+      // idempotent-ish? But we should avoiding stopping it if we just
+      // assigned it? No, these are OLD renderers. We are replacing them. BUT,
+      // if multiple monitors shared the OLD renderer, stopping it once stops
+      // it for all. That is fine, we are replacing all of them.
+      state.renderer->stop();
+    }
+
+    state.renderer = renderer;
+    state.currentPath = path;
+    state.window->transitionTo(renderer);
+
+    if (m_scalingModes.count(name)) {
+      // renderer->setScalingMode applies globally to the renderer usually?
+      // WE can take one scaling mode arg?
+      // If different monitors have different scaling modes, this shared
+      // approach fails? linux-wallpaperengine supports --scaling <mode>. It
+      // applies to all outputs. So we pick the first valid one or last?
+      renderer->setScalingMode(static_cast<ScalingMode>(m_scalingModes[name]));
+    }
+  }
+
+  if (m_paused) {
+    renderer->pause();
+  } else {
+    LOG_INFO("Starting shared wallpaper playback");
+    renderer->play();
+  }
+
+  LOG_INFO("Shared wallpaper set successfully!");
+
+  saveState();
+  writeHyprpaperConfig();
+
+  return true;
 }
 
 std::shared_ptr<WallpaperRenderer>
@@ -229,24 +333,26 @@ void WallpaperManager::setMuted(bool muted) {
 }
 
 void WallpaperManager::setMuted(const std::string &monitorName, bool muted) {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    if (m_monitors.find(monitorName) != m_monitors.end()) {
-        if (m_monitors[monitorName].renderer) {
-            m_monitors[monitorName].renderer->setMuted(muted);
-        }
+  std::lock_guard<std::mutex> lock(m_mutex);
+  if (m_monitors.find(monitorName) != m_monitors.end()) {
+    if (m_monitors[monitorName].renderer) {
+      m_monitors[monitorName].renderer->setMuted(muted);
     }
+  }
 }
 
 void WallpaperManager::setVolume(const std::string &monitorName, int volume) {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    if (m_monitors.find(monitorName) != m_monitors.end()) {
-        if (m_monitors[monitorName].renderer) {
-            // Volume typically 0.0 - 1.0 or 0 - 100
-            // Assuming 0-100 input, renderer expects float 0-1?
-            // Actually BaseRenderer has setVolume(float). Let's assume input is 0-100.
-            m_monitors[monitorName].renderer->setVolume(static_cast<float>(volume) / 100.0f);
-        }
+  std::lock_guard<std::mutex> lock(m_mutex);
+  if (m_monitors.find(monitorName) != m_monitors.end()) {
+    if (m_monitors[monitorName].renderer) {
+      // Volume typically 0.0 - 1.0 or 0 - 100
+      // Assuming 0-100 input, renderer expects float 0-1?
+      // Actually BaseRenderer has setVolume(float). Let's assume input is
+      // 0-100.
+      m_monitors[monitorName].renderer->setVolume(static_cast<float>(volume) /
+                                                  100.0f);
     }
+  }
 }
 
 void WallpaperManager::pause(const std::string &monitorName) {
@@ -356,7 +462,8 @@ void WallpaperManager::writeHyprpaperConfig() {
   }
 
   file << "# Auto-generated by BetterWallpaper\n";
-  file << "# This file allows wallpaper to persist without the app running\n\n";
+  file << "# This file allows wallpaper to persist without the app "
+          "running\n\n";
   file << "splash = false\n";
   file << "ipc = off\n\n";
 
@@ -493,11 +600,11 @@ void WallpaperManager::fallbackToStatic() {
   }
 }
 
-
-void WallpaperManager::setScalingMode(const std::string &monitorName, int mode) {
+void WallpaperManager::setScalingMode(const std::string &monitorName,
+                                      int mode) {
   std::lock_guard<std::mutex> lock(m_mutex);
   m_scalingModes[monitorName] = mode;
-  
+
   auto it = m_monitors.find(monitorName);
   if (it != m_monitors.end() && it->second.renderer) {
     it->second.renderer->setScalingMode(static_cast<ScalingMode>(mode));

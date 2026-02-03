@@ -1,9 +1,9 @@
 #include "WallpaperCard.hpp"
 #include "../../core/hyprland/HyprlandManager.hpp"
+#include "../../core/utils/Constants.hpp"
 #include "../../core/wallpaper/ThumbnailCache.hpp"
 #include "../../core/wallpaper/WallpaperLibrary.hpp"
 #include "../dialogs/WorkspaceSelectionDialog.hpp"
-#include "../../core/utils/Constants.hpp"
 #include <algorithm>
 #include <filesystem>
 #include <gdk-pixbuf/gdk-pixbuf.h>
@@ -20,9 +20,9 @@ WallpaperCard::WallpaperCard(const bwp::wallpaper::WallpaperInfo &info)
 
   // Main container (The Card Frame)
   m_mainBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-  gtk_widget_set_size_request(m_mainBox, CARD_WIDTH, CARD_HEIGHT);
-  // Do not enforce strict size preventing expansion? Grid usually handles this.
-  // But let's keep it fixed for consistent look.
+  // gtk_widget_set_size_request(m_mainBox, CARD_WIDTH, CARD_HEIGHT);
+  //  Do not enforce strict size preventing expansion? Grid usually handles
+  //  this. But let's keep it fixed for consistent look.
   gtk_widget_add_css_class(m_mainBox, "wallpaper-card");
 
   // Overlay container (Layers)
@@ -51,13 +51,13 @@ WallpaperCard::WallpaperCard(const bwp::wallpaper::WallpaperInfo &info)
   gtk_widget_add_css_class(titleContainer, "card-title-overlay");
   gtk_widget_set_valign(titleContainer, GTK_ALIGN_END);
   gtk_widget_set_halign(titleContainer, GTK_ALIGN_FILL);
-  
+
   std::string title = std::filesystem::path(info.path).stem().string();
   m_titleLabel = gtk_label_new(title.c_str());
   gtk_label_set_ellipsize(GTK_LABEL(m_titleLabel), PANGO_ELLIPSIZE_END);
   gtk_widget_set_halign(m_titleLabel, GTK_ALIGN_START);
   gtk_widget_add_css_class(m_titleLabel, "card-title-text");
-  
+
   gtk_box_append(GTK_BOX(titleContainer), m_titleLabel);
   gtk_overlay_add_overlay(GTK_OVERLAY(m_overlay), titleContainer);
 
@@ -70,7 +70,7 @@ WallpaperCard::WallpaperCard(const bwp::wallpaper::WallpaperInfo &info)
   gtk_widget_set_valign(m_favoriteBtn, GTK_ALIGN_START);
   gtk_widget_set_margin_top(m_favoriteBtn, 8);
   gtk_widget_set_margin_end(m_favoriteBtn, 8);
-  
+
   setFavorite(m_info.favorite);
 
   g_signal_connect(m_favoriteBtn, "clicked",
@@ -86,13 +86,13 @@ WallpaperCard::WallpaperCard(const bwp::wallpaper::WallpaperInfo &info)
                    this);
   gtk_overlay_add_overlay(GTK_OVERLAY(m_overlay), m_favoriteBtn);
 
-
-
   // Auto-Tag Badge (Sparkle) - Bottom Right
-  m_autoTagBadge = gtk_image_new_from_icon_name("weather-clear-night-symbolic"); // Sparkle-like
+  m_autoTagBadge = gtk_image_new_from_icon_name(
+      "weather-clear-night-symbolic"); // Sparkle-like
   gtk_widget_set_tooltip_text(m_autoTagBadge, "Auto-tagged by AI");
   gtk_widget_add_css_class(m_autoTagBadge, "card-badge");
-  gtk_widget_add_css_class(m_autoTagBadge, "auto-tag-badge"); // gold/accent color
+  gtk_widget_add_css_class(m_autoTagBadge,
+                           "auto-tag-badge"); // gold/accent color
   gtk_widget_set_halign(m_autoTagBadge, GTK_ALIGN_END);
   gtk_widget_set_valign(m_autoTagBadge, GTK_ALIGN_END);
   gtk_widget_set_margin_bottom(m_autoTagBadge, 8);
@@ -137,54 +137,73 @@ void WallpaperCard::setupContextMenu() {
   GSimpleActionGroup *actions = g_simple_action_group_new();
 
   // Actions...
-  auto createAction = [&](const char* name, auto callback) {
-      GSimpleAction *act = g_simple_action_new(name, NULL);
-      g_object_set_data(G_OBJECT(act), "card", this);
-      g_signal_connect(act, "activate", G_CALLBACK(callback), act);
-      g_action_map_add_action(G_ACTION_MAP(actions), G_ACTION(act));
+  auto createAction = [&](const char *name, auto callback) {
+    GSimpleAction *act = g_simple_action_new(name, NULL);
+    g_object_set_data(G_OBJECT(act), "card", this);
+    g_signal_connect(act, "activate", G_CALLBACK(callback), act);
+    g_action_map_add_action(G_ACTION_MAP(actions), G_ACTION(act));
   };
 
-  createAction("set-wallpaper", +[](GSimpleAction *, GVariant *, gpointer data) {
-      auto *card = static_cast<WallpaperCard *>(g_object_get_data(G_OBJECT(data), "card"));
-      if (card && card->m_setWallpaperCallback) card->m_setWallpaperCallback(card->m_info.path);
-  });
+  createAction(
+      "set-wallpaper", +[](GSimpleAction *, GVariant *, gpointer data) {
+        auto *card = static_cast<WallpaperCard *>(
+            g_object_get_data(G_OBJECT(data), "card"));
+        if (card && card->m_setWallpaperCallback)
+          card->m_setWallpaperCallback(card->m_info.path);
+      });
 
-  createAction("toggle-favorite", +[](GSimpleAction *, GVariant *, gpointer data) {
-      auto *card = static_cast<WallpaperCard *>(g_object_get_data(G_OBJECT(data), "card"));
-      if (card) {
+  createAction(
+      "toggle-favorite", +[](GSimpleAction *, GVariant *, gpointer data) {
+        auto *card = static_cast<WallpaperCard *>(
+            g_object_get_data(G_OBJECT(data), "card"));
+        if (card) {
           bool newFav = !card->m_info.favorite;
           card->m_info.favorite = newFav;
           card->setFavorite(newFav);
-          bwp::wallpaper::WallpaperLibrary::getInstance().updateWallpaper(card->m_info);
-      }
-  });
+          bwp::wallpaper::WallpaperLibrary::getInstance().updateWallpaper(
+              card->m_info);
+        }
+      });
 
-  createAction("set-for-workspace", +[](GSimpleAction *, GVariant *, gpointer data) {
-      auto *card = static_cast<WallpaperCard *>(g_object_get_data(G_OBJECT(data), "card"));
-      if (card) {
-           GtkWidget *toplevel = gtk_widget_get_ancestor(card->getWidget(), GTK_TYPE_WINDOW);
-           if (GTK_IS_WINDOW(toplevel)) {
-               auto *dialog = new WorkspaceSelectionDialog(GTK_WINDOW(toplevel), card->getInfo().path);
-               dialog->show([](const std::set<int> &){});
-           }
-      }
-  });
+  createAction(
+      "set-for-workspace", +[](GSimpleAction *, GVariant *, gpointer data) {
+        auto *card = static_cast<WallpaperCard *>(
+            g_object_get_data(G_OBJECT(data), "card"));
+        if (card) {
+          GtkWidget *toplevel =
+              gtk_widget_get_ancestor(card->getWidget(), GTK_TYPE_WINDOW);
+          if (GTK_IS_WINDOW(toplevel)) {
+            auto *dialog = new WorkspaceSelectionDialog(GTK_WINDOW(toplevel),
+                                                        card->getInfo().path);
+            dialog->show([](const std::set<int> &) {});
+          }
+        }
+      });
 
-  createAction("show-in-files", +[](GSimpleAction *, GVariant *, gpointer data) {
-      auto *card = static_cast<WallpaperCard *>(g_object_get_data(G_OBJECT(data), "card"));
-      if (card) {
-          std::string cmd = "xdg-open \"" + std::filesystem::path(card->m_info.path).parent_path().string() + "\"";
+  createAction(
+      "show-in-files", +[](GSimpleAction *, GVariant *, gpointer data) {
+        auto *card = static_cast<WallpaperCard *>(
+            g_object_get_data(G_OBJECT(data), "card"));
+        if (card) {
+          std::string cmd =
+              "xdg-open \"" +
+              std::filesystem::path(card->m_info.path).parent_path().string() +
+              "\"";
           system(cmd.c_str());
-      }
-  });
+        }
+      });
 
   gtk_widget_insert_action_group(m_mainBox, "card", G_ACTION_GROUP(actions));
 
   GtkGesture *rightClick = gtk_gesture_click_new();
-  gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(rightClick), GDK_BUTTON_SECONDARY);
-  g_signal_connect(rightClick, "pressed", G_CALLBACK(+[](GtkGestureClick *, gint, gdouble x, gdouble y, gpointer data) {
-      static_cast<WallpaperCard *>(data)->showContextMenu(x, y);
-  }), this);
+  gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(rightClick),
+                                GDK_BUTTON_SECONDARY);
+  g_signal_connect(rightClick, "pressed",
+                   G_CALLBACK(+[](GtkGestureClick *, gint, gdouble x, gdouble y,
+                                  gpointer data) {
+                     static_cast<WallpaperCard *>(data)->showContextMenu(x, y);
+                   }),
+                   this);
   gtk_widget_add_controller(m_mainBox, GTK_EVENT_CONTROLLER(rightClick));
 
   g_object_unref(menu);
@@ -223,28 +242,31 @@ void WallpaperCard::setInfo(const bwp::wallpaper::WallpaperInfo &info) {
   // Reset Badges
   gtk_widget_set_visible(m_autoTagBadge, info.isAutoTagged);
   gtk_widget_set_visible(m_scanOverlay, info.isScanning);
-  
+
   updateThumbnail(info.path);
 }
 
 void WallpaperCard::updateThumbnail(const std::string &path) {
   showSkeleton();
   auto &cache = bwp::wallpaper::ThumbnailCache::getInstance();
-  cache.getAsync(path, bwp::wallpaper::ThumbnailCache::Size::Medium, [this, alive = m_aliveToken](GdkPixbuf *pixbuf) {
-    if (!*alive) return;
-    if (pixbuf) {
-      GdkTexture *texture = gdk_texture_new_for_pixbuf(pixbuf);
-      if (texture) {
-        gtk_picture_set_paintable(GTK_PICTURE(m_image), GDK_PAINTABLE(texture));
-        g_object_unref(texture);
-      }
-      hideSkeleton();
-    } else {
-      hideSkeleton();
-      gtk_picture_set_paintable(GTK_PICTURE(m_image), nullptr);
-      gtk_widget_add_css_class(m_image, "no-thumbnail");
-    }
-  });
+  cache.getAsync(path, bwp::wallpaper::ThumbnailCache::Size::Medium,
+                 [this, alive = m_aliveToken](GdkPixbuf *pixbuf) {
+                   if (!*alive)
+                     return;
+                   if (pixbuf) {
+                     GdkTexture *texture = gdk_texture_new_for_pixbuf(pixbuf);
+                     if (texture) {
+                       gtk_picture_set_paintable(GTK_PICTURE(m_image),
+                                                 GDK_PAINTABLE(texture));
+                       g_object_unref(texture);
+                     }
+                     hideSkeleton();
+                   } else {
+                     hideSkeleton();
+                     gtk_picture_set_paintable(GTK_PICTURE(m_image), nullptr);
+                     gtk_widget_add_css_class(m_image, "no-thumbnail");
+                   }
+                 });
 }
 
 void WallpaperCard::showSkeleton() {

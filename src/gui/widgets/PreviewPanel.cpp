@@ -2,10 +2,10 @@
 
 #include "../../core/monitor/MonitorManager.hpp"
 #include "../../core/slideshow/SlideshowManager.hpp"
-#include "../../core/wallpaper/WallpaperManager.hpp"
 #include "../../core/utils/Logger.hpp"
 #include "../../core/wallpaper/NativeWallpaperSetter.hpp"
 #include "../../core/wallpaper/WallpaperLibrary.hpp"
+#include "../../core/wallpaper/WallpaperManager.hpp"
 #include "../dialogs/ErrorDialog.hpp"
 #include <algorithm>
 #include <cctype>
@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <iostream>
+#include <thread>
 
 namespace bwp::gui {
 
@@ -82,15 +83,21 @@ void PreviewPanel::setupUi() {
   gtk_box_append(GTK_BOX(m_box), m_detailsLabel);
 
   // Monitor selector
-  GtkWidget *monitorBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+  GtkWidget *monitorBox = gtk_box_new(GTK_ORIENTATION_VERTICAL,
+                                      4); // changed to vertical to hold check
   gtk_widget_set_margin_top(monitorBox, 12);
 
+  GtkWidget *monitorRow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
   GtkWidget *monitorLabel = gtk_label_new("Monitor:");
-  gtk_box_append(GTK_BOX(monitorBox), monitorLabel);
+  gtk_box_append(GTK_BOX(monitorRow), monitorLabel);
 
   m_monitorDropdown = gtk_drop_down_new(nullptr, nullptr);
   gtk_widget_set_hexpand(m_monitorDropdown, TRUE);
-  gtk_box_append(GTK_BOX(monitorBox), m_monitorDropdown);
+  gtk_box_append(GTK_BOX(monitorRow), m_monitorDropdown);
+  gtk_box_append(GTK_BOX(monitorBox), monitorRow);
+
+  // m_applyAllCheck removed as requested
+
   gtk_box_append(GTK_BOX(m_box), monitorBox);
 
   updateMonitorList();
@@ -193,9 +200,19 @@ void PreviewPanel::updateMonitorList() {
 
   GtkStringList *list = gtk_string_list_new(nullptr);
 
+  // Add "All Monitors" option first
+  gtk_string_list_append(list, "All Monitors");
+
   if (monitors.empty()) {
-    gtk_string_list_append(list, "eDP-1");
-    m_monitorNames.push_back("eDP-1");
+    // If no monitors detected, maybe fallback to "eDP-1" or just rely on "All"
+    // targeting eDP-1 fallback But let's keep specific names if available.
+    // Actually if empty, loop below won't run.
+    if (monitors.empty()) {
+      // Only "All Monitors" present.
+      // Maybe add eDP-1 implicit?
+      // Let's assume MonitorManager always returns something if stubbed
+      // correctly, or returns empty. If empty, "All Monitors" targets fallback.
+    }
   } else {
     for (const auto &mon : monitors) {
       gtk_string_list_append(list, mon.name.c_str());
@@ -347,54 +364,149 @@ void PreviewPanel::onApplyClicked() {
     gtk_label_set_text(GTK_LABEL(m_statusLabel), "✗ No wallpaper selected");
     return;
   }
-  
-  auto& wm = bwp::wallpaper::WallpaperManager::getInstance();
-  
+
+  auto &wm = bwp::wallpaper::WallpaperManager::getInstance();
+
   // 1. Configure settings
   // Mute
   bool muted = gtk_check_button_get_active(GTK_CHECK_BUTTON(m_silentCheck));
   wm.setMuted(muted);
-  
+
   // FPS
   int fps = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(m_fpsSpin));
-  if (fps > 0) wm.setFpsLimit(fps);
-  
-  // Monitor
+  if (fps > 0)
+    wm.setFpsLimit(fps);
+
+  // Refresh monitor list to ensure we have latest
+  updateMonitorList();
+
+  // Monitor Selection
+  // Index 0 is "All Monitors"
+  // Index 1+ correspond to m_monitorNames[i-1]
+
   guint selected = gtk_drop_down_get_selected(GTK_DROP_DOWN(m_monitorDropdown));
-  std::string monitor = "eDP-1";
-  if (selected < m_monitorNames.size()) {
-    monitor = m_monitorNames[selected];
-  }
-  
-  // Scaling
-  guint scalingIdx = gtk_drop_down_get_selected(GTK_DROP_DOWN(m_scalingDropdown));
-  // Map index to ScalingMode enum (assuming order matches: Default, Stretch, Fit, Fill)
-  // 0: Default (Fill?), 1: Stretch, 2: Fit, 3: Fill
-  // Enum: 0: Stretch, 1: Fit, 2: Fill, 3: Center, 4: Tile, 5: Zoom
-  int scalingMode = 2; // Default Fill
-  switch (scalingIdx) {
-    case 1: scalingMode = 0; break; // Stretch
-    case 2: scalingMode = 1; break; // Fit
-    case 3: scalingMode = 2; break; // Fill
-  }
-  wm.setScalingMode(monitor, scalingMode);
+  bool applyAll = (selected == 0);
 
-  LOG_INFO("Setting wallpaper via Manager: " + m_currentInfo.path + " on " + monitor);
-  
-  gtk_label_set_text(GTK_LABEL(m_statusLabel), "Setting wallpaper...");
-  while (g_main_context_iteration(nullptr, FALSE)) {}
-
-  if (wm.setWallpaper(monitor, m_currentInfo.path)) {
-    gtk_label_set_text(GTK_LABEL(m_statusLabel), "✓ Wallpaper set!");
-  } else {
-    gtk_label_set_text(GTK_LABEL(m_statusLabel), "✗ Failed to set");
-    
-    GtkRoot *root = gtk_widget_get_root(GTK_WIDGET(m_applyButton));
-    if (root && GTK_IS_WINDOW(root)) {
-      ErrorDialog::show(GTK_WINDOW(root), "Failed to set wallpaper",
-                        "Could not apply " + m_currentInfo.path);
+  std::string selectedMonitor = "eDP-1";
+  if (!applyAll && !m_monitorNames.empty()) {
+    // Offset by 1 because 0 is "All"
+    size_t monitorIdx = selected - 1;
+    if (monitorIdx < m_monitorNames.size()) {
+      selectedMonitor = m_monitorNames[monitorIdx];
+    } else {
+      // Fallback to the first monitor if selected index is out of bounds
+      selectedMonitor = m_monitorNames[0];
     }
   }
+
+  // Scaling
+  guint scalingIdx =
+      gtk_drop_down_get_selected(GTK_DROP_DOWN(m_scalingDropdown));
+
+  int scalingMode = 2; // Default Fill
+  switch (scalingIdx) {
+  case 1:
+    scalingMode = 0;
+    break; // Stretch
+  case 2:
+    scalingMode = 1;
+    break; // Fit
+  case 3:
+    scalingMode = 2;
+    break; // Fill
+  }
+
+  // Set visual status immediately
+  gtk_label_set_text(GTK_LABEL(m_statusLabel), "Setting wallpaper...");
+
+  // Removed manual main context iteration loop to prevent potential conflicts
+  // or spinning
+
+  std::vector<std::string> targets;
+  if (applyAll) {
+    if (m_monitorNames.empty())
+      targets.push_back("eDP-1"); // Fallback if no monitors but "All" selected?
+    else
+      targets = m_monitorNames;
+  } else {
+    targets.push_back(selectedMonitor);
+  }
+
+  LOG_INFO("Apply clicked. Target count: " + std::to_string(targets.size()));
+  for (const auto &t : targets) {
+    LOG_INFO("Target Monitor: " + t);
+  }
+
+  // Move potentially heavy operation to a background thread to prevent UI
+  // freeze Capture necessary data by value to avoid lifetime issues
+  struct ApplyData {
+    PreviewPanel *panel;
+    std::vector<std::string> targets;
+    std::string path;
+    int scalingMode;
+    bool success;
+  };
+  ApplyData *data =
+      new ApplyData{this, targets, m_currentInfo.path, scalingMode, true};
+
+  std::thread([data]() {
+    auto &wm = bwp::wallpaper::WallpaperManager::getInstance();
+
+    // Use new bulk API if multiple targets, or fallback to single
+    // Also set scaling mode before?
+    // The bulk API handles scaling mode inside (approximated)
+    // But we should ensure scaling mode is collected?
+    // For now, assume global scaling mode from UI applies to all selected.
+
+    // Update scaling modes first in case we use bulk API
+    for (const auto &mon : data->targets) {
+      wm.setScalingMode(mon, data->scalingMode);
+    }
+
+    if (data->targets.size() > 1) {
+      LOG_INFO("Calling bulk setWallpaper for " +
+               std::to_string(data->targets.size()) + " monitors");
+      if (!wm.setWallpaper(data->targets, data->path)) {
+        data->success = false;
+      }
+    } else if (!data->targets.empty()) {
+      // Single monitor
+      LOG_INFO("Calling single setWallpaper for " + data->targets[0]);
+      if (!wm.setWallpaper(data->targets[0], data->path)) {
+        data->success = false;
+      }
+    } else {
+      // Should not happen
+      data->success = false;
+    }
+
+    // Schedule UI update on main thread
+    g_idle_add(
+        +[](gpointer user_data) -> gboolean {
+          ApplyData *d = static_cast<ApplyData *>(user_data);
+
+          if (d->success) {
+            gtk_label_set_text(GTK_LABEL(d->panel->m_statusLabel),
+                               "✓ Wallpaper set!");
+          } else {
+            gtk_label_set_text(GTK_LABEL(d->panel->m_statusLabel),
+                               "✗ Failed to set (some or all)");
+
+            GtkRoot *root =
+                gtk_widget_get_root(GTK_WIDGET(d->panel->m_applyButton));
+            if (root && GTK_IS_WINDOW(root)) {
+              ErrorDialog::show(GTK_WINDOW(root), "Failed to set wallpaper",
+                                "Could not apply " + d->path);
+            }
+          }
+
+          delete d;     // Clean up payload
+          return FALSE; // Run once
+        },
+        data);
+  }).detach();
+
+  // Return immediately, status label already says "Setting..."
 }
 
 void PreviewPanel::setupRating() {

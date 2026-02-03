@@ -13,9 +13,9 @@
     --border-selection: #E5E5E5;
 
     /* Typography */
-    --text-primary: #EDEDED;
-    --text-secondary: #A1A1AA;
-    --text-tertiary: #52525B;
+    --text-primary: #EAEAEA;
+    --text-secondary: #CCCCCC;
+    --text-tertiary: #999999;
     --text-accent: #E5E5E5;
 
     /* Status */
@@ -152,8 +152,21 @@ button {
 
 button.suggested-action {
     background-color: var(--text-accent);
-    color: var(--bg-void);
+    color: var(--bg-void) !important;
     font-weight: bold;
+}
+
+button.suggested-action label {
+    color: var(--bg-void) !important;
+}
+
+/* Specific rule for pill shaped suggested actions to ensure specificity */
+button.suggested-action.pill {
+    color: var(--bg-void) !important;
+}
+
+button.suggested-action.pill label {
+    color: var(--bg-void) !important;
 }
 
 /* Overlay Glass Panels */

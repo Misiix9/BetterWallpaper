@@ -25,14 +25,18 @@ public:
 
   // Set wallpaper for a specific monitor
   bool setWallpaper(const std::string &monitorName, const std::string &path);
+  // Set wallpaper for multiple monitors (possibly optimizing single process)
+  bool setWallpaper(const std::vector<std::string> &monitors,
+                    const std::string &path);
 
   // Set global pause
   // Set global pause
   void setPaused(bool paused);
   void setMuted(bool muted);
-  void setMuted(const std::string &monitorName, bool muted); // Per-monitor overload
+  void setMuted(const std::string &monitorName,
+                bool muted); // Per-monitor overload
   void setVolume(const std::string &monitorName, int volume);
-  
+
   // Settings
   void setScalingMode(const std::string &monitorName, int mode);
   void setFpsLimit(int fps);
@@ -71,16 +75,16 @@ private:
   void killConflictingWallpapers();
 
   std::unordered_map<std::string, MonitorState> m_monitors;
-  
+
   // Forward declare to avoid include cycles or undefined types
   // Note: WallpaperWindow is already included via "WallpaperWindow.hpp",
   // so a forward declaration here is not strictly necessary for compilation.
   // If it were needed, it would typically be at the namespace scope.
-  // class WallpaperWindow; // Removed to avoid shadowing/conflict 
-  
+  // class WallpaperWindow; // Removed to avoid shadowing/conflict
+
   mutable std::mutex m_mutex;
   bool m_paused = false;
-  
+
   // Settings
   std::map<std::string, int> m_scalingModes;
   int m_fpsLimit = 60;

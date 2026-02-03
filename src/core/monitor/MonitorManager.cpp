@@ -47,6 +47,9 @@ MonitorManager::~MonitorManager() {
 #ifndef _WIN32
   if (m_registry)
     wl_registry_destroy(m_registry);
+
+  m_monitors.clear(); // Destroy output proxies while display is valid
+
   if (m_display)
     wl_display_disconnect(m_display);
 #endif
@@ -131,7 +134,7 @@ void MonitorManager::removeMonitor(uint32_t id) {
   }
 }
 #else
-void MonitorManager::addMonitor(uint32_t id, wl_output* output) {}
+void MonitorManager::addMonitor(uint32_t id, wl_output *output) {}
 void MonitorManager::removeMonitor(uint32_t id) {}
 #endif
 

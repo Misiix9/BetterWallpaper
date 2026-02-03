@@ -16,8 +16,8 @@ else()
         nlohmann_json::nlohmann_json
         ${MPV_LIBRARIES}
         ${CURL_LIBRARIES}
-        ${WAYLAND_CLIENT_LIBRARIES}
         ${GTK4_LAYER_SHELL_LIBRARIES}
+        ${WAYLAND_CLIENT_LIBRARIES}
         Threads::Threads
         GTK4::gtk4
         LIBADWAITA::libadwaita-1

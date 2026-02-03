@@ -56,7 +56,7 @@ BetterWallpaper/
 │   ├── cli/                     # Command-line tool (STUB - needs implementation)
 │   └── tray/                    # System tray (STUB - needs implementation)
 ├── data/
-│   └── ui/style.css             # Application styling
+│   └── ui/             # Application styling
 ├── plan.md                      # Original implementation plan (1783 lines)
 └── CMakeLists.txt               # Build configuration
 ```

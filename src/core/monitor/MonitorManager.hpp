@@ -28,6 +28,8 @@ public:
   std::optional<MonitorInfo> getMonitor(const std::string &name) const;
   std::optional<MonitorInfo> getPrimaryMonitor() const;
 
+  wl_display *getDisplay() const { return m_display; }
+
   using MonitorCallback =
       std::function<void(const MonitorInfo &, bool connected)>;
   void setCallback(MonitorCallback callback);

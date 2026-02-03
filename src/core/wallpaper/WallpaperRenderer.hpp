@@ -19,6 +19,7 @@ public:
 
   virtual void setScalingMode(ScalingMode mode) = 0;
   virtual void setMonitor(const std::string &monitor) {}
+  virtual void setMonitors(const std::vector<std::string> &monitors) {}
   virtual void update(double dt) {} // For animations
 
   virtual void play() {}
@@ -28,9 +29,9 @@ public:
   virtual void setVolume(float volume) {}
   virtual void setPlaybackSpeed(float speed) {}
   virtual void setMuted(bool muted) {}
-  
+
   // Audio visualization data (frequency bands, normalized 0-1)
-  virtual void setAudioData(const std::vector<float>& /*audioBands*/) {}
+  virtual void setAudioData(const std::vector<float> & /*audioBands*/) {}
 
   virtual bool isPlaying() const { return false; }
   virtual bool hasAudio() const { return false; }

@@ -1,9 +1,12 @@
 #include "Application.hpp"
 #include "../core/config/ConfigManager.hpp"
+#include "../core/monitor/MonitorManager.hpp"
 #include "../core/utils/Logger.hpp"
+#include "../core/wallpaper/WallpaperManager.hpp"
 #include "MainWindow.hpp"
 #include "dialogs/SetupDialog.hpp"
 #include <iostream>
+#include <wayland-client.h>
 
 namespace bwp::gui {
 
@@ -71,6 +74,13 @@ void Application::onStartup(GApplication *, gpointer) {
   // Initialize things
   bwp::utils::Logger::log(bwp::utils::LogLevel::INFO, "Application startup");
 
+  // Initialize MonitorManager (Wayland connection)
+  if (!bwp::monitor::MonitorManager::getInstance().initialize()) {
+    bwp::utils::Logger::log(bwp::utils::LogLevel::ERR,
+                            "Failed to initialize MonitorManager");
+    // Consider fatal? But let's continue for now, maybe user has no monitors?
+  }
+
   // Load CSS with proper path resolution
   loadStylesheet();
 
@@ -102,12 +112,14 @@ std::string Application::findStylesheetPath() {
   // 2. System data directories (XDG_DATA_DIRS)
   const char *xdgDataDirs = std::getenv("XDG_DATA_DIRS");
   // Default to /usr/local/share:/usr/share if not set
-  std::string dataDirs = xdgDataDirs ? xdgDataDirs : "/usr/local/share:/usr/share";
-  
+  std::string dataDirs =
+      xdgDataDirs ? xdgDataDirs : "/usr/local/share:/usr/share";
+
   size_t pos = 0;
   while ((pos = dataDirs.find(':')) != std::string::npos) {
     std::string dir = dataDirs.substr(0, pos);
-    if (!dir.empty()) searchPaths.push_back(dir + "/betterwallpaper/ui/style.css");
+    if (!dir.empty())
+      searchPaths.push_back(dir + "/betterwallpaper/ui/style.css");
     dataDirs.erase(0, pos + 1);
   }
   if (!dataDirs.empty()) {
@@ -188,6 +200,28 @@ void Application::loadStylesheet() {
 
   bwp::utils::Logger::log(bwp::utils::LogLevel::INFO,
                           "Successfully loaded stylesheet from: " + cssPath);
+
+  // Initialize WallpaperManager (syncs with MonitorManager)
+  bwp::wallpaper::WallpaperManager::getInstance().initialize();
+
+  // Setup Wayland event polling via GLib main loop
+  auto *mmDisplay = bwp::monitor::MonitorManager::getInstance().getDisplay();
+  if (mmDisplay) {
+    int fd = wl_display_get_fd(mmDisplay);
+    GIOChannel *channel = g_io_channel_unix_new(fd);
+    g_io_add_watch(
+        channel, G_IO_IN,
+        +[](GIOChannel *, GIOCondition, gpointer) -> gboolean {
+          bwp::monitor::MonitorManager::getInstance().update();
+          return TRUE;
+        },
+        nullptr);
+    g_io_channel_unref(channel);
+  } else {
+    bwp::utils::Logger::log(
+        bwp::utils::LogLevel::WARN,
+        "MonitorManager has no display, hotplug detection disabled");
+  }
 }
 
 void Application::setupCssHotReload() {
@@ -284,9 +318,9 @@ bool Application::spawnProcess(const std::string &name,
       g_free(argv[0]);
 
       if (err) {
-        bwp::utils::Logger::log(bwp::utils::LogLevel::ERR,
-                                "Failed to spawn " + name + ": " +
-                                    err->message);
+        bwp::utils::Logger::log(bwp::utils::LogLevel::ERR, "Failed to spawn " +
+                                                               name + ": " +
+                                                               err->message);
         g_error_free(err);
         return false;
       }

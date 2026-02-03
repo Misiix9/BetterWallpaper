@@ -46,6 +46,7 @@ add_executable(betterwallpaper
 )
 
 target_link_libraries(betterwallpaper PRIVATE
+    ${GTK4_LAYER_SHELL_LIBRARIES}
     bwp_core
     GTK4::gtk4
     LIBADWAITA::libadwaita-1
