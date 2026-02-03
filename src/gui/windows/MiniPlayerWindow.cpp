@@ -21,11 +21,8 @@ void MiniPlayerWindow::setupUi() {
   gtk_window_set_decorated(GTK_WINDOW(m_window), FALSE);
   gtk_window_set_resizable(GTK_WINDOW(m_window), FALSE);
   
-  // ApplyGlass Panel Style
-  // We need to ensure the window background is transparent to let CSS handle it?
-  // Or apply .glass-panel to the root box.
-  // GTK4 windows are transparent by default? No.
-  // We set css class on window itself usually or root child.
+  // Apply Liquid Glass styling to window
+  gtk_widget_add_css_class(m_window, "void-bg");
   
   m_mainBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
   gtk_widget_add_css_class(m_mainBox, "glass-panel");
@@ -49,7 +46,10 @@ void MiniPlayerWindow::setupUi() {
   // 2. Title
   m_titleLabel = gtk_label_new("No Wallpaper Playing");
   gtk_label_set_ellipsize(GTK_LABEL(m_titleLabel), PANGO_ELLIPSIZE_END);
-  gtk_widget_add_css_class(m_titleLabel, "heading");
+  gtk_widget_add_css_class(m_titleLabel, "title-4");
+  gtk_widget_set_halign(m_titleLabel, GTK_ALIGN_CENTER);
+  gtk_widget_set_margin_start(m_titleLabel, 10);
+  gtk_widget_set_margin_end(m_titleLabel, 10);
   gtk_widget_set_margin_bottom(m_titleLabel, 10);
   gtk_box_append(GTK_BOX(m_mainBox), m_titleLabel);
 

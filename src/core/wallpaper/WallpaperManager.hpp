@@ -82,7 +82,7 @@ private:
   // If it were needed, it would typically be at the namespace scope.
   // class WallpaperWindow; // Removed to avoid shadowing/conflict
 
-  mutable std::mutex m_mutex;
+  mutable std::recursive_mutex m_mutex;  // Recursive to allow nested calls (e.g., setWallpaper -> saveState)
   bool m_paused = false;
 
   // Settings

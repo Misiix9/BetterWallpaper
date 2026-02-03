@@ -13,6 +13,7 @@ ConfigManager &ConfigManager::getInstance() {
 }
 
 ConfigManager::ConfigManager() {
+  LOG_SCOPE_AUTO();
   m_configPath = getConfigPath();
   if (!load()) {
     resetToDefaults();
@@ -21,6 +22,7 @@ ConfigManager::ConfigManager() {
 }
 
 std::filesystem::path ConfigManager::getConfigPath() const {
+  LOG_SCOPE_AUTO();
   const char *configHome = std::getenv("XDG_CONFIG_HOME");
   std::filesystem::path configDir;
   if (configHome) {
@@ -37,6 +39,7 @@ std::filesystem::path ConfigManager::getConfigPath() const {
 }
 
 bool ConfigManager::load() {
+  LOG_SCOPE_AUTO();
   std::lock_guard<std::mutex> lock(m_mutex);
   if (!std::filesystem::exists(m_configPath))
     return false;
@@ -44,6 +47,7 @@ bool ConfigManager::load() {
   try {
     std::string content = utils::FileUtils::readFile(m_configPath);
     m_config = nlohmann::json::parse(content);
+    LOG_INFO("Loaded configuration: " + m_config.dump(4));
 
     // Merge with defaults to ensure all keys exist (migration)
     nlohmann::json defaults = SettingsSchema::getDefaults();
@@ -60,6 +64,7 @@ bool ConfigManager::load() {
 }
 
 bool ConfigManager::save() {
+  LOG_SCOPE_AUTO();
   std::lock_guard<std::mutex> lock(m_mutex);
   try {
     // Pretty print with indent 4
@@ -71,6 +76,7 @@ bool ConfigManager::save() {
 }
 
 void ConfigManager::resetToDefaults() {
+  LOG_SCOPE_AUTO();
   std::lock_guard<std::mutex> lock(m_mutex);
   m_config = SettingsSchema::getDefaults();
 }

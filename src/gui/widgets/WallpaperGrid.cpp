@@ -26,6 +26,8 @@ WallpaperGrid::WallpaperGrid() {
       gtk_custom_filter_new(bwp_wallpaper_object_match, nullptr, nullptr);
   m_filterModel =
       gtk_filter_list_model_new(G_LIST_MODEL(m_store), GTK_FILTER(m_filter));
+  // Model sinks the floating ref, so we need to ref it again for ourselves
+  g_object_ref(m_filter);
 
   // 3. Sort Model (Default sort)
   m_sortModel = gtk_sort_list_model_new(G_LIST_MODEL(m_filterModel), nullptr);
@@ -208,12 +210,21 @@ void WallpaperGrid::updateFilter() {
     return TRUE;
   };
 
-  if (m_filter)
-    g_object_unref(m_filter);
-  m_filter = gtk_custom_filter_new(matchFunc, state, [](gpointer data) {
+  // Create new filter and set on model
+  // Note: gtk_custom_filter_new returns a floating ref that the model sinks
+  GtkCustomFilter* newFilter = gtk_custom_filter_new(matchFunc, state, [](gpointer data) {
     delete static_cast<FilterState *>(data);
   });
-  gtk_filter_list_model_set_filter(m_filterModel, GTK_FILTER(m_filter));
+  
+  // Set on model - this replaces the old filter (model handles old filter's lifecycle)
+  gtk_filter_list_model_set_filter(m_filterModel, GTK_FILTER(newFilter));
+  
+  // Keep reference for destructor - ref it since model already sunk the floating ref
+  g_object_ref(newFilter);
+  if (m_filter) {
+    g_object_unref(m_filter);
+  }
+  m_filter = newFilter;
 }
 
 void WallpaperGrid::setSortOrder(SortOrder order) {

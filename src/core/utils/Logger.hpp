@@ -44,19 +44,37 @@ private:
   static LogLevel m_minLevel;
 };
 
+class ScopeTracer {
+public:
+  ScopeTracer(const char *functionName) : m_functionName(functionName) {
+    Logger::log(LogLevel::DBUG, ">>>> ENTERING: " + m_functionName);
+  }
+
+  ~ScopeTracer() {
+    Logger::log(LogLevel::DBUG, "<<<< EXITING: " + m_functionName);
+  }
+
+private:
+  std::string m_functionName;
+};
+
 // Macros for convenience
 #define LOG_DEBUG(msg)                                                         \
-  ::bwp::utils::Logger::log(::bwp::utils::LogLevel::DBUG, msg, __FILE__,      \
+  ::bwp::utils::Logger::log(::bwp::utils::LogLevel::DBUG, msg, __FILE__,       \
                             __LINE__)
 #define LOG_INFO(msg)                                                          \
   ::bwp::utils::Logger::log(::bwp::utils::LogLevel::INFO, msg)
 #define LOG_WARN(msg)                                                          \
   ::bwp::utils::Logger::log(::bwp::utils::LogLevel::WARN, msg)
 #define LOG_ERROR(msg)                                                         \
-  ::bwp::utils::Logger::log(::bwp::utils::LogLevel::ERR, msg, __FILE__,      \
+  ::bwp::utils::Logger::log(::bwp::utils::LogLevel::ERR, msg, __FILE__,        \
                             __LINE__)
 #define LOG_FATAL(msg)                                                         \
   ::bwp::utils::Logger::log(::bwp::utils::LogLevel::FATAL, msg, __FILE__,      \
                             __LINE__)
+
+#define LOG_SCOPE_FUNCTION(name) ::bwp::utils::ScopeTracer scopeTracer(name)
+
+#define LOG_SCOPE_AUTO() LOG_SCOPE_FUNCTION(__FUNCTION__)
 
 } // namespace bwp::utils

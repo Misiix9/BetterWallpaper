@@ -49,12 +49,13 @@ void LibraryView::setupUi() {
   gtk_widget_set_hexpand(m_box, TRUE);
   gtk_widget_set_vexpand(m_box, TRUE);
 
-  // Header/Search area
+  // Header/Search area - Compact toolbar
   GtkWidget *headerBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-  gtk_widget_set_margin_start(headerBox, 12);
-  gtk_widget_set_margin_end(headerBox, 12);
-  gtk_widget_set_margin_top(headerBox, 8);
-  gtk_widget_set_margin_bottom(headerBox, 8);
+  gtk_widget_add_css_class(headerBox, "library-toolbar");
+  gtk_widget_set_margin_start(headerBox, 8);
+  gtk_widget_set_margin_end(headerBox, 8);
+  gtk_widget_set_margin_top(headerBox, 4);
+  gtk_widget_set_margin_bottom(headerBox, 4);
 
   m_searchBar = std::make_unique<SearchBar>();
   m_searchBar->setCallback([this](const std::string &text) {

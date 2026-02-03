@@ -1,14 +1,14 @@
 # ACTIVE CONTEXT (The Scratchpad)
 
 ## Current Task
-**Phase 3: Core Features - COMPLETE**
-Phase 3 is now complete. Audio Visualization infrastructure is in place.
+**Executing Task: WebGL/HTML5 Wallpaper Support [Roadmap #1]**
 
-## Next Steps
-**Phase 4: Polish & Optimization**
-Verify "No Full Black/White" Rule compliance, Performance Profiling, and Transition Animations.
+## Context
+Phase 1-3 are complete. We are now in Phase 4 (Expansion).
+The goal is to enable rendering of HTML5/WebGL wallpapers.
 
-## Design Rules (Memory)
-*   **Audio**: We have `src/core/audio/AudioAnalyzer` for capture.
-*   **Tray**: We have `src/tray/TrayIcon` with mini-controls.
-*   **I18n**: We have `src/core/i18n/I18n` with gettext support.
+## Plan
+1.  Investigate `WallpaperType` detection in `WallpaperLibrary`.
+2.  Determine if `WallpaperEngineRenderer` supports HTML/Web types (via `linux-wallpaperengine`).
+3.  If yes, enable detection. If no, research `WebKitGTK` integration or external player.
+4.  Verify with `hand_of_god.py`.

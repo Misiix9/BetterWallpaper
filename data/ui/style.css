@@ -1,112 +1,407 @@
-/* BetterWallpaper - Monochrome Glass Design System */
+/* ═══════════════════════════════════════════════════════════════════════════
+   BETTERWALLPAPER — LIQUID GLASS DESIGN SYSTEM
+   Version: 2.0.0 | The Fluid Interface
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 1: CSS VARIABLES — THE DNA
+   ───────────────────────────────────────────────────────────────────────────── */
 
 :root {
-    /* Surfaces */
-    --bg-void: #0A0A0A;
-    --bg-carbon: #121212;
-    --bg-translucent: rgba(18, 18, 18, 0.8);
-    --glass-surface: rgba(30, 30, 30, 0.6);
+    /* ═══ SURFACE PALETTE ═══ */
+    --void: #0A0A0A;              /* The abyss. The deepest layer. */
+    --carbon: #121212;            /* Panels, sidebars. Slightly elevated. */
+    --carbon-elevated: #1A1A1A;   /* Hover states, subtle lift. */
+    --obsidian: #1E1E1E;          /* Cards at rest. */
 
-    /* Borders */
-    --border-subtle: #262626;
-    --border-highlight: rgba(255, 255, 255, 0.1);
+    /* ═══ GLASS MATERIALS ═══ */
+    --glass-dark: rgba(10, 10, 10, 0.85);
+    --glass-medium: rgba(20, 20, 20, 0.75);
+    --glass-light: rgba(30, 30, 30, 0.65);
+    --glass-luminous: rgba(40, 40, 40, 0.55);
+
+    /* ═══ BLUR INTENSITIES ═══ */
+    /* Note: GTK4 CSS has limited backdrop-filter support. 
+       These are for reference; actual blur applied via widget properties where possible. */
+    --blur-subtle: 12px;
+    --blur-medium: 24px;
+    --blur-heavy: 40px;
+    --blur-extreme: 60px;
+
+    /* ═══ BORDERS & STROKES ═══ */
+    --border-void: rgba(255, 255, 255, 0.03);
+    --border-subtle: rgba(255, 255, 255, 0.06);
+    --border-visible: rgba(255, 255, 255, 0.10);
+    --border-highlight: rgba(255, 255, 255, 0.15);
+    --border-glow: rgba(255, 255, 255, 0.25);
     --border-selection: #E5E5E5;
 
-    /* Typography */
-    --text-primary: #EAEAEA;
-    --text-secondary: #CCCCCC;
-    --text-tertiary: #999999;
-    --text-accent: #E5E5E5;
+    /* ═══ TYPOGRAPHY ═══ */
+    --text-primary: #F0F0F0;      /* Headers, emphasis. Bright but not pure white. */
+    --text-secondary: #A8A8B3;    /* Body text. Easy on the eyes. */
+    --text-tertiary: #6B6B76;     /* Disabled, hints, metadata. */
+    --text-ghost: #3A3A42;        /* Placeholder, ultra-subtle. */
 
-    /* Status */
-    --status-error: #7F1D1D;
-    --status-success: #064E3B;
-    --status-steam: #172026;
+    /* ═══ ACCENT & GLOW ═══ */
+    --accent-white: #E8E8E8;
+    --accent-glow: rgba(255, 255, 255, 0.08);
+    --accent-glow-strong: rgba(255, 255, 255, 0.15);
+    --accent-glow-luminous: rgba(255, 255, 255, 0.25);
 
-    /* Animation */
-    --anim-snappy: 200ms cubic-bezier(0.2, 0, 0, 1);
+    /* ═══ SEMANTIC STATUS ═══ */
+    --status-error-bg: rgba(127, 29, 29, 0.4);
+    --status-error-border: rgba(239, 68, 68, 0.3);
+    --status-error-text: #FCA5A5;
+
+    --status-success-bg: rgba(6, 78, 59, 0.4);
+    --status-success-border: rgba(34, 197, 94, 0.3);
+    --status-success-text: #86EFAC;
+
+    --status-warning-bg: rgba(120, 53, 15, 0.4);
+    --status-warning-border: rgba(245, 158, 11, 0.3);
+    --status-warning-text: #FCD34D;
+
+    --status-steam-bg: rgba(23, 32, 38, 0.6);
+    --status-steam-border: rgba(49, 63, 74, 0.5);
+
+    /* ═══ ANIMATION PHYSICS ═══ */
+    /* Spring Physics - Bouncy, fluid, alive */
+    --spring-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);      /* Overshoot bounce */
+    --spring-smooth: cubic-bezier(0.22, 1, 0.36, 1);         /* Smooth spring */
+    --spring-snappy: cubic-bezier(0.16, 1, 0.3, 1);          /* Quick spring */
+    --spring-gentle: cubic-bezier(0.33, 1, 0.68, 1);         /* Gentle ease */
+
+    /* Standard Motion */
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-in-out-quint: cubic-bezier(0.83, 0, 0.17, 1);
+
+    /* Durations */
+    --duration-instant: 100ms;
+    --duration-fast: 150ms;
+    --duration-normal: 250ms;
+    --duration-slow: 400ms;
+    --duration-dramatic: 600ms;
+
+    /* Composite Transitions */
+    --transition-micro: var(--duration-instant) var(--spring-snappy);
+    --transition-fast: var(--duration-fast) var(--spring-smooth);
+    --transition-normal: var(--duration-normal) var(--spring-smooth);
+    --transition-slow: var(--duration-slow) var(--spring-gentle);
+    --transition-bounce: var(--duration-normal) var(--spring-bounce);
+
+    /* ═══ SHADOWS & GLOWS ═══ */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.4), 0 4px 6px rgba(0, 0, 0, 0.3);
+    --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.5), 0 8px 10px rgba(0, 0, 0, 0.3);
+
+    --glow-subtle: 0 0 20px var(--accent-glow);
+    --glow-medium: 0 0 30px var(--accent-glow-strong);
+    --glow-strong: 0 0 40px var(--accent-glow-luminous);
+    --glow-selection: 0 0 20px rgba(255, 255, 255, 0.12), 0 0 40px rgba(255, 255, 255, 0.06);
+
+    /* ═══ SPACING SCALE ═══ */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-8: 32px;
+    --space-10: 40px;
+    --space-12: 48px;
+
+    /* ═══ RADII ═══ */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 18px;
+    --radius-2xl: 24px;
+    --radius-full: 9999px;
 }
 
-/* Application Base */
-window {
-    background-color: var(--bg-void);
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 2: GLOBAL RESETS & BASE
+   ───────────────────────────────────────────────────────────────────────────── */
+
+* {
+    transition-timing-function: var(--spring-smooth);
+}
+
+window,
+.background {
+    background-color: var(--void);
     color: var(--text-primary);
-    font-family: "Geist Sans", "Inter", sans-serif;
 }
 
-/* Typography Overrides */
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 3: TYPOGRAPHY — ULTRA-CLEAN
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Base text styling */
 label {
     color: var(--text-primary);
+    font-family: "Geist", "Inter", "SF Pro Text", -apple-system, BlinkMacSystemFont, sans-serif;
+    transition: color var(--transition-fast), opacity var(--transition-fast);
 }
 
-label.secondary {
+label.secondary,
+.dim-label {
     color: var(--text-secondary);
 }
 
-label.accent {
-    color: var(--text-accent);
+label.tertiary {
+    color: var(--text-tertiary);
 }
 
-/* Components */
+/* Headers - Wide tracking, bold presence */
+.title-1 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--text-primary);
+}
 
-/* Sidebar */
-.sidebar {
-    background-color: var(--bg-carbon);
-    /* Fallback/Base */
+.title-2 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0.015em;
+    color: var(--text-primary);
+}
+
+.title-3 {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: var(--text-primary);
+}
+
+.title-4 {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.005em;
+    color: var(--text-primary);
+}
+
+/* Section headers - All caps, tracking */
+.heading {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+}
+
+/* Body text */
+.body {
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
+.caption {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-tertiary);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 4: SIDEBAR — THE GLASS DOCK
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Sidebar container - fills full height */
+.sidebar-container {
+    background-color: var(--carbon);
     border-right: 1px solid var(--border-subtle);
 }
 
+.sidebar {
+    background-color: var(--carbon);
+    padding: var(--space-2) 0;
+}
+
+/* Ensure sidebar fills full height */
+.sidebar,
+.sidebar listbox,
+listbox.sidebar {
+    background-color: var(--carbon);
+}
+
+/* Sidebar items - Fluid hover states */
 .sidebar row {
     background-color: transparent;
-    border-radius: 8px;
-    margin: 4px 8px;
-    padding: 2px;
-    transition: background-color 150ms ease;
+    border-radius: var(--radius-md);
+    margin: var(--space-1) var(--space-2);
+    padding: var(--space-1);
+    transition: 
+        background-color var(--transition-fast),
+        transform var(--transition-bounce),
+        box-shadow var(--transition-normal);
+    border: 1px solid transparent;
 }
 
 .sidebar row:hover {
+    background-color: var(--carbon-elevated);
+    border-color: var(--border-void);
+    transform: translateX(2px);
+}
+
+.sidebar row:active {
+    transform: translateX(4px) scale(0.98);
     background-color: rgba(255, 255, 255, 0.05);
 }
 
 .sidebar row:selected {
-    background-color: #262626;
+    background-color: rgba(255, 255, 255, 0.08);
+    border-color: var(--border-visible);
+    box-shadow: 
+        inset 0 0 0 1px var(--border-highlight),
+        var(--glow-subtle);
+}
+
+.sidebar row:selected label {
     color: var(--text-primary);
+    font-weight: 500;
 }
 
+.sidebar row:selected image {
+    opacity: 1;
+}
+
+.sidebar row image {
+    opacity: 0.7;
+    transition: opacity var(--transition-fast);
+}
+
+.sidebar row:hover image {
+    opacity: 0.9;
+}
+
+/* Sidebar section headers */
 .sidebar label.heading {
-    font-size: 11px;
-    font-weight: bold;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
     text-transform: uppercase;
-    color: var(--text-tertiary);
-    letter-spacing: 0.5px;
+    color: var(--text-ghost);
+    padding: var(--space-4) var(--space-3) var(--space-2) var(--space-3);
 }
 
-/* Wallpaper Card */
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 5: WALLPAPER CARD — THE LIQUID WINDOW
+   ───────────────────────────────────────────────────────────────────────────── */
+
 .wallpaper-card {
-    background-color: #171717;
-    border-radius: 12px;
-    border: 1px solid var(--border-subtle);
-    transition: all 200ms cubic-bezier(0.2, 0, 0, 1);
+    background-color: transparent;
+    border-radius: var(--radius-lg);
+    border: 2px solid transparent;
+    overflow: hidden;
+    transition: 
+        box-shadow 200ms ease,
+        border-color 200ms ease;
+    box-shadow: none;
+    padding: 0;
+    margin: var(--space-1);
+    position: relative;
 }
 
+/* Hover: Subtle white glow, minimalistic */
 .wallpaper-card:hover {
-    background-color: var(--glass-surface);
-    border-color: var(--text-tertiary);
+    background-color: transparent;
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 
+        0 0 12px rgba(255, 255, 255, 0.08),
+        0 0 24px rgba(255, 255, 255, 0.04);
 }
 
+/* Selected state: White border only, NO background change */
+.wallpaper-card:focus,
+.wallpaper-card:checked,
+.wallpaper-card:selected,
+.wallpaper-card.selected {
+    background-color: transparent;
+    border-color: rgba(255, 255, 255, 0.6);
+    box-shadow: 0 0 16px rgba(255, 255, 255, 0.1);
+}
+
+/* Override any GTK default selection styles */
+flowboxchild:selected .wallpaper-card,
+flowboxchild:focus .wallpaper-card,
+gridview > child:selected .wallpaper-card {
+    background-color: transparent;
+    border-color: rgba(255, 255, 255, 0.6);
+}
+
+flowboxchild:selected,
+flowboxchild:focus,
+gridview > child:selected {
+    background-color: transparent;
+    background: transparent;
+    outline: none;
+}
+
+/* Override hover states - NO background change on hover */
+flowboxchild:hover,
+flowboxchild:hover .wallpaper-card,
+gridview > child:hover,
+gridview > child:hover .wallpaper-card {
+    background-color: transparent;
+    background: transparent;
+}
+
+flowboxchild:hover {
+    background-color: transparent;
+    background: transparent;
+    outline: none;
+}
+
+/* Active/Press: Tactile feedback - sinks slightly */
+.wallpaper-card:active {
+    transform: translateY(-2px) scale(0.98);
+    box-shadow: var(--shadow-md);
+    transition: transform var(--transition-micro);
+}
+
+/* Selected: Luminous border, strong glow */
 .wallpaper-card.selected {
     border: 2px solid var(--border-selection);
-    box-shadow: 0 0 15px rgba(255, 255, 255, 0.08);
-    /* Glow */
+    box-shadow: 
+        var(--shadow-lg),
+        var(--glow-selection);
 }
 
-/* Card Title Overlay (Gradient) */
+/* Card image container - fills card exactly */
+.card-image {
+    border-radius: calc(var(--radius-xl) - 2px);
+}
+
+.card-image.no-thumbnail {
+    background-color: var(--carbon);
+    border-radius: calc(var(--radius-xl) - 2px);
+}
+
+/* Title overlay - Flush with card edges */
 .card-title-overlay {
-    background: linear-gradient(to top, var(--bg-void), transparent);
-    color: var(--text-primary);
-    padding: 12px;
+    background: linear-gradient(
+        to top,
+        rgba(0, 0, 0, 0.85) 0%,
+        rgba(0, 0, 0, 0.4) 60%,
+        transparent 100%
+    );
+    padding: var(--space-3) var(--space-3) var(--space-2) var(--space-3);
+    margin: 0;
     opacity: 0;
-    transition: opacity 200ms ease-in-out;
+    transition: opacity 180ms ease;
+    border-radius: 0 0 calc(var(--radius-xl) - 4px) calc(var(--radius-xl) - 4px);
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
 }
 
 .wallpaper-card:hover .card-title-overlay {
@@ -114,64 +409,1161 @@ label.accent {
 }
 
 .card-title-text {
-    font-weight: bold;
-    font-size: 13px;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
 }
 
-/* Favorite Button (On Image) */
+/* Favorite button - Floating action */
 .card-fav-btn {
-    background: rgba(0, 0, 0, 0.3);
+    background-color: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--border-void);
     color: var(--text-secondary);
-    transition: all 150ms ease;
-    border: none;
+    opacity: 0;
+    transform: scale(0.8);
+    transition: 
+        opacity var(--transition-fast),
+        transform var(--transition-bounce),
+        background-color var(--transition-fast),
+        color var(--transition-fast);
+}
+
+.wallpaper-card:hover .card-fav-btn {
+    opacity: 1;
+    transform: scale(1);
 }
 
 .card-fav-btn:hover {
-    background: var(--bg-carbon);
-    color: #E5E5E5;
+    background-color: rgba(0, 0, 0, 0.6);
+    color: var(--text-primary);
+    transform: scale(1.1);
+}
+
+.card-fav-btn:active {
+    transform: scale(0.9);
 }
 
 .card-fav-btn.favorited {
     color: #FFD700;
-    /* Gold for star */
+    background-color: rgba(255, 215, 0, 0.15);
+    border-color: rgba(255, 215, 0, 0.2);
 }
 
-/* Card Badge */
+/* Card badges */
 .card-badge {
-    background-color: rgba(10, 10, 10, 0.7);
-    border-radius: 4px;
-    padding: 4px;
-    color: var(--text-primary);
+    background-color: var(--glass-dark);
+    border-radius: var(--radius-sm);
+    padding: var(--space-1) var(--space-2);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-void);
 }
 
-/* Buttons */
+.auto-tag-badge {
+    color: #FFD700;
+    background-color: rgba(255, 215, 0, 0.1);
+    border-color: rgba(255, 215, 0, 0.2);
+}
+
+/* Skeleton loading animation */
+.skeleton {
+    background: linear-gradient(
+        90deg,
+        var(--carbon) 0%,
+        var(--carbon-elevated) 50%,
+        var(--carbon) 100%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 6: BUTTONS — TACTILE & RESPONSIVE
+   ───────────────────────────────────────────────────────────────────────────── */
+
 button {
-    transition: var(--anim-snappy);
+    background-color: var(--carbon-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    padding: var(--space-2) var(--space-4);
+    font-weight: 500;
+    transition: 
+        transform var(--transition-bounce),
+        background-color var(--transition-fast),
+        border-color var(--transition-fast),
+        box-shadow var(--transition-normal);
 }
 
+button:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+    border-color: var(--border-visible);
+    box-shadow: var(--glow-subtle);
+}
+
+button:active {
+    transform: scale(0.95);
+    background-color: rgba(255, 255, 255, 0.05);
+    box-shadow: none;
+    transition: transform var(--transition-micro);
+}
+
+/* Primary action button */
 button.suggested-action {
-    background-color: var(--text-accent);
-    color: var(--bg-void) !important;
-    font-weight: bold;
+    background-color: var(--accent-white);
+    border-color: var(--accent-white);
+    color: var(--void) !important;
+    font-weight: 600;
+    box-shadow: var(--glow-subtle);
+}
+
+button.suggested-action:hover {
+    background-color: #FFFFFF;
+    box-shadow: var(--glow-medium);
+}
+
+button.suggested-action:active {
+    background-color: #D4D4D4;
+    box-shadow: none;
 }
 
 button.suggested-action label {
-    color: var(--bg-void) !important;
+    color: var(--void) !important;
 }
 
-/* Specific rule for pill shaped suggested actions to ensure specificity */
-button.suggested-action.pill {
-    color: var(--bg-void) !important;
+/* Destructive button */
+button.destructive-action {
+    background-color: var(--status-error-bg);
+    border-color: var(--status-error-border);
+    color: var(--status-error-text);
 }
 
-button.suggested-action.pill label {
-    color: var(--bg-void) !important;
+button.destructive-action:hover {
+    background-color: rgba(127, 29, 29, 0.6);
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.2);
 }
 
-/* Overlay Glass Panels */
+/* Flat button */
+button.flat {
+    background-color: transparent;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+button.flat:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+    border-color: transparent;
+    box-shadow: none;
+}
+
+button.flat:active {
+    background-color: rgba(255, 255, 255, 0.03);
+}
+
+/* Circular button */
+button.circular {
+    border-radius: var(--radius-full);
+    padding: var(--space-2);
+    min-width: 36px;
+    min-height: 36px;
+}
+
+/* Pill button */
+button.pill {
+    border-radius: var(--radius-full);
+    padding: var(--space-2) var(--space-5);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 7: GLASS PANELS — FLOATING SURFACES
+   ───────────────────────────────────────────────────────────────────────────── */
+
 .glass-panel {
-    background-color: rgba(10, 10, 10, 0.9);
-    border-radius: 16px;
-    border: 1px solid var(--border-highlight);
+    background-color: var(--glass-dark);
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--border-visible);
+    box-shadow: 
+        var(--shadow-xl),
+        var(--glow-subtle),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    padding: var(--space-4);
 }
+
+.glass-panel-elevated {
+    background-color: var(--glass-medium);
+    border-color: var(--border-highlight);
+    box-shadow: 
+        var(--shadow-xl),
+        var(--glow-medium);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 8: INPUTS & FORMS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+entry {
+    background-color: var(--carbon);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    padding: var(--space-2) var(--space-3);
+    transition: 
+        border-color var(--transition-fast),
+        box-shadow var(--transition-normal),
+        background-color var(--transition-fast);
+}
+
+entry:focus {
+    border-color: var(--border-highlight);
+    background-color: var(--carbon-elevated);
+    box-shadow: 
+        0 0 0 3px rgba(255, 255, 255, 0.05),
+        var(--glow-subtle);
+    outline: none;
+}
+
+entry placeholder {
+    color: var(--text-ghost);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 9: LISTS & GRIDS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.boxed-list {
+    background-color: var(--carbon);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-subtle);
+}
+
+.boxed-list row {
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border-void);
+    transition: background-color var(--transition-fast);
+}
+
+.boxed-list row:last-child {
+    border-bottom: none;
+}
+
+.boxed-list row:hover {
+    background-color: var(--carbon-elevated);
+}
+
+.boxed-list row:selected {
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+.navigation-sidebar {
+    background-color: transparent;
+}
+
+.navigation-sidebar row {
+    border-radius: var(--radius-md);
+    margin: var(--space-1) var(--space-2);
+    transition: 
+        background-color var(--transition-fast),
+        transform var(--transition-bounce);
+}
+
+.navigation-sidebar row:hover {
+    background-color: var(--carbon-elevated);
+}
+
+.navigation-sidebar row:selected {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Wallpaper grid */
+.wallpaper-grid {
+    padding: var(--space-4);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 10: CARDS & CONTAINERS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.card {
+    background-color: var(--obsidian);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-subtle);
+    padding: var(--space-4);
+    transition: 
+        border-color var(--transition-fast),
+        box-shadow var(--transition-normal);
+}
+
+.card:hover {
+    border-color: var(--border-visible);
+    box-shadow: var(--glow-subtle);
+}
+
+.view {
+    background-color: var(--carbon);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-subtle);
+}
+
+.content {
+    padding: var(--space-4);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 11: PREVIEW PANEL — INSPECTOR GLASS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.preview-panel {
+    background-color: var(--carbon);
+    border-left: 1px solid var(--border-subtle);
+    transition: background-color var(--transition-fast);
+}
+
+.preview-frame {
+    background-color: var(--obsidian);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-subtle);
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+    transition: 
+        box-shadow var(--transition-normal),
+        border-color var(--transition-fast);
+}
+
+.preview-frame:hover {
+    border-color: var(--border-visible);
+    box-shadow: var(--shadow-lg), var(--glow-subtle);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 12: STATUS BADGES
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.success {
+    background-color: var(--status-success-bg);
+    border: 1px solid var(--status-success-border);
+    color: var(--status-success-text);
+    border-radius: var(--radius-sm);
+    padding: var(--space-1) var(--space-2);
+}
+
+.error {
+    background-color: var(--status-error-bg);
+    border: 1px solid var(--status-error-border);
+    color: var(--status-error-text);
+    border-radius: var(--radius-sm);
+    padding: var(--space-1) var(--space-2);
+}
+
+.warning {
+    background-color: var(--status-warning-bg);
+    border: 1px solid var(--status-warning-border);
+    color: var(--status-warning-text);
+    border-radius: var(--radius-sm);
+    padding: var(--space-1) var(--space-2);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 13: LINKED BUTTON GROUPS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.linked button {
+    border-radius: 0;
+    border-right-width: 0;
+}
+
+.linked button:first-child {
+    border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+
+.linked button:last-child {
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    border-right-width: 1px;
+}
+
+.linked button:only-child {
+    border-radius: var(--radius-md);
+    border-right-width: 1px;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 14: POPOVERS & MENUS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+popover,
+popover.background {
+    background-color: var(--glass-dark);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-visible);
+    box-shadow: 
+        var(--shadow-xl),
+        var(--glow-subtle);
+    padding: var(--space-2);
+}
+
+popover arrow {
+    background-color: var(--glass-dark);
+    border-color: var(--border-visible);
+}
+
+popover modelbutton {
+    border-radius: var(--radius-sm);
+    padding: var(--space-2) var(--space-3);
+    transition: background-color var(--transition-fast);
+}
+
+popover modelbutton:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 15: DIALOGS & MODALS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+messagedialog,
+window.dialog {
+    background-color: var(--glass-dark);
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--border-visible);
+    box-shadow: 
+        0 25px 50px rgba(0, 0, 0, 0.5),
+        var(--glow-medium);
+}
+
+/* Setup Wizard - First Run Experience */
+.setup-wizard {
+    background-color: var(--void);
+}
+
+.setup-wizard stack {
+    background-color: transparent;
+}
+
+.setup-wizard .title-1 {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.setup-wizard .body {
+    color: var(--text-secondary);
+    font-size: 15px;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 16: SCROLLBARS — MINIMAL
+   ───────────────────────────────────────────────────────────────────────────── */
+
+scrollbar {
+    background-color: transparent;
+}
+
+scrollbar slider {
+    background-color: rgba(255, 255, 255, 0.15);
+    border-radius: var(--radius-full);
+    min-width: 6px;
+    min-height: 6px;
+    transition: background-color var(--transition-fast);
+}
+
+scrollbar slider:hover {
+    background-color: rgba(255, 255, 255, 0.25);
+}
+
+scrollbar slider:active {
+    background-color: rgba(255, 255, 255, 0.35);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 17: PROGRESS & SPINNERS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+progressbar trough {
+    background-color: var(--carbon);
+    border-radius: var(--radius-full);
+    min-height: 4px;
+}
+
+progressbar progress {
+    background-color: var(--accent-white);
+    border-radius: var(--radius-full);
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+}
+
+spinner {
+    color: var(--text-secondary);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 18: SCALES & SLIDERS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+scale trough {
+    background-color: var(--carbon);
+    border-radius: var(--radius-full);
+    min-height: 4px;
+}
+
+scale highlight {
+    background-color: var(--accent-white);
+    border-radius: var(--radius-full);
+}
+
+scale slider {
+    background-color: var(--accent-white);
+    border-radius: var(--radius-full);
+    min-width: 16px;
+    min-height: 16px;
+    box-shadow: var(--shadow-md);
+    transition: 
+        transform var(--transition-bounce),
+        box-shadow var(--transition-fast);
+}
+
+scale slider:hover {
+    transform: scale(1.1);
+    box-shadow: var(--shadow-lg), var(--glow-subtle);
+}
+
+scale slider:active {
+    transform: scale(0.95);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 19: SWITCHES & CHECKBOXES
+   ───────────────────────────────────────────────────────────────────────────── */
+
+switch {
+    background-color: var(--carbon);
+    border-radius: var(--radius-full);
+    min-width: 48px;
+    min-height: 24px;
+    transition: background-color var(--transition-normal);
+}
+
+switch:checked {
+    background-color: var(--accent-white);
+}
+
+switch slider {
+    background-color: var(--text-primary);
+    border-radius: var(--radius-full);
+    min-width: 20px;
+    min-height: 20px;
+    margin: 2px;
+    box-shadow: var(--shadow-sm);
+    transition: 
+        margin var(--transition-bounce),
+        background-color var(--transition-fast);
+}
+
+switch:checked slider {
+    background-color: var(--void);
+}
+
+checkbutton check {
+    background-color: var(--carbon);
+    border: 1px solid var(--border-visible);
+    border-radius: var(--radius-sm);
+    transition: 
+        background-color var(--transition-fast),
+        border-color var(--transition-fast);
+}
+
+checkbutton check:checked {
+    background-color: var(--accent-white);
+    border-color: var(--accent-white);
+}
+
+checkbutton check:checked indicator {
+    color: var(--void);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 20: TOASTS & NOTIFICATIONS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+toast {
+    background-color: var(--glass-dark);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-visible);
+    box-shadow: 
+        var(--shadow-xl),
+        var(--glow-subtle);
+    padding: var(--space-3) var(--space-4);
+}
+
+toast label {
+    color: var(--text-primary);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 21: SPECIAL ANIMATIONS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Cascade entrance animation for lists */
+@keyframes cascade-in {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.cascade-item {
+    animation: cascade-in var(--duration-normal) var(--spring-smooth) backwards;
+}
+
+/* Pulse glow for active states */
+@keyframes pulse-glow {
+    0%, 100% {
+        box-shadow: var(--glow-subtle);
+    }
+    50% {
+        box-shadow: var(--glow-strong);
+    }
+}
+
+.pulse-active {
+    animation: pulse-glow 2s var(--spring-gentle) infinite;
+}
+
+/* Fade in */
+@keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.fade-in {
+    animation: fade-in var(--duration-normal) var(--spring-smooth);
+}
+
+/* Scale in with bounce */
+@keyframes scale-bounce-in {
+    0% {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    70% {
+        transform: scale(1.02);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.scale-bounce-in {
+    animation: scale-bounce-in var(--duration-slow) var(--spring-bounce);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 22: SEARCH BAR — FLOATING INPUT
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.search-bar,
+searchentry {
+    background-color: var(--carbon);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: var(--space-1) var(--space-2);
+    min-height: 28px;
+    font-size: 12px;
+    transition: 
+        border-color var(--transition-fast),
+        box-shadow var(--transition-normal),
+        background-color var(--transition-fast);
+}
+
+.search-bar:focus-within,
+searchentry:focus-within {
+    border-color: var(--border-highlight);
+    background-color: var(--carbon-elevated);
+    box-shadow: 
+        0 0 0 3px rgba(255, 255, 255, 0.03),
+        var(--glow-subtle);
+}
+
+.search-bar image,
+searchentry image {
+    color: var(--text-tertiary);
+    opacity: 0.7;
+    transition: opacity var(--transition-fast), color var(--transition-fast);
+}
+
+.search-bar:focus-within image,
+searchentry:focus-within image {
+    color: var(--text-secondary);
+    opacity: 1;
+}
+
+.search-bar text,
+searchentry text {
+    color: var(--text-primary);
+    background-color: transparent;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 23: DROPDOWN MENUS — GLASS SELECTORS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+dropdown,
+dropdown button {
+    background-color: var(--carbon);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    transition: 
+        border-color var(--transition-fast),
+        background-color var(--transition-fast);
+}
+
+dropdown:hover button,
+dropdown button:hover {
+    background-color: var(--carbon-elevated);
+    border-color: var(--border-visible);
+}
+
+dropdown popover {
+    background-color: var(--glass-dark);
+    border: 1px solid var(--border-visible);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xl), var(--glow-subtle);
+}
+
+dropdown listview row {
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    transition: background-color var(--transition-fast);
+}
+
+dropdown listview row:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+dropdown listview row:selected {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 24: REVEALER TRANSITIONS — SMOOTH REVEALS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+revealer > * {
+    transition: opacity var(--transition-slow);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 25: HEADER BARS — TRANSPARENT GLASS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+headerbar {
+    background-color: var(--carbon);
+    border-bottom: 1px solid var(--border-subtle);
+    box-shadow: none;
+    min-height: 32px;
+    padding: 0 var(--space-2);
+}
+
+headerbar.flat {
+    background-color: transparent;
+    border-bottom: none;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   LIBRARY TOOLBAR - Compact filter bar
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.library-toolbar {
+    background-color: var(--carbon);
+    border-bottom: 1px solid var(--border-subtle);
+    min-height: 36px;
+    padding: var(--space-1) var(--space-2);
+}
+
+.library-toolbar button,
+.library-toolbar togglebutton {
+    padding: var(--space-1) var(--space-2);
+    min-height: 26px;
+    min-width: 26px;
+    font-size: 12px;
+    border-radius: var(--radius-sm);
+}
+
+.library-toolbar .linked button {
+    padding: var(--space-1) var(--space-3);
+    min-height: 26px;
+    font-size: 11px;
+}
+
+.library-toolbar dropdown,
+.library-toolbar .dropdown {
+    min-height: 26px;
+    font-size: 12px;
+}
+
+.library-toolbar dropdown > button {
+    padding: var(--space-1) var(--space-2);
+    min-height: 26px;
+}
+
+.library-toolbar entry,
+.library-toolbar searchentry {
+    min-height: 28px;
+    font-size: 12px;
+    padding: var(--space-1) var(--space-2);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 26: PANED SEPARATORS — SUBTLE DIVIDERS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+paned > separator {
+    background-color: var(--border-subtle);
+    min-width: 1px;
+    min-height: 1px;
+}
+
+paned > separator:hover {
+    background-color: var(--border-visible);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 27: FLOWBOX & GRIDVIEW — GRID CONTAINERS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+flowbox,
+gridview {
+    padding: var(--space-4);
+}
+
+flowbox flowboxchild,
+gridview > child {
+    transition: transform var(--transition-bounce);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 28: NOTEBOOK & TABS — TAB NAVIGATION
+   ───────────────────────────────────────────────────────────────────────────── */
+
+notebook > header {
+    background-color: var(--carbon);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+notebook > header tab {
+    background-color: transparent;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    padding: var(--space-2) var(--space-4);
+    transition: background-color var(--transition-fast);
+}
+
+notebook > header tab:hover {
+    background-color: var(--carbon-elevated);
+}
+
+notebook > header tab:checked {
+    background-color: var(--void);
+    border-bottom: 2px solid var(--accent-white);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 29: SPINNERS — LOADING INDICATORS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+spinner {
+    color: var(--text-secondary);
+    opacity: 0.8;
+}
+
+.loading-overlay {
+    background-color: rgba(10, 10, 10, 0.7);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 30: UTILITY CLASSES — QUICK STYLING
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Hover lift effect */
+.hover-lift {
+    transition: transform var(--transition-bounce), box-shadow var(--transition-normal);
+}
+
+.hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md), var(--glow-subtle);
+}
+
+/* Press effect */
+.press-effect:active {
+    transform: scale(0.97);
+    transition: transform var(--transition-micro);
+}
+
+/* Glow on focus */
+.focus-glow:focus,
+.focus-glow:focus-within {
+    box-shadow: var(--glow-medium);
+    outline: none;
+}
+
+/* Luminous border */
+.luminous-border {
+    border: 1px solid var(--border-highlight);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* Glass background */
+.glass-bg {
+    background-color: var(--glass-dark);
+}
+
+/* Elevated surface */
+.elevated {
+    background-color: var(--carbon-elevated);
+}
+
+/* Void background */
+.void-bg {
+    background-color: var(--void);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 31: FLUID INTELLIGENCE SETUP WIZARD
+   The living, breathing liquid interface for first-run experience.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* The Wizard Window - Full immersion */
+.fluid-wizard {
+    background-color: transparent;
+}
+
+.fluid-wizard decoration {
+    background-color: transparent;
+    box-shadow: none;
+}
+
+/* Input Container - Floating in space */
+.fluid-input-container {
+    padding: var(--space-8);
+}
+
+/* Primary Button - Liquid morphing */
+.fluid-primary-btn {
+    background: linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.95) 0%,
+        rgba(230, 230, 230, 0.95) 100%
+    );
+    border: none;
+    border-radius: var(--radius-full);
+    color: var(--void);
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: var(--space-4) var(--space-8);
+    box-shadow: 
+        0 4px 20px rgba(255, 255, 255, 0.2),
+        0 8px 40px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.5);
+    transition: 
+        transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1),
+        box-shadow 300ms cubic-bezier(0.22, 1, 0.36, 1),
+        background 200ms ease;
+}
+
+.fluid-primary-btn:hover {
+    background: linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 1.0) 0%,
+        rgba(240, 240, 240, 1.0) 100%
+    );
+    transform: scale(1.05) translateY(-2px);
+    box-shadow: 
+        0 8px 30px rgba(255, 255, 255, 0.3),
+        0 12px 60px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.fluid-primary-btn:active {
+    transform: scale(0.98);
+    box-shadow: 
+        0 2px 10px rgba(255, 255, 255, 0.1),
+        0 4px 20px rgba(0, 0, 0, 0.3);
+    transition: transform 100ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.fluid-primary-btn label {
+    color: var(--void);
+}
+
+.fluid-primary-btn.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Secondary Button - Ghost in the void */
+.fluid-secondary-btn {
+    background-color: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: var(--radius-full);
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 500;
+    padding: var(--space-2) var(--space-5);
+    transition: 
+        border-color 200ms ease,
+        color 200ms ease,
+        transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.fluid-secondary-btn:hover {
+    border-color: rgba(255, 255, 255, 0.4);
+    color: var(--text-primary);
+}
+
+.fluid-secondary-btn:active {
+    transform: scale(0.95);
+}
+
+/* Path Entry - Deep glass */
+.fluid-path-entry {
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-lg);
+    color: var(--text-primary);
+    font-size: 14px;
+    padding: var(--space-3) var(--space-4);
+    box-shadow: 
+        inset 0 2px 4px rgba(0, 0, 0, 0.2),
+        0 0 0 0 rgba(255, 255, 255, 0);
+    transition: 
+        border-color 200ms ease,
+        box-shadow 300ms cubic-bezier(0.22, 1, 0.36, 1),
+        background-color 200ms ease;
+}
+
+.fluid-path-entry:focus {
+    background-color: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.3);
+    box-shadow: 
+        inset 0 2px 4px rgba(0, 0, 0, 0.2),
+        0 0 0 4px rgba(255, 255, 255, 0.1),
+        0 0 30px rgba(255, 255, 255, 0.1);
+    outline: none;
+}
+
+.fluid-path-entry placeholder {
+    color: var(--text-ghost);
+}
+
+/* Dropdown - Floating selector */
+.fluid-dropdown {
+    background-color: rgba(30, 30, 30, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: var(--radius-lg);
+    transition: 
+        border-color 200ms ease,
+        background-color 200ms ease;
+}
+
+.fluid-dropdown:hover {
+    background-color: rgba(40, 40, 40, 0.95);
+    border-color: rgba(255, 255, 255, 0.25);
+}
+
+.fluid-dropdown > button {
+    background-color: transparent;
+    border: none;
+    color: var(--text-primary);
+    padding: var(--space-2) var(--space-4);
+    min-height: 36px;
+}
+
+.fluid-dropdown popover {
+    background-color: rgba(20, 20, 20, 0.98);
+    border: none;
+    border-radius: var(--radius-md);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    padding: var(--space-1);
+}
+
+.fluid-dropdown popover contents {
+    background-color: transparent;
+    border: none;
+    padding: 0;
+}
+
+.fluid-dropdown popover > contents > * {
+    border: none;
+    background: transparent;
+}
+
+.fluid-dropdown popover listview,
+.fluid-dropdown popover list {
+    background: transparent;
+    border: none;
+}
+
+.fluid-dropdown popover modelbutton,
+.fluid-dropdown popover row {
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    border: none;
+    background: transparent;
+}
+
+.fluid-dropdown popover modelbutton:hover,
+.fluid-dropdown popover row:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Path label in wizard */
+.fluid-path-label {
+    color: var(--text-tertiary);
+    font-size: 13px;
+    padding: var(--space-2) var(--space-4);
+    background-color: rgba(255, 255, 255, 0.03);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-subtle);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   END OF LIQUID GLASS DESIGN SYSTEM
+   ═══════════════════════════════════════════════════════════════════════════ */

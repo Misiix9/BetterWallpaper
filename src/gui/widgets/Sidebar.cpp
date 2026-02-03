@@ -9,10 +9,13 @@ namespace bwp::gui {
 
 Sidebar::Sidebar() {
   m_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-  gtk_widget_set_size_request(m_box, 240, -1);
+  gtk_widget_set_size_request(m_box, 220, -1);
+  gtk_widget_set_vexpand(m_box, TRUE);
+  gtk_widget_add_css_class(m_box, "sidebar-container");
 
   m_listBox = gtk_list_box_new();
   gtk_widget_add_css_class(m_listBox, "sidebar");
+  gtk_widget_set_vexpand(m_listBox, TRUE);
 
   g_signal_connect(m_listBox, "row-activated", G_CALLBACK(onRowActivated),
                    this);
@@ -41,10 +44,8 @@ void Sidebar::refresh() {
   }
   m_rowIds.clear();
 
-  // Add items
+  // Add items (Favorites/Workshop removed - use filter bar instead)
   addRow("library", "folder-pictures-symbolic", "Library");
-  addRow("favorites", "starred-symbolic", "Favorites");
-  addRow("workshop", "applications-internet-symbolic", "Workshop");
 
   // Separator logic handled by CSS or just spacing in listbox
   // For proper separators inside listbox, we can add them as non-selectable

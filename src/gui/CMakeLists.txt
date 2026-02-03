@@ -40,7 +40,7 @@ add_executable(betterwallpaper
 
     views/ProfilesView.cpp
     views/ScheduleView.cpp
-    dialogs/SetupDialog.cpp
+    dialogs/FluidSetupWizard.cpp
     dialogs/WorkspaceSelectionDialog.cpp
     dialogs/LibrarySelectionDialog.cpp
 )

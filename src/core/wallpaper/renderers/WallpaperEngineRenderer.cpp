@@ -2,6 +2,7 @@
 #include "../../utils/Logger.hpp"
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -14,6 +15,7 @@ WallpaperEngineRenderer::WallpaperEngineRenderer() {}
 WallpaperEngineRenderer::~WallpaperEngineRenderer() { terminateProcess(); }
 
 bool WallpaperEngineRenderer::load(const std::string &path) {
+  LOG_SCOPE_AUTO();
   terminateProcess();
   m_pkPath = path;
 
@@ -24,7 +26,18 @@ bool WallpaperEngineRenderer::load(const std::string &path) {
 }
 
 void WallpaperEngineRenderer::render(cairo_t *cr, int width, int height) {
-  // No-op: external process handles rendering
+  // Excessive logging in render loop? Maybe debug level only, or skip.
+  // User asked for "Deep Instrumentation". Let's enable it but maybe use a
+  // macro check? Or just trust the Logger level. ScopeTracer uses DEBUG level.
+  // LOG_SCOPE_AUTO(); // This might spam 60fps. Risk.
+  // Let's SKIP render loop scope tracing to avoid 20GB log files in 1 minute.
+  // Or add a static counter to log once per second?
+  // The user asked for "Deep Instrumentation" but surely not spam.
+  // "Last entering line" implies tracking flow. Render loop flow is repetitive.
+  // I will skip render() to be safe, or log once.
+  // Let's skip scope tracer here, but maybe log if size changes?
+  // No, just skip scope tracer for render().
+  cairo_set_source_rgba(cr, 0, 0, 0, 0);
   // Maybe draw transparent?
   cairo_set_source_rgba(cr, 0, 0, 0, 0);
   cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
@@ -33,6 +46,7 @@ void WallpaperEngineRenderer::render(cairo_t *cr, int width, int height) {
 }
 
 void WallpaperEngineRenderer::setScalingMode(ScalingMode mode) {
+  LOG_SCOPE_AUTO();
   m_mode = mode;
   // Need to restart process with new args if running?
   if (m_pid != -1) {
@@ -55,6 +69,7 @@ void WallpaperEngineRenderer::setMonitors(
 }
 
 void WallpaperEngineRenderer::launchProcess() {
+  LOG_SCOPE_AUTO();
   // Check throttle
   auto now = std::chrono::steady_clock::now();
   auto elapsed =
@@ -74,6 +89,16 @@ void WallpaperEngineRenderer::launchProcess() {
 
   // Extract Workshop ID logic...
   std::string arg = m_pkPath;
+
+  // HTML/Web Support
+  if (m_pkPath.find(".html") != std::string::npos ||
+      m_pkPath.find(".htm") != std::string::npos) {
+    // linux-wallpaperengine expects the directory for web headers usually, OR
+    // the index.html? Documentation says: passes file to browser. We pass the
+    // full path.
+    arg = m_pkPath;
+  }
+
   size_t pkgPos = m_pkPath.find("scene.pkg");
   if (pkgPos != std::string::npos) {
     std::string dir = m_pkPath.substr(0, pkgPos);
@@ -121,24 +146,41 @@ void WallpaperEngineRenderer::launchProcess() {
     args.push_back("--silent");
   }
 
+  std::string cmdLog = "Launching: ";
+  for (const auto &a : args)
+    cmdLog += a + " ";
+  LOG_INFO(cmdLog);
+
   pid_t pid = fork();
   if (pid == 0) {
-    // Set LD_LIBRARY_PATH to include local directory for libGLEW symlink
-    // Find where we are - assume project root for now or relative to
-    // executable? Symlink is in /home/onxy/Documents/scripts/BetterWallpaper
-    // Let's deduce it or hardcode for this fix, ideally use a relative path
-    // logic. But standard way: just getenv, append, setenv.
+    // Set LD_LIBRARY_PATH to include the executable's directory for libGLEW symlink
+    // This avoids hardcoded paths and works from both build and install locations
+    std::string exeDir;
+    try {
+      exeDir = std::filesystem::canonical("/proc/self/exe").parent_path().string();
+    } catch (...) {
+      exeDir = "."; // Fallback to current directory
+    }
 
     const char *currentLd = getenv("LD_LIBRARY_PATH");
-    std::string newLd =
-        "/home/onxy/Documents/scripts/BetterWallpaper"; // Hardcode for
-                                                        // immediate fix as user
-                                                        // is stuck here
+    std::string newLd = exeDir;
+    // Also add the project root (one level up from build/src/gui)
+    newLd += ":" + exeDir + "/..";
+    newLd += ":" + exeDir + "/../..";
+    newLd += ":" + exeDir + "/../../..";
     if (currentLd) {
       newLd += ":";
       newLd += currentLd;
     }
     setenv("LD_LIBRARY_PATH", newLd.c_str(), 1);
+    
+    // Ensure DISPLAY is set for XWayland/GLX support on Wayland compositors
+    // linux-wallpaperengine requires X11/GLX, so it needs XWayland
+    const char *display = getenv("DISPLAY");
+    if (!display || display[0] == '\0') {
+      // Try common XWayland display values
+      setenv("DISPLAY", ":0", 1);
+    }
 
     std::vector<char *> c_args;
     for (const auto &a : args)
@@ -160,6 +202,7 @@ void WallpaperEngineRenderer::launchProcess() {
 }
 
 void WallpaperEngineRenderer::play() {
+  LOG_SCOPE_AUTO();
   if (m_pid != -1) {
     kill(m_pid, SIGCONT);
     m_isPlaying = true;
@@ -176,6 +219,7 @@ void WallpaperEngineRenderer::play() {
 }
 
 void WallpaperEngineRenderer::monitorProcess() {
+  LOG_SCOPE_AUTO();
   const int MAX_CRASH_COUNT = 3; // Stop after 3 consecutive crashes
 
   while (!m_stopWatcher) {
@@ -229,6 +273,7 @@ void WallpaperEngineRenderer::monitorProcess() {
 }
 
 void WallpaperEngineRenderer::pause() {
+  LOG_SCOPE_AUTO();
   if (m_pid != -1) {
     if (kill(m_pid, SIGSTOP) != 0) {
       LOG_WARN("Failed to pause process " + std::to_string(m_pid));
@@ -237,9 +282,13 @@ void WallpaperEngineRenderer::pause() {
   }
 }
 
-void WallpaperEngineRenderer::stop() { terminateProcess(); }
+void WallpaperEngineRenderer::stop() {
+  LOG_SCOPE_AUTO();
+  terminateProcess();
+}
 
 void WallpaperEngineRenderer::terminateProcess() {
+  LOG_SCOPE_AUTO();
   m_stopWatcher = true;
   m_cv.notify_all();
 
@@ -298,7 +347,13 @@ void WallpaperEngineRenderer::setAudioData(
 }
 
 WallpaperType WallpaperEngineRenderer::getType() const {
-  return WallpaperType::WEScene; // Or Video, assuming Scene for now
+  if (m_pkPath.find(".html") != std::string::npos ||
+      m_pkPath.find(".htm") != std::string::npos)
+    return WallpaperType::WEWeb;
+  if (m_pkPath.find(".mp4") != std::string::npos ||
+      m_pkPath.find(".webm") != std::string::npos)
+    return WallpaperType::WEVideo;
+  return WallpaperType::WEScene;
 }
 
 } // namespace bwp::wallpaper

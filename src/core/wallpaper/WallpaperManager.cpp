@@ -53,7 +53,7 @@ void WallpaperManager::initialize() {
 
 void WallpaperManager::handleMonitorUpdate(const monitor::MonitorInfo &info,
                                            bool connected) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
 #ifndef _WIN32
   if (connected) {
     if (m_monitors.find(info.name) == m_monitors.end()) {
@@ -79,15 +79,25 @@ void WallpaperManager::handleMonitorUpdate(const monitor::MonitorInfo &info,
 #endif
 }
 
+// #region agent log
+static void debugLog(const std::string& loc, const std::string& msg, const std::string& hyp) {
+  FILE* f = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
+  if (f) { fprintf(f, "{\"location\":\"%s\",\"message\":\"%s\",\"hypothesisId\":\"%s\",\"timestamp\":%ld}\n", loc.c_str(), msg.c_str(), hyp.c_str(), (long)time(nullptr)); fflush(f); fclose(f); }
+}
+// #endregion
+
 bool WallpaperManager::setWallpaper(const std::string &monitorName,
                                     const std::string &path) {
+  // #region agent log
+  debugLog("WallpaperManager.cpp:setWallpaper:entry", "setWallpaper called", "A");
+  // #endregion
   LOG_INFO("WallpaperManager::setWallpaper called for " + monitorName +
            " with path: " + path);
 
 #ifdef _WIN32
   // Windows Implementation
   // Bypassing renderers and windows for now
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
   // Track metadata
   if (m_monitors.find(monitorName) == m_monitors.end()) {
@@ -110,7 +120,13 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
   LOG_INFO("WallpaperManager::setWallpaper called for " + monitorName +
            " with path: " + path);
 
-  std::lock_guard<std::mutex> lock(m_mutex);
+  // #region agent log
+  debugLog("WallpaperManager.cpp:mutex", "About to acquire mutex", "E");
+  // #endregion
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
+  // #region agent log
+  debugLog("WallpaperManager.cpp:mutex_acquired", "Mutex acquired", "E");
+  // #endregion
 
   LOG_INFO("Currently have " + std::to_string(m_monitors.size()) + " monitors");
 
@@ -126,8 +142,14 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
 
   LOG_INFO("Found monitor " + monitorName);
 
+  // #region agent log
+  debugLog("WallpaperManager.cpp:createRenderer", "About to createRenderer", "C");
+  // #endregion
   // Determine type and create renderer
   auto renderer = createRenderer(path);
+  // #region agent log
+  debugLog("WallpaperManager.cpp:createRenderer_done", "createRenderer done", "C");
+  // #endregion
   if (!renderer) {
     LOG_ERROR("Failed to create renderer for path: " + path);
     return false;
@@ -137,24 +159,42 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
 
   renderer->setMonitor(monitorName);
 
+  // #region agent log
+  debugLog("WallpaperManager.cpp:load", "About to load renderer", "C");
+  // #endregion
   if (!renderer->load(path)) {
     LOG_ERROR("Failed to load wallpaper: " + path);
     return false;
   }
+  // #region agent log
+  debugLog("WallpaperManager.cpp:load_done", "Renderer load done", "C");
+  // #endregion
 
   LOG_INFO("Loaded wallpaper successfully");
 
   // Stop old renderer
   if (it->second.renderer) {
+    // #region agent log
+    debugLog("WallpaperManager.cpp:stop_old", "About to stop old renderer", "B");
+    // #endregion
     LOG_INFO("Stopping old renderer");
     it->second.renderer->stop();
+    // #region agent log
+    debugLog("WallpaperManager.cpp:stop_old_done", "Old renderer stopped", "B");
+    // #endregion
   }
 
   it->second.renderer = renderer;
   it->second.currentPath = path;
 
+  // #region agent log
+  debugLog("WallpaperManager.cpp:transitionTo", "About to call transitionTo", "D");
+  // #endregion
   LOG_INFO("Transitioning to new wallpaper...");
   it->second.window->transitionTo(renderer);
+  // #region agent log
+  debugLog("WallpaperManager.cpp:transitionTo_done", "transitionTo done", "D");
+  // #endregion
 
   if (m_paused) {
     renderer->pause();
@@ -162,6 +202,9 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
     LOG_INFO("Starting wallpaper playback");
     renderer->play();
   }
+  // #region agent log
+  debugLog("WallpaperManager.cpp:exit", "setWallpaper complete", "A");
+  // #endregion
 
   // Apply settings
   if (m_scalingModes.count(monitorName)) {
@@ -180,13 +223,25 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
 }
 bool WallpaperManager::setWallpaper(const std::vector<std::string> &monitors,
                                     const std::string &path) {
+  // #region agent log
+  debugLog("WallpaperManager.cpp:bulk_entry", "bulk setWallpaper called", "I");
+  // #endregion
+  
   if (monitors.empty())
     return false;
   if (monitors.size() == 1)
     return setWallpaper(monitors[0], path);
 
+  // #region agent log
+  debugLog("WallpaperManager.cpp:bulk_getMime", "About to call getMimeType", "I");
+  // #endregion
+  
   // Check if type supports multi-monitor single process
   std::string mime = utils::FileUtils::getMimeType(path);
+  
+  // #region agent log
+  debugLog("WallpaperManager.cpp:bulk_afterMime", "getMimeType returned: " + mime, "I");
+  // #endregion
   bool isWE = false;
   if (mime.find("x-wallpaper-engine") != std::string::npos)
     isWE = true;
@@ -197,21 +252,37 @@ bool WallpaperManager::setWallpaper(const std::vector<std::string> &monitors,
   }
 
   if (!isWE) {
+    // #region agent log
+    debugLog("WallpaperManager.cpp:bulk_notWE", "Not WE, falling back to per-monitor", "I");
+    // #endregion
     // Fallback for types that don't support multi-monitor instances (Video,
     // Static)
     bool allSuccess = true;
     for (const auto &mon : monitors) {
+      // #region agent log
+      debugLog("WallpaperManager.cpp:bulk_loop", "Calling single setWallpaper for: " + mon, "I");
+      // #endregion
       if (!setWallpaper(mon, path))
         allSuccess = false;
     }
     return allSuccess;
   }
+  
+  // #region agent log
+  debugLog("WallpaperManager.cpp:bulk_isWE", "Is WE, using shared renderer path", "I");
+  // #endregion
 
   // Optimized path for Wallpaper Engine
   LOG_INFO("Setting shared wallpaper for " + std::to_string(monitors.size()) +
            " monitors: " + path);
 
-  std::lock_guard<std::mutex> lock(m_mutex);
+  // #region agent log
+  debugLog("WallpaperManager.cpp:WE_mutex", "About to acquire mutex (WE path)", "J");
+  // #endregion
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
+  // #region agent log
+  debugLog("WallpaperManager.cpp:WE_mutex_acquired", "Mutex acquired (WE path)", "J");
+  // #endregion
 
   // Validate monitors
   std::vector<std::string> validMonitors;
@@ -226,36 +297,55 @@ bool WallpaperManager::setWallpaper(const std::vector<std::string> &monitors,
   if (validMonitors.empty())
     return false;
 
+  // #region agent log
+  debugLog("WallpaperManager.cpp:WE_createRenderer", "About to createRenderer", "J");
+  // #endregion
   auto renderer = createRenderer(path);
+  // #region agent log
+  debugLog("WallpaperManager.cpp:WE_createRenderer_done", "createRenderer done", "J");
+  // #endregion
   if (!renderer)
     return false;
 
   // Setup renderer
   renderer->setMonitors(validMonitors);
+  // #region agent log
+  debugLog("WallpaperManager.cpp:WE_load", "About to call renderer->load", "J");
+  // #endregion
   if (!renderer->load(path)) {
     LOG_ERROR("Failed to load shared wallpaper: " + path);
     return false;
   }
+  // #region agent log
+  debugLog("WallpaperManager.cpp:WE_load_done", "renderer->load done", "J");
+  // #endregion
 
   // Assign to all monitors
   for (const auto &name : validMonitors) {
+    // #region agent log
+    debugLog("WallpaperManager.cpp:WE_loop", "Processing monitor: " + name, "J");
+    // #endregion
     auto &state = m_monitors[name];
 
     if (state.renderer) {
-      // If the old renderer was shared, calling stop() might stop it for
-      // others? If we are replacing it, we likely want to stop it. However,
-      // if we replace one by one, we might stop the same pointer multiple
-      // times? WallpaperRenderer::stop() calling terminateProcess() is
-      // idempotent-ish? But we should avoiding stopping it if we just
-      // assigned it? No, these are OLD renderers. We are replacing them. BUT,
-      // if multiple monitors shared the OLD renderer, stopping it once stops
-      // it for all. That is fine, we are replacing all of them.
+      // #region agent log
+      debugLog("WallpaperManager.cpp:WE_stop_old", "About to stop old renderer", "J");
+      // #endregion
       state.renderer->stop();
+      // #region agent log
+      debugLog("WallpaperManager.cpp:WE_stop_old_done", "Old renderer stopped", "J");
+      // #endregion
     }
 
     state.renderer = renderer;
     state.currentPath = path;
+    // #region agent log
+    debugLog("WallpaperManager.cpp:WE_transitionTo", "About to call transitionTo", "J");
+    // #endregion
     state.window->transitionTo(renderer);
+    // #region agent log
+    debugLog("WallpaperManager.cpp:WE_transitionTo_done", "transitionTo done", "J");
+    // #endregion
 
     if (m_scalingModes.count(name)) {
       // renderer->setScalingMode applies globally to the renderer usually?
@@ -267,17 +357,32 @@ bool WallpaperManager::setWallpaper(const std::vector<std::string> &monitors,
     }
   }
 
+  // #region agent log
+  debugLog("WallpaperManager.cpp:WE_before_play", "About to call play/pause", "K");
+  // #endregion
   if (m_paused) {
     renderer->pause();
   } else {
     LOG_INFO("Starting shared wallpaper playback");
     renderer->play();
   }
+  // #region agent log
+  debugLog("WallpaperManager.cpp:WE_after_play", "play/pause done", "K");
+  // #endregion
 
   LOG_INFO("Shared wallpaper set successfully!");
 
+  // #region agent log
+  debugLog("WallpaperManager.cpp:WE_saveState", "About to call saveState", "K");
+  // #endregion
   saveState();
+  // #region agent log
+  debugLog("WallpaperManager.cpp:WE_saveState_done", "saveState done", "K");
+  // #endregion
   writeHyprpaperConfig();
+  // #region agent log
+  debugLog("WallpaperManager.cpp:WE_complete", "Bulk WE setWallpaper complete, returning", "K");
+  // #endregion
 
   return true;
 }
@@ -302,7 +407,7 @@ WallpaperManager::createRenderer(const std::string &path) {
   if (ext == "mp4" || ext == "webm" || ext == "mkv" || ext == "gif") {
     return std::make_shared<VideoRenderer>();
   }
-  if (ext == "pkg" || ext == "json") { // .json often project.json for WE
+  if (ext == "pkg" || ext == "json" || ext == "html" || ext == "htm") {
     return std::make_shared<WallpaperEngineRenderer>();
   }
 
@@ -310,7 +415,7 @@ WallpaperManager::createRenderer(const std::string &path) {
 }
 
 void WallpaperManager::setPaused(bool paused) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   m_paused = paused;
   for (auto &[name, state] : m_monitors) {
     if (state.renderer) {
@@ -323,7 +428,7 @@ void WallpaperManager::setPaused(bool paused) {
 }
 
 void WallpaperManager::setMuted(bool muted) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   // Global mute
   for (auto &pair : m_monitors) {
     if (pair.second.renderer) {
@@ -333,7 +438,7 @@ void WallpaperManager::setMuted(bool muted) {
 }
 
 void WallpaperManager::setMuted(const std::string &monitorName, bool muted) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   if (m_monitors.find(monitorName) != m_monitors.end()) {
     if (m_monitors[monitorName].renderer) {
       m_monitors[monitorName].renderer->setMuted(muted);
@@ -342,7 +447,7 @@ void WallpaperManager::setMuted(const std::string &monitorName, bool muted) {
 }
 
 void WallpaperManager::setVolume(const std::string &monitorName, int volume) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   if (m_monitors.find(monitorName) != m_monitors.end()) {
     if (m_monitors[monitorName].renderer) {
       // Volume typically 0.0 - 1.0 or 0 - 100
@@ -356,7 +461,7 @@ void WallpaperManager::setVolume(const std::string &monitorName, int volume) {
 }
 
 void WallpaperManager::pause(const std::string &monitorName) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   auto it = m_monitors.find(monitorName);
   if (it != m_monitors.end() && it->second.renderer) {
     it->second.renderer->pause();
@@ -364,7 +469,7 @@ void WallpaperManager::pause(const std::string &monitorName) {
 }
 
 void WallpaperManager::resume(const std::string &monitorName) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   auto it = m_monitors.find(monitorName);
   // If global pause is on, resuming single monitor might be conflicted
   // But usually Resume command implies override.
@@ -374,7 +479,7 @@ void WallpaperManager::resume(const std::string &monitorName) {
 }
 
 void WallpaperManager::stop(const std::string &monitorName) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   auto it = m_monitors.find(monitorName);
   if (it != m_monitors.end() && it->second.renderer) {
     it->second.renderer->stop();
@@ -383,7 +488,7 @@ void WallpaperManager::stop(const std::string &monitorName) {
 
 std::string
 WallpaperManager::getCurrentWallpaper(const std::string &monitorName) const {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   auto it = m_monitors.find(monitorName);
   if (it != m_monitors.end()) {
     return it->second.currentPath;
@@ -411,7 +516,7 @@ void WallpaperManager::killConflictingWallpapers() {
 void WallpaperManager::saveState() {
   auto &conf = bwp::config::ConfigManager::getInstance();
 
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   nlohmann::json wallpapers;
 
   for (const auto &[name, state] : m_monitors) {
@@ -467,7 +572,7 @@ void WallpaperManager::writeHyprpaperConfig() {
   file << "splash = false\n";
   file << "ipc = off\n\n";
 
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
   // Preload all wallpapers
   for (const auto &[name, state] : m_monitors) {
@@ -547,7 +652,7 @@ void WallpaperManager::resourceMonitorLoop() {
 void WallpaperManager::fallbackToStatic() {
   bool triggered = false;
   {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     for (auto &[name, state] : m_monitors) {
       if (state.renderer) {
         auto type = state.renderer->getType();
@@ -602,7 +707,7 @@ void WallpaperManager::fallbackToStatic() {
 
 void WallpaperManager::setScalingMode(const std::string &monitorName,
                                       int mode) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   m_scalingModes[monitorName] = mode;
 
   auto it = m_monitors.find(monitorName);
@@ -612,7 +717,7 @@ void WallpaperManager::setScalingMode(const std::string &monitorName,
 }
 
 void WallpaperManager::setFpsLimit(int fps) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   m_fpsLimit = fps;
 }
 

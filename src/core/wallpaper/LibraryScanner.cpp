@@ -10,16 +10,17 @@ namespace bwp::wallpaper {
 
 #ifdef _WIN32
 #define G_SOURCE_REMOVE 0
-// Simple stub that runs immediately. Not thread safe properly but works for MVP without main loop.
-// Simple stub that runs immediately. Not thread safe properly but works for MVP without main loop.
-// Callback expected is gboolean (*)(gpointer) which is int (*)(void*)
-// We define it exactly as used or cast it. using a void* func pointer is safest to accept anything
-inline void g_idle_add(void* func, void* data) {
-    if(func) {
-        // Cast and call
-        using CallbackType = int (*)(void*);
-        ((CallbackType)func)(data);
-    }
+// Simple stub that runs immediately. Not thread safe properly but works for MVP
+// without main loop. Simple stub that runs immediately. Not thread safe
+// properly but works for MVP without main loop. Callback expected is gboolean
+// (*)(gpointer) which is int (*)(void*) We define it exactly as used or cast
+// it. using a void* func pointer is safest to accept anything
+inline void g_idle_add(void *func, void *data) {
+  if (func) {
+    // Cast and call
+    using CallbackType = int (*)(void *);
+    ((CallbackType)func)(data);
+  }
 }
 #endif
 
@@ -310,7 +311,7 @@ bool LibraryScanner::scanWorkshopItem(const std::filesystem::path &dir) {
       }
 
       // Check for main file
-      if (ext == ".mp4" || ext == ".webm" || ext == ".pkg") {
+      if (ext == ".mp4" || ext == ".webm" || ext == ".pkg" || ext == ".html") {
         foundFile = entry.path().string();
       } else if (foundFile.empty() && (ext == ".jpg" || ext == ".jpeg" ||
                                        ext == ".png" || ext == ".gif")) {
@@ -379,6 +380,8 @@ bool LibraryScanner::scanWorkshopItem(const std::filesystem::path &dir) {
       info.type = WallpaperType::WEScene;
     else if (ext == ".mp4" || ext == ".webm")
       info.type = WallpaperType::Video;
+    else if (ext == ".html" || ext == ".htm")
+      info.type = WallpaperType::WEWeb;
     else
       info.type = WallpaperType::StaticImage;
   }
@@ -404,8 +407,9 @@ void LibraryScanner::scanFile(const std::filesystem::path &path) {
   bool isVideo =
       (ext == ".mp4" || ext == ".webm" || ext == ".mkv" || ext == ".avi");
   bool isScene = (ext == ".pkg");
+  bool isWeb = (ext == ".html" || ext == ".htm");
 
-  if (!isImage && !isVideo && !isScene)
+  if (!isImage && !isVideo && !isScene && !isWeb)
     return;
 
   std::string id = path.string();
@@ -427,6 +431,8 @@ void LibraryScanner::scanFile(const std::filesystem::path &path) {
     info.type = WallpaperType::WEScene;
   else if (isVideo)
     info.type = WallpaperType::Video;
+  else if (isWeb)
+    info.type = WallpaperType::WEWeb;
   else
     info.type = WallpaperType::StaticImage;
 

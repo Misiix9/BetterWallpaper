@@ -10,9 +10,9 @@
 
 namespace bwp::gui {
 
-// "Large Cards" 16:9
-static constexpr int CARD_WIDTH = 240;
-static constexpr int CARD_HEIGHT = 135; // 240 * 9/16
+// Compact Cards - 4:3 aspect ratio for better grid layout
+static constexpr int CARD_WIDTH = 180;
+static constexpr int CARD_HEIGHT = 135; // 180 * 3/4
 
 WallpaperCard::WallpaperCard(const bwp::wallpaper::WallpaperInfo &info)
     : m_info(info) {

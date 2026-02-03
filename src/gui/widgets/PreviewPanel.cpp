@@ -32,7 +32,7 @@ PreviewPanel::PreviewPanel() {
 PreviewPanel::~PreviewPanel() {}
 
 void PreviewPanel::setupUi() {
-  // Main container with fixed width
+  // Main container with fixed width - Liquid Glass styling
   m_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
   gtk_widget_set_size_request(m_box, PANEL_WIDTH, -1);
   gtk_widget_set_hexpand(m_box, FALSE);
@@ -42,6 +42,7 @@ void PreviewPanel::setupUi() {
   gtk_widget_set_margin_top(m_box, 12);
   gtk_widget_set_margin_bottom(m_box, 12);
   gtk_widget_set_valign(m_box, GTK_ALIGN_START);
+  gtk_widget_add_css_class(m_box, "preview-panel");
 
   // Preview Image
   GtkWidget *imageFrame = gtk_frame_new(nullptr);
@@ -437,74 +438,111 @@ void PreviewPanel::onApplyClicked() {
     LOG_INFO("Target Monitor: " + t);
   }
 
-  // Move potentially heavy operation to a background thread to prevent UI
-  // freeze Capture necessary data by value to avoid lifetime issues
+  // WallpaperManager uses GTK functions internally, so it MUST run on main thread
+  // Use g_idle_add to run it asynchronously but on the GTK main loop
   struct ApplyData {
     PreviewPanel *panel;
     std::vector<std::string> targets;
     std::string path;
     int scalingMode;
-    bool success;
   };
   ApplyData *data =
-      new ApplyData{this, targets, m_currentInfo.path, scalingMode, true};
+      new ApplyData{this, targets, m_currentInfo.path, scalingMode};
 
-  std::thread([data]() {
-    auto &wm = bwp::wallpaper::WallpaperManager::getInstance();
+  // #region agent log
+  auto ppDebugLog = [](const char* loc, const char* msg, const char* hyp) {
+    FILE* f = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
+    if (f) { fprintf(f, "{\"location\":\"%s\",\"message\":\"%s\",\"hypothesisId\":\"%s\",\"timestamp\":%ld}\n", loc, msg, hyp, (long)time(nullptr)); fclose(f); }
+  };
+  ppDebugLog("PreviewPanel.cpp:g_idle_add", "Scheduling setWallpaper on main thread", "A");
+  // #endregion
 
-    // Use new bulk API if multiple targets, or fallback to single
-    // Also set scaling mode before?
-    // The bulk API handles scaling mode inside (approximated)
-    // But we should ensure scaling mode is collected?
-    // For now, assume global scaling mode from UI applies to all selected.
+  // Schedule on main thread (async but thread-safe for GTK)
+  g_idle_add(
+      +[](gpointer user_data) -> gboolean {
+        // #region agent log
+        FILE* f1 = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
+        if (f1) { fprintf(f1, "{\"location\":\"PreviewPanel.cpp:callback_entry\",\"message\":\"g_idle_add callback started\",\"hypothesisId\":\"A\",\"timestamp\":%ld}\n", (long)time(nullptr)); fclose(f1); }
+        // #endregion
+        
+        ApplyData *d = static_cast<ApplyData *>(user_data);
+        auto &wm = bwp::wallpaper::WallpaperManager::getInstance();
+        
+        bool success = true;
 
-    // Update scaling modes first in case we use bulk API
-    for (const auto &mon : data->targets) {
-      wm.setScalingMode(mon, data->scalingMode);
-    }
+        // #region agent log
+        FILE* f2a = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
+        if (f2a) { fprintf(f2a, "{\"location\":\"PreviewPanel.cpp:before_setScalingMode\",\"message\":\"About to call setScalingMode\",\"hypothesisId\":\"G\",\"timestamp\":%ld}\n", (long)time(nullptr)); fclose(f2a); }
+        // #endregion
 
-    if (data->targets.size() > 1) {
-      LOG_INFO("Calling bulk setWallpaper for " +
-               std::to_string(data->targets.size()) + " monitors");
-      if (!wm.setWallpaper(data->targets, data->path)) {
-        data->success = false;
-      }
-    } else if (!data->targets.empty()) {
-      // Single monitor
-      LOG_INFO("Calling single setWallpaper for " + data->targets[0]);
-      if (!wm.setWallpaper(data->targets[0], data->path)) {
-        data->success = false;
-      }
-    } else {
-      // Should not happen
-      data->success = false;
-    }
+        // Update scaling modes
+        for (const auto &mon : d->targets) {
+          wm.setScalingMode(mon, d->scalingMode);
+        }
 
-    // Schedule UI update on main thread
-    g_idle_add(
-        +[](gpointer user_data) -> gboolean {
-          ApplyData *d = static_cast<ApplyData *>(user_data);
+        // #region agent log
+        FILE* f2b = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
+        if (f2b) { fprintf(f2b, "{\"location\":\"PreviewPanel.cpp:after_setScalingMode\",\"message\":\"setScalingMode complete\",\"hypothesisId\":\"G\",\"timestamp\":%ld}\n", (long)time(nullptr)); fclose(f2b); }
+        // #endregion
 
-          if (d->success) {
-            gtk_label_set_text(GTK_LABEL(d->panel->m_statusLabel),
-                               "✓ Wallpaper set!");
-          } else {
-            gtk_label_set_text(GTK_LABEL(d->panel->m_statusLabel),
-                               "✗ Failed to set (some or all)");
+        // #region agent log
+        FILE* f2 = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
+        if (f2) { fprintf(f2, "{\"location\":\"PreviewPanel.cpp:before_setWallpaper\",\"message\":\"About to call setWallpaper\",\"hypothesisId\":\"A\",\"timestamp\":%ld}\n", (long)time(nullptr)); fclose(f2); }
+        // #endregion
 
-            GtkRoot *root =
-                gtk_widget_get_root(GTK_WIDGET(d->panel->m_applyButton));
-            if (root && GTK_IS_WINDOW(root)) {
-              ErrorDialog::show(GTK_WINDOW(root), "Failed to set wallpaper",
-                                "Could not apply " + d->path);
-            }
+        if (d->targets.size() > 1) {
+          LOG_INFO("Calling bulk setWallpaper for " +
+                   std::to_string(d->targets.size()) + " monitors");
+          // #region agent log
+          FILE* fx1 = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
+          if (fx1) { fprintf(fx1, "{\"location\":\"PreviewPanel.cpp:calling_bulk\",\"message\":\"Calling bulk setWallpaper NOW\",\"hypothesisId\":\"H\",\"timestamp\":%ld}\n", (long)time(nullptr)); fflush(fx1); fclose(fx1); }
+          // #endregion
+          if (!wm.setWallpaper(d->targets, d->path)) {
+            success = false;
           }
+        } else if (!d->targets.empty()) {
+          LOG_INFO("Calling single setWallpaper for " + d->targets[0]);
+          // #region agent log
+          FILE* fx2 = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
+          if (fx2) { fprintf(fx2, "{\"location\":\"PreviewPanel.cpp:calling_single\",\"message\":\"Calling single setWallpaper NOW\",\"hypothesisId\":\"H\",\"timestamp\":%ld}\n", (long)time(nullptr)); fflush(fx2); fclose(fx2); }
+          // #endregion
+          if (!wm.setWallpaper(d->targets[0], d->path)) {
+            success = false;
+          }
+        } else {
+          success = false;
+        }
 
-          delete d;     // Clean up payload
-          return FALSE; // Run once
-        },
-        data);
-  }).detach();
+        // #region agent log
+        FILE* f3 = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
+        if (f3) { fprintf(f3, "{\"location\":\"PreviewPanel.cpp:after_setWallpaper\",\"message\":\"setWallpaper returned\",\"hypothesisId\":\"A\",\"timestamp\":%ld}\n", (long)time(nullptr)); fclose(f3); }
+        // #endregion
+
+        // Update UI (we're already on main thread)
+        if (success) {
+          gtk_label_set_text(GTK_LABEL(d->panel->m_statusLabel),
+                             "✓ Wallpaper set!");
+        } else {
+          gtk_label_set_text(GTK_LABEL(d->panel->m_statusLabel),
+                             "✗ Failed to set wallpaper");
+
+          GtkRoot *root =
+              gtk_widget_get_root(GTK_WIDGET(d->panel->m_applyButton));
+          if (root && GTK_IS_WINDOW(root)) {
+            ErrorDialog::show(GTK_WINDOW(root), "Failed to set wallpaper",
+                              "Could not apply " + d->path);
+          }
+        }
+
+        // #region agent log
+        FILE* f4 = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
+        if (f4) { fprintf(f4, "{\"location\":\"PreviewPanel.cpp:callback_exit\",\"message\":\"g_idle_add callback done, returning FALSE\",\"hypothesisId\":\"A\",\"timestamp\":%ld}\n", (long)time(nullptr)); fclose(f4); }
+        // #endregion
+
+        delete d;
+        return FALSE; // Run once
+      },
+      data);
 
   // Return immediately, status label already says "Setting..."
 }

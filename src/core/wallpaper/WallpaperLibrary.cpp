@@ -14,7 +14,10 @@ WallpaperLibrary &WallpaperLibrary::getInstance() {
   return instance;
 }
 
-WallpaperLibrary::WallpaperLibrary() { m_dbPath = getDatabasePath(); }
+WallpaperLibrary::WallpaperLibrary() {
+  LOG_SCOPE_AUTO();
+  m_dbPath = getDatabasePath();
+}
 
 WallpaperLibrary::~WallpaperLibrary() {
   if (m_dirty) {
@@ -22,9 +25,13 @@ WallpaperLibrary::~WallpaperLibrary() {
   }
 }
 
-void WallpaperLibrary::initialize() { load(); }
+void WallpaperLibrary::initialize() {
+  LOG_SCOPE_AUTO();
+  load();
+}
 
 std::filesystem::path WallpaperLibrary::getDatabasePath() const {
+  LOG_SCOPE_AUTO();
   const char *dataHome = std::getenv("XDG_DATA_HOME");
   std::filesystem::path dataDir;
   if (dataHome) {
@@ -41,6 +48,7 @@ std::filesystem::path WallpaperLibrary::getDatabasePath() const {
 }
 
 void WallpaperLibrary::load() {
+  LOG_SCOPE_AUTO();
   std::lock_guard<std::mutex> lock(m_mutex);
   if (!std::filesystem::exists(m_dbPath))
     return;
@@ -108,6 +116,7 @@ void WallpaperLibrary::load() {
 }
 
 void WallpaperLibrary::save() {
+  LOG_SCOPE_AUTO();
   std::lock_guard<std::mutex> lock(m_mutex);
   try {
     nlohmann::json j;
@@ -148,6 +157,7 @@ void WallpaperLibrary::save() {
 }
 
 void WallpaperLibrary::addWallpaper(const WallpaperInfo &info) {
+  LOG_SCOPE_AUTO();
   {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_wallpapers[info.id] = info;
@@ -159,11 +169,12 @@ void WallpaperLibrary::addWallpaper(const WallpaperInfo &info) {
   }
 
   if (m_changeCallback) {
-      m_changeCallback(info);
+    m_changeCallback(info);
   }
 }
 
 void WallpaperLibrary::updateWallpaper(const WallpaperInfo &info) {
+  LOG_SCOPE_AUTO();
   bool needsSave = false;
   {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -180,6 +191,7 @@ void WallpaperLibrary::updateWallpaper(const WallpaperInfo &info) {
 }
 
 void WallpaperLibrary::removeWallpaper(const std::string &id) {
+  LOG_SCOPE_AUTO();
   bool needsSave = false;
   {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -207,6 +219,7 @@ WallpaperLibrary::getWallpaper(const std::string &id) const {
 }
 
 std::vector<WallpaperInfo> WallpaperLibrary::getAllWallpapers() const {
+  LOG_SCOPE_AUTO();
   std::lock_guard<std::mutex> lock(m_mutex);
   std::vector<WallpaperInfo> result;
   result.reserve(m_wallpapers.size());
@@ -218,6 +231,7 @@ std::vector<WallpaperInfo> WallpaperLibrary::getAllWallpapers() const {
 
 std::vector<WallpaperInfo>
 WallpaperLibrary::search(const std::string &query) const {
+  LOG_SCOPE_AUTO();
   std::lock_guard<std::mutex> lock(m_mutex);
   std::vector<WallpaperInfo> result;
   std::string q = utils::StringUtils::toLower(utils::StringUtils::trim(query));
@@ -255,8 +269,8 @@ std::vector<WallpaperInfo> WallpaperLibrary::filter(
 }
 
 void WallpaperLibrary::setChangeCallback(ChangeCallback cb) {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    m_changeCallback = cb;
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_changeCallback = cb;
 }
 
 std::vector<std::string> WallpaperLibrary::getAllTags() const {

@@ -16,7 +16,7 @@ void Logger::init(const std::filesystem::path &logDir) {
     std::filesystem::create_directories(logDir);
   }
 
-  m_logFile = logDir / "betterwallpaper.log";
+  m_logFile = logDir / "application_debug.log";
 
   // Simple rotation: if too big, backup and start new
   if (std::filesystem::exists(m_logFile)) {

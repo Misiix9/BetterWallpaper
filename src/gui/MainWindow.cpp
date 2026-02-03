@@ -25,7 +25,19 @@ static constexpr int DEFAULT_WINDOW_HEIGHT =
     bwp::constants::defaults::WINDOW_HEIGHT;
 // Sidebar width handled in Sidebar class (240px)
 
+// #region agent log
+static void mwDebugLog(const char* loc, const char* msg, const char* hyp) {
+  FILE* f = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
+  if (f) { fprintf(f, "{\"location\":\"%s\",\"message\":\"%s\",\"hypothesisId\":\"%s\",\"timestamp\":%ld}\n", loc, msg, hyp, (long)time(nullptr)); fclose(f); }
+}
+// #endregion
+
 MainWindow::MainWindow(AdwApplication *app) {
+  // #region agent log
+  mwDebugLog("MainWindow.cpp:ctor_entry", "MainWindow constructor started", "F");
+  // #endregion
+  
+  LOG_SCOPE_AUTO();
   m_window = GTK_WIDGET(adw_application_window_new(GTK_APPLICATION(app)));
   gtk_window_set_title(GTK_WINDOW(m_window), bwp::constants::APP_NAME);
 
@@ -43,7 +55,15 @@ MainWindow::MainWindow(AdwApplication *app) {
 
   g_signal_connect(m_window, "close-request", G_CALLBACK(onCloseRequest), this);
 
+  // #region agent log
+  mwDebugLog("MainWindow.cpp:before_setupUi", "About to call setupUi", "F");
+  // #endregion
+  
   setupUi();
+  
+  // #region agent log
+  mwDebugLog("MainWindow.cpp:after_setupUi", "setupUi complete", "F");
+  // #endregion
 
   bwp::input::InputManager::getInstance().setup(GTK_WINDOW(m_window));
 
@@ -63,7 +83,16 @@ MainWindow::MainWindow(AdwApplication *app) {
   bwp::core::PowerManager::getInstance().startMonitoring();
 
   gtk_widget_set_visible(m_window, TRUE);
+  
+  // #region agent log
+  mwDebugLog("MainWindow.cpp:before_weRenderer", "About to create WallpaperEngineRenderer", "F");
+  // #endregion
+  
   m_weRenderer = std::make_unique<bwp::wallpaper::WallpaperEngineRenderer>();
+  
+  // #region agent log
+  mwDebugLog("MainWindow.cpp:after_weRenderer", "WallpaperEngineRenderer created", "F");
+  // #endregion
 
   // Slideshow Logic
   auto &sm = bwp::core::SlideshowManager::getInstance();
@@ -97,9 +126,13 @@ MainWindow::MainWindow(AdwApplication *app) {
 
 MainWindow::~MainWindow() { saveWindowState(); }
 
-void MainWindow::show() { gtk_window_present(GTK_WINDOW(m_window)); }
+void MainWindow::show() {
+  LOG_SCOPE_AUTO();
+  gtk_window_present(GTK_WINDOW(m_window));
+}
 
 void MainWindow::setupUi() {
+  LOG_SCOPE_AUTO();
   // LAYOUT: Monochrome Glass
   // Root: GtkBox (Horizontal) -> [Sidebar] [Separator] [Stack]
   // Wrapped in AdwApplicationWindow content.
@@ -180,6 +213,7 @@ void MainWindow::setupUi() {
 }
 
 void MainWindow::ensureWorkshopView() {
+  LOG_SCOPE_AUTO();
   if (m_workshopViewAdded)
     return;
   m_workshopView.ensureLoaded([this](WorkshopView &view) {
@@ -190,6 +224,7 @@ void MainWindow::ensureWorkshopView() {
 }
 
 void MainWindow::ensureSettingsView() {
+  LOG_SCOPE_AUTO();
   if (m_settingsViewAdded)
     return;
   m_settingsView.ensureLoaded([this](SettingsView &view) {
@@ -200,6 +235,7 @@ void MainWindow::ensureSettingsView() {
 }
 
 void MainWindow::ensureFavoritesView() {
+  LOG_SCOPE_AUTO();
   if (m_favoritesViewAdded)
     return;
   m_favoritesView.ensureLoaded([this](FavoritesView &view) {
@@ -210,6 +246,7 @@ void MainWindow::ensureFavoritesView() {
 }
 
 void MainWindow::ensureProfilesView() {
+  LOG_SCOPE_AUTO();
   if (m_profilesViewAdded)
     return;
   m_profilesView.ensureLoaded([this](ProfilesView &view) {
@@ -220,6 +257,7 @@ void MainWindow::ensureProfilesView() {
 }
 
 void MainWindow::ensureScheduleView() {
+  LOG_SCOPE_AUTO();
   if (m_scheduleViewAdded)
     return;
   m_scheduleView.ensureLoaded([this](ScheduleView &view) {
@@ -230,6 +268,7 @@ void MainWindow::ensureScheduleView() {
 }
 
 void MainWindow::ensureHyprlandView() {
+  LOG_SCOPE_AUTO();
   if (m_hyprlandViewAdded)
     return;
   m_hyprlandView = std::make_unique<HyprlandWorkspacesView>();
@@ -239,6 +278,7 @@ void MainWindow::ensureHyprlandView() {
 }
 
 void MainWindow::loadWindowState() {
+  LOG_SCOPE_AUTO();
   auto &config = bwp::config::ConfigManager::getInstance();
   int width = config.get<int>("window.width");
   int height = config.get<int>("window.height");
@@ -274,6 +314,7 @@ void MainWindow::loadWindowState() {
 // refactoring the whole file essentially to ensure consistency, so I will
 // include them).
 void MainWindow::saveWindowState() {
+  LOG_SCOPE_AUTO();
   if (!m_window)
     return;
   auto &config = bwp::config::ConfigManager::getInstance();
@@ -291,6 +332,7 @@ void MainWindow::saveWindowState() {
 }
 
 gboolean MainWindow::onCloseRequest(GtkWindow *, gpointer user_data) {
+  LOG_SCOPE_AUTO();
   MainWindow *self = static_cast<MainWindow *>(user_data);
   if (self)
     self->saveWindowState();

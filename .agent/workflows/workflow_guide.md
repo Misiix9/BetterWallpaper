@@ -17,3 +17,10 @@
 1.  **Check:** Does it match `02_design_memory.md`?
 2.  **Hex:** Are you using `#0A0A0A` instead of Black?
 3.  **Anim:** Is it 200ms cubic-bezier?
+
+## SOP: Testing Protocol
+1.  **Setup:** One-time: `python3 -m venv .venv && .venv/bin/pip install -r tests/requirements.txt`
+2.  **Run:** `.venv/bin/python scripts/hand_of_god.py --mode=chaos`
+3.  **verify:** Output must be `SUCCESS`.
+4.  **Note:** Move mouse to top-left to EMERGEENCY STOP (X11 only).
+5.  **Wayland:** If on Wayland (Hyprland), the script runs in "Blind Mode" (Window Focus + Process Monitoring) as full input injection is restricted.

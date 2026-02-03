@@ -5,10 +5,13 @@ namespace bwp::gui {
 SearchBar::SearchBar() {
   m_entry = gtk_search_entry_new();
   gtk_widget_set_hexpand(m_entry, TRUE);
-  gtk_widget_set_margin_start(m_entry, 12);
-  gtk_widget_set_margin_end(m_entry, 12);
-  gtk_widget_set_margin_top(m_entry, 12);
-  gtk_widget_set_margin_bottom(m_entry, 12);
+  gtk_widget_set_margin_start(m_entry, 0);
+  gtk_widget_set_margin_end(m_entry, 4);
+  gtk_widget_set_margin_top(m_entry, 0);
+  gtk_widget_set_margin_bottom(m_entry, 0);
+
+  // Compact styling
+  gtk_widget_add_css_class(m_entry, "search-bar");
 
   g_signal_connect(m_entry, "search-changed", G_CALLBACK(onChanged), this);
 }
