@@ -34,6 +34,9 @@ Application::Application() {
 }
 
 Application::~Application() {
+  // Graceful shutdown of wallpaper manager (handles persistence)
+  bwp::wallpaper::WallpaperManager::getInstance().shutdown();
+
   // Cleanup CSS hot-reload resources
   if (s_cssMonitor) {
     g_object_unref(s_cssMonitor);
@@ -51,58 +54,110 @@ int Application::run(int argc, char **argv) {
 }
 
 // #region agent log
-static void appDebugLog(const char* loc, const char* msg, const char* hyp) {
-  FILE* f = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
-  if (f) { fprintf(f, "{\"location\":\"%s\",\"message\":\"%s\",\"hypothesisId\":\"%s\",\"timestamp\":%ld}\n", loc, msg, hyp, (long)time(nullptr)); fclose(f); }
+static void appDebugLog(const char *loc, const char *msg, const char *hyp) {
+  FILE *f = fopen(
+      "/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
+  if (f) {
+    fprintf(f,
+            "{\"location\":\"%s\",\"message\":\"%s\",\"hypothesisId\":\"%s\","
+            "\"timestamp\":%ld}\n",
+            loc, msg, hyp, (long)time(nullptr));
+    fclose(f);
+  }
 }
 // #endregion
 
 void Application::onActivate(GApplication *app, gpointer) {
-  // TEMPORARY: Always show wizard for testing
-  // TODO: Restore first_run check: if (ConfigManager::getInstance().get<bool>("general.first_run", true))
-  bool showWizard = true;
+  bool showWizard = bwp::config::ConfigManager::getInstance().get<bool>(
+      "general.first_run", true);
 
   if (showWizard) {
     // Show wizard FIRST, then create main window after completion
-    bwp::utils::Logger::log(bwp::utils::LogLevel::INFO,
-                            "Launching Fluid Setup Wizard (main app hidden until complete)");
-    
+    bwp::utils::Logger::log(
+        bwp::utils::LogLevel::INFO,
+        "Launching Fluid Setup Wizard (main app hidden until complete)");
+
     auto *wizard = new FluidSetupWizard(nullptr); // No parent - standalone
     wizard->setOnComplete([app, wizard]() {
-        // #region agent log
-        FILE* f1 = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
-        if (f1) { fprintf(f1, "{\"location\":\"Application.cpp:onComplete_start\",\"message\":\"Wizard onComplete callback started\",\"hypothesisId\":\"F\",\"timestamp\":%ld}\n", (long)time(nullptr)); fclose(f1); }
-        // #endregion
-        
-        // NOW create and show main window
-        bwp::utils::Logger::log(bwp::utils::LogLevel::INFO,
-                                "Wizard complete - launching main application");
-        
-        // #region agent log
-        FILE* f2 = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
-        if (f2) { fprintf(f2, "{\"location\":\"Application.cpp:before_MainWindow\",\"message\":\"About to create MainWindow\",\"hypothesisId\":\"F\",\"timestamp\":%ld}\n", (long)time(nullptr)); fclose(f2); }
-        // #endregion
-        
-        auto *window = new MainWindow(ADW_APPLICATION(app));
-        
-        // #region agent log
-        FILE* f3 = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
-        if (f3) { fprintf(f3, "{\"location\":\"Application.cpp:after_MainWindow\",\"message\":\"MainWindow created, about to show\",\"hypothesisId\":\"F\",\"timestamp\":%ld}\n", (long)time(nullptr)); fclose(f3); }
-        // #endregion
-        
-        window->show();
-        
-        // #region agent log
-        FILE* f4 = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
-        if (f4) { fprintf(f4, "{\"location\":\"Application.cpp:after_show\",\"message\":\"MainWindow shown, about to delete wizard\",\"hypothesisId\":\"F\",\"timestamp\":%ld}\n", (long)time(nullptr)); fclose(f4); }
-        // #endregion
-        
-        delete wizard;
-        
-        // #region agent log
-        FILE* f5 = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
-        if (f5) { fprintf(f5, "{\"location\":\"Application.cpp:onComplete_done\",\"message\":\"Wizard deleted, callback complete\",\"hypothesisId\":\"F\",\"timestamp\":%ld}\n", (long)time(nullptr)); fclose(f5); }
-        // #endregion
+      // #region agent log
+      FILE *f1 = fopen(
+          "/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log",
+          "a");
+      if (f1) {
+        fprintf(f1,
+                "{\"location\":\"Application.cpp:onComplete_start\","
+                "\"message\":\"Wizard onComplete callback "
+                "started\",\"hypothesisId\":\"F\",\"timestamp\":%ld}\n",
+                (long)time(nullptr));
+        fclose(f1);
+      }
+      // #endregion
+
+      // NOW create and show main window
+      bwp::utils::Logger::log(bwp::utils::LogLevel::INFO,
+                              "Wizard complete - launching main application");
+
+      // #region agent log
+      FILE *f2 = fopen(
+          "/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log",
+          "a");
+      if (f2) {
+        fprintf(f2,
+                "{\"location\":\"Application.cpp:before_MainWindow\","
+                "\"message\":\"About to create "
+                "MainWindow\",\"hypothesisId\":\"F\",\"timestamp\":%ld}\n",
+                (long)time(nullptr));
+        fclose(f2);
+      }
+      // #endregion
+
+      auto *window = new MainWindow(ADW_APPLICATION(app));
+
+      // #region agent log
+      FILE *f3 = fopen(
+          "/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log",
+          "a");
+      if (f3) {
+        fprintf(f3,
+                "{\"location\":\"Application.cpp:after_MainWindow\","
+                "\"message\":\"MainWindow created, about to "
+                "show\",\"hypothesisId\":\"F\",\"timestamp\":%ld}\n",
+                (long)time(nullptr));
+        fclose(f3);
+      }
+      // #endregion
+
+      window->show();
+
+      // #region agent log
+      FILE *f4 = fopen(
+          "/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log",
+          "a");
+      if (f4) {
+        fprintf(f4,
+                "{\"location\":\"Application.cpp:after_show\",\"message\":"
+                "\"MainWindow shown, about to delete "
+                "wizard\",\"hypothesisId\":\"F\",\"timestamp\":%ld}\n",
+                (long)time(nullptr));
+        fclose(f4);
+      }
+      // #endregion
+
+      delete wizard;
+
+      // #region agent log
+      FILE *f5 = fopen(
+          "/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log",
+          "a");
+      if (f5) {
+        fprintf(f5,
+                "{\"location\":\"Application.cpp:onComplete_done\",\"message\":"
+                "\"Wizard deleted, callback "
+                "complete\",\"hypothesisId\":\"F\",\"timestamp\":%ld}\n",
+                (long)time(nullptr));
+        fclose(f5);
+      }
+      // #endregion
     });
     wizard->show();
   } else {

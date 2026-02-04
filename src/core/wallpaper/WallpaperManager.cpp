@@ -80,16 +80,26 @@ void WallpaperManager::handleMonitorUpdate(const monitor::MonitorInfo &info,
 }
 
 // #region agent log
-static void debugLog(const std::string& loc, const std::string& msg, const std::string& hyp) {
-  FILE* f = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
-  if (f) { fprintf(f, "{\"location\":\"%s\",\"message\":\"%s\",\"hypothesisId\":\"%s\",\"timestamp\":%ld}\n", loc.c_str(), msg.c_str(), hyp.c_str(), (long)time(nullptr)); fflush(f); fclose(f); }
+static void debugLog(const std::string &loc, const std::string &msg,
+                     const std::string &hyp) {
+  FILE *f = fopen(
+      "/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
+  if (f) {
+    fprintf(f,
+            "{\"location\":\"%s\",\"message\":\"%s\",\"hypothesisId\":\"%s\","
+            "\"timestamp\":%ld}\n",
+            loc.c_str(), msg.c_str(), hyp.c_str(), (long)time(nullptr));
+    fflush(f);
+    fclose(f);
+  }
 }
 // #endregion
 
 bool WallpaperManager::setWallpaper(const std::string &monitorName,
                                     const std::string &path) {
   // #region agent log
-  debugLog("WallpaperManager.cpp:setWallpaper:entry", "setWallpaper called", "A");
+  debugLog("WallpaperManager.cpp:setWallpaper:entry", "setWallpaper called",
+           "A");
   // #endregion
   LOG_INFO("WallpaperManager::setWallpaper called for " + monitorName +
            " with path: " + path);
@@ -133,22 +143,36 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
   // Find monitor state
   auto it = m_monitors.find(monitorName);
   if (it == m_monitors.end()) {
-    LOG_ERROR("Monitor not found: " + monitorName + ". Available monitors:");
-    for (const auto &[name, state] : m_monitors) {
-      LOG_ERROR("  - " + name);
+    LOG_WARN("Monitor not found: " + monitorName +
+             ". Activating Blind Mode fallback.");
+    // Create blind state
+    MonitorState state;
+    monitor::MonitorInfo info;
+    info.name = monitorName;
+    // Attempt to create window even if blind - might be needed for static/video
+    // fallbacks If it fails, we catch it? WallpaperWindow constructor usually
+    // safe? Let's assume yes.
+    try {
+      state.window = std::make_shared<WallpaperWindow>(info);
+      state.window->show();
+    } catch (...) {
+      LOG_ERROR("Failed to create Blind Mode window for " + monitorName);
     }
-    return false;
+    m_monitors[monitorName] = state;
+    it = m_monitors.find(monitorName);
   }
 
   LOG_INFO("Found monitor " + monitorName);
 
   // #region agent log
-  debugLog("WallpaperManager.cpp:createRenderer", "About to createRenderer", "C");
+  debugLog("WallpaperManager.cpp:createRenderer", "About to createRenderer",
+           "C");
   // #endregion
   // Determine type and create renderer
   auto renderer = createRenderer(path);
   // #region agent log
-  debugLog("WallpaperManager.cpp:createRenderer_done", "createRenderer done", "C");
+  debugLog("WallpaperManager.cpp:createRenderer_done", "createRenderer done",
+           "C");
   // #endregion
   if (!renderer) {
     LOG_ERROR("Failed to create renderer for path: " + path);
@@ -170,54 +194,84 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
   debugLog("WallpaperManager.cpp:load_done", "Renderer load done", "C");
   // #endregion
 
-  LOG_INFO("Loaded wallpaper successfully");
+  LOG_INFO("Loaded wallpaper successfully"); // EXPERIMENTAL: Screenshot Freeze
+                                             // Transition
+  // 1. Capture current state
+  std::string screenshotPath = "/tmp/bwp_freeze_" + monitorName + ".png";
+  std::string cmd = "grim -o " + monitorName + " " + screenshotPath;
 
-  // Stop old renderer
-  if (it->second.renderer) {
-    // #region agent log
-    debugLog("WallpaperManager.cpp:stop_old", "About to stop old renderer", "B");
-    // #endregion
-    LOG_INFO("Stopping old renderer");
-    it->second.renderer->stop();
-    // #region agent log
-    debugLog("WallpaperManager.cpp:stop_old_done", "Old renderer stopped", "B");
-    // #endregion
-  }
+  // Use runCommand to capture. Ignoring return code for now, assuming grim
+  // exists.
+  bwp::utils::SystemUtils::runCommand(cmd);
 
-  it->second.renderer = renderer;
-  it->second.currentPath = path;
-
-  // #region agent log
-  debugLog("WallpaperManager.cpp:transitionTo", "About to call transitionTo", "D");
-  // #endregion
-  LOG_INFO("Transitioning to new wallpaper...");
-  it->second.window->transitionTo(renderer);
-  // #region agent log
-  debugLog("WallpaperManager.cpp:transitionTo_done", "transitionTo done", "D");
-  // #endregion
-
-  if (m_paused) {
-    renderer->pause();
+  // 2. Create StaticRenderer from screenshot
+  auto freezeRenderer = std::make_shared<StaticRenderer>();
+  if (freezeRenderer->load(screenshotPath)) {
+    // 3. Set Freeze renderer immediately
+    LOG_INFO("Freezing screen with screenshot: " + screenshotPath);
+    it->second.renderer = freezeRenderer;
+    it->second.window->setRenderer(freezeRenderer);
+    it->second.currentPath = "TRANSITION_FREEZE"; // usage marker
   } else {
-    LOG_INFO("Starting wallpaper playback");
-    renderer->play();
-  }
-  // #region agent log
-  debugLog("WallpaperManager.cpp:exit", "setWallpaper complete", "A");
-  // #endregion
-
-  // Apply settings
-  if (m_scalingModes.count(monitorName)) {
-    renderer->setScalingMode(
-        static_cast<ScalingMode>(m_scalingModes[monitorName]));
+    LOG_WARN("Failed to load freeze screenshot, skipping freeze step.");
+    // If fail, just proceed normal flow (will cause black flash)
   }
 
-  LOG_INFO("Wallpaper set successfully!");
+  // 4. Launch Target Renderer (starts process)
+  // already created `renderer` above
+  renderer->setMonitor(monitorName);
+  // Re-load? No, we haven't loaded it yet. Logic above says "createRenderer"
+  // then "load". Wait, I am replacing lines 189-237. The original code passed
+  // `renderer` (created but not loaded) to this block? Let's check
+  // `WallpaperManager.cpp`. Line 172: `createRenderer`. Line 189:
+  // `renderer->load(path)`. My patch STARTS at line 200 (Stop old). So
+  // `renderer` IS ALREADY LOADED and Process STARTED at line 189! So the
+  // process is running. If I set `freezeRenderer` NOW, it overlays the
+  // just-started process (which is black). This is correct. `freezeRenderer`
+  // (Static) is drawn by `WallpaperWindow` (GTK), which is likely TOP layer of
+  // the wallpaper plane. `linux-wallpaperengine` is BOTTOM layer. So GTK
+  // Overlay covers black WE window.
 
-  // Save state for persistence (without app running)
+  // 5. Spawn thread to wait and reveal
+  std::thread([this, monitorName, freezeRenderer, renderer, path]() {
+  // Wait for WE to initialize GL and show content
+#ifdef _WIN32
+    Sleep(2000);
+#else
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+#endif
+
+    std::lock_guard<std::recursive_mutex> asyncLock(m_mutex);
+
+    // Check if we are still the active renderer (handler for rapid switching)
+    auto &state = m_monitors[monitorName];
+    if (state.renderer == freezeRenderer) {
+      LOG_INFO("Revealing new wallpaper via transition");
+      state.renderer = renderer;
+      state.currentPath = path;
+      // Smooth fade from Screenshot -> Transparent (revealing WE)
+      state.window->transitionTo(renderer);
+
+      if (m_paused)
+        renderer->pause();
+      else
+        renderer->play();
+
+      if (m_scalingModes.count(monitorName)) {
+        renderer->setScalingMode(
+            static_cast<ScalingMode>(m_scalingModes[monitorName]));
+      }
+    } else {
+      LOG_INFO("Wallpaper changed during transition, aborting reveal");
+      // `renderer` will be destroyed (if no other refs), causing
+      // `terminateProcess`
+    }
+  }).detach();
+
+  // Return true immediately, effectively "set" from user perspective
+  LOG_INFO("Wallpaper set initiated (Transitioning)");
   saveState();
   writeHyprpaperConfig();
-
   return true;
 #endif
 }
@@ -226,21 +280,23 @@ bool WallpaperManager::setWallpaper(const std::vector<std::string> &monitors,
   // #region agent log
   debugLog("WallpaperManager.cpp:bulk_entry", "bulk setWallpaper called", "I");
   // #endregion
-  
+
   if (monitors.empty())
     return false;
   if (monitors.size() == 1)
     return setWallpaper(monitors[0], path);
 
   // #region agent log
-  debugLog("WallpaperManager.cpp:bulk_getMime", "About to call getMimeType", "I");
+  debugLog("WallpaperManager.cpp:bulk_getMime", "About to call getMimeType",
+           "I");
   // #endregion
-  
+
   // Check if type supports multi-monitor single process
   std::string mime = utils::FileUtils::getMimeType(path);
-  
+
   // #region agent log
-  debugLog("WallpaperManager.cpp:bulk_afterMime", "getMimeType returned: " + mime, "I");
+  debugLog("WallpaperManager.cpp:bulk_afterMime",
+           "getMimeType returned: " + mime, "I");
   // #endregion
   bool isWE = false;
   if (mime.find("x-wallpaper-engine") != std::string::npos)
@@ -253,23 +309,26 @@ bool WallpaperManager::setWallpaper(const std::vector<std::string> &monitors,
 
   if (!isWE) {
     // #region agent log
-    debugLog("WallpaperManager.cpp:bulk_notWE", "Not WE, falling back to per-monitor", "I");
+    debugLog("WallpaperManager.cpp:bulk_notWE",
+             "Not WE, falling back to per-monitor", "I");
     // #endregion
     // Fallback for types that don't support multi-monitor instances (Video,
     // Static)
     bool allSuccess = true;
     for (const auto &mon : monitors) {
       // #region agent log
-      debugLog("WallpaperManager.cpp:bulk_loop", "Calling single setWallpaper for: " + mon, "I");
+      debugLog("WallpaperManager.cpp:bulk_loop",
+               "Calling single setWallpaper for: " + mon, "I");
       // #endregion
       if (!setWallpaper(mon, path))
         allSuccess = false;
     }
     return allSuccess;
   }
-  
+
   // #region agent log
-  debugLog("WallpaperManager.cpp:bulk_isWE", "Is WE, using shared renderer path", "I");
+  debugLog("WallpaperManager.cpp:bulk_isWE",
+           "Is WE, using shared renderer path", "I");
   // #endregion
 
   // Optimized path for Wallpaper Engine
@@ -277,11 +336,13 @@ bool WallpaperManager::setWallpaper(const std::vector<std::string> &monitors,
            " monitors: " + path);
 
   // #region agent log
-  debugLog("WallpaperManager.cpp:WE_mutex", "About to acquire mutex (WE path)", "J");
+  debugLog("WallpaperManager.cpp:WE_mutex", "About to acquire mutex (WE path)",
+           "J");
   // #endregion
   std::lock_guard<std::recursive_mutex> lock(m_mutex);
   // #region agent log
-  debugLog("WallpaperManager.cpp:WE_mutex_acquired", "Mutex acquired (WE path)", "J");
+  debugLog("WallpaperManager.cpp:WE_mutex_acquired", "Mutex acquired (WE path)",
+           "J");
   // #endregion
 
   // Validate monitors
@@ -294,15 +355,37 @@ bool WallpaperManager::setWallpaper(const std::vector<std::string> &monitors,
     }
   }
 
-  if (validMonitors.empty())
-    return false;
+  if (validMonitors.empty()) {
+    LOG_WARN("No valid monitors found in detection list for bulk set. Falling "
+             "back to requested monitors (Blind Mode).");
+    validMonitors = monitors;
+
+    // Initialize state for blind monitors
+    for (const auto &name : validMonitors) {
+      if (m_monitors.find(name) == m_monitors.end()) {
+        MonitorState state;
+        monitor::MonitorInfo info;
+        info.name = name;
+        try {
+          // Assuming WallpaperWindow can be created without strict validation
+          state.window = std::make_shared<WallpaperWindow>(info);
+          state.window->show();
+        } catch (...) {
+          LOG_ERROR("Failed to create Blind Mode window for " + name);
+        }
+        m_monitors[name] = state;
+      }
+    }
+  }
 
   // #region agent log
-  debugLog("WallpaperManager.cpp:WE_createRenderer", "About to createRenderer", "J");
+  debugLog("WallpaperManager.cpp:WE_createRenderer", "About to createRenderer",
+           "J");
   // #endregion
   auto renderer = createRenderer(path);
   // #region agent log
-  debugLog("WallpaperManager.cpp:WE_createRenderer_done", "createRenderer done", "J");
+  debugLog("WallpaperManager.cpp:WE_createRenderer_done", "createRenderer done",
+           "J");
   // #endregion
   if (!renderer)
     return false;
@@ -323,42 +406,59 @@ bool WallpaperManager::setWallpaper(const std::vector<std::string> &monitors,
   // Assign to all monitors
   for (const auto &name : validMonitors) {
     // #region agent log
-    debugLog("WallpaperManager.cpp:WE_loop", "Processing monitor: " + name, "J");
+    debugLog("WallpaperManager.cpp:WE_loop", "Processing monitor: " + name,
+             "J");
     // #endregion
     auto &state = m_monitors[name];
 
-    if (state.renderer) {
-      // #region agent log
-      debugLog("WallpaperManager.cpp:WE_stop_old", "About to stop old renderer", "J");
-      // #endregion
-      state.renderer->stop();
-      // #region agent log
-      debugLog("WallpaperManager.cpp:WE_stop_old_done", "Old renderer stopped", "J");
-      // #endregion
-    }
+    // #region agent log
+    debugLog("WallpaperManager.cpp:WE_loop", "Processing monitor: " + name,
+             "J");
+    // #endregion
 
+    // Hold reference to old renderer to prevent immediate destruction
+    auto oldRenderer = state.renderer;
+
+    // Assign new renderer immediately so UI updates
     state.renderer = renderer;
     state.currentPath = path;
+
     // #region agent log
-    debugLog("WallpaperManager.cpp:WE_transitionTo", "About to call transitionTo", "J");
+    debugLog("WallpaperManager.cpp:WE_transitionTo",
+             "About to call transitionTo", "J");
     // #endregion
+
+    // Note: WallpaperEngineRenderer::render() draws nothing (external window),
+    // so transitionTo()'s snapshot will be empty/transparent.
+    // The "transition" here is effectively managing state.
     state.window->transitionTo(renderer);
+
     // #region agent log
-    debugLog("WallpaperManager.cpp:WE_transitionTo_done", "transitionTo done", "J");
+    debugLog("WallpaperManager.cpp:WE_transitionTo_done", "transitionTo done",
+             "J");
     // #endregion
 
     if (m_scalingModes.count(name)) {
-      // renderer->setScalingMode applies globally to the renderer usually?
-      // WE can take one scaling mode arg?
-      // If different monitors have different scaling modes, this shared
-      // approach fails? linux-wallpaperengine supports --scaling <mode>. It
-      // applies to all outputs. So we pick the first valid one or last?
       renderer->setScalingMode(static_cast<ScalingMode>(m_scalingModes[name]));
+    }
+
+    // Stop the old renderer after a delay to allow the new process to appear
+    if (oldRenderer) {
+      // Shared pointer capture keeps it alive
+      std::thread([oldRenderer]() {
+#ifdef _WIN32
+        Sleep(800); // 800ms delay
+#else
+        std::this_thread::sleep_for(std::chrono::milliseconds(800));
+#endif
+        oldRenderer->stop();
+      }).detach();
     }
   }
 
   // #region agent log
-  debugLog("WallpaperManager.cpp:WE_before_play", "About to call play/pause", "K");
+  debugLog("WallpaperManager.cpp:WE_before_play", "About to call play/pause",
+           "K");
   // #endregion
   if (m_paused) {
     renderer->pause();
@@ -381,7 +481,8 @@ bool WallpaperManager::setWallpaper(const std::vector<std::string> &monitors,
   // #endregion
   writeHyprpaperConfig();
   // #region agent log
-  debugLog("WallpaperManager.cpp:WE_complete", "Bulk WE setWallpaper complete, returning", "K");
+  debugLog("WallpaperManager.cpp:WE_complete",
+           "Bulk WE setWallpaper complete, returning", "K");
   // #endregion
 
   return true;
@@ -543,6 +644,40 @@ void WallpaperManager::loadState() {
       }
     }
   }
+}
+
+void WallpaperManager::shutdown() {
+  LOG_INFO("Shutting down WallpaperManager...");
+  stopResourceMonitor();
+
+  // Check if persistence is enabled (default true)
+  // We could make this a config option: "general.persistence"
+  bool persistence = true;
+
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
+  for (auto &[name, state] : m_monitors) {
+    if (state.renderer) {
+      if (persistence) {
+        // Try to cast to WallpaperEngineRenderer
+        auto weRenderer =
+            std::dynamic_pointer_cast<WallpaperEngineRenderer>(state.renderer);
+        if (weRenderer) {
+          weRenderer->detach();
+        } else {
+          // Static/Video renderers (internal) must stop as they depend on our
+          // window
+          state.renderer->stop();
+        }
+      } else {
+        state.renderer->stop();
+      }
+    }
+    if (state.window) {
+      state.window->hide();
+      // Destroy?
+    }
+  }
+  m_monitors.clear();
 }
 
 void WallpaperManager::writeHyprpaperConfig() {

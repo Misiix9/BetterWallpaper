@@ -4,8 +4,8 @@
 #include <iomanip>
 #include <sstream>
 #ifdef _WIN32
-#include <windows.h>
 #include <psapi.h>
+#include <windows.h>
 #else
 #include <unistd.h>
 #endif
@@ -14,11 +14,11 @@ namespace bwp::utils {
 
 uint64_t SystemUtils::getProcessRSS() {
 #ifdef _WIN32
-    PROCESS_MEMORY_COUNTERS pmc;
-    if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
-        return pmc.WorkingSetSize;
-    }
-    return 0;
+  PROCESS_MEMORY_COUNTERS pmc;
+  if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
+    return pmc.WorkingSetSize;
+  }
+  return 0;
 #else
   std::ifstream f("/proc/self/statm");
   if (f.is_open()) {
@@ -46,6 +46,10 @@ std::string SystemUtils::formatBytes(uint64_t bytes) {
   std::stringstream ss;
   ss << std::fixed << std::setprecision(1) << v << " " << suffixes[suffixIndex];
   return ss.str();
+}
+
+int SystemUtils::runCommand(const std::string &cmd) {
+  return std::system(cmd.c_str());
 }
 
 } // namespace bwp::utils

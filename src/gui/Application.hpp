@@ -16,9 +16,11 @@ public:
   static Application *create();
   static Application *getInstance();
 
+public:
+  ~Application();
+
 protected:
   Application();
-  ~Application();
 
   // GApplication virtuals usually handled via signals in C++, but if wrapping:
   // With AdwApplication, usually we rely on signals or subclassing GObject.

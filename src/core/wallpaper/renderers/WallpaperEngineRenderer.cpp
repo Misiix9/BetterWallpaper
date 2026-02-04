@@ -153,14 +153,29 @@ void WallpaperEngineRenderer::launchProcess() {
 
   pid_t pid = fork();
   if (pid == 0) {
-    // Set LD_LIBRARY_PATH to include the executable's directory for libGLEW symlink
-    // This avoids hardcoded paths and works from both build and install locations
+    // Set LD_LIBRARY_PATH to include the executable's directory for libGLEW
+    // symlink This avoids hardcoded paths and works from both build and install
+    // locations
     std::string exeDir;
+    std::string workingDir = "."; // Default CWD
     try {
-      exeDir = std::filesystem::canonical("/proc/self/exe").parent_path().string();
+      exeDir =
+          std::filesystem::canonical("/proc/self/exe").parent_path().string();
     } catch (...) {
       exeDir = "."; // Fallback to current directory
     }
+
+    // Check if we can bypass the wrapper script and run directly
+    // This fixes issues where the wrapper script mishandles LD_LIBRARY_PATH
+    if (std::filesystem::exists(
+            "/opt/linux-wallpaperengine/linux-wallpaperengine")) {
+      bin = "/opt/linux-wallpaperengine/linux-wallpaperengine";
+      workingDir = "/opt/linux-wallpaperengine";
+    }
+
+    // Set working directory
+    int chdirRes = chdir(workingDir.c_str());
+    (void)chdirRes; // Suppress unused warning
 
     const char *currentLd = getenv("LD_LIBRARY_PATH");
     std::string newLd = exeDir;
@@ -168,12 +183,25 @@ void WallpaperEngineRenderer::launchProcess() {
     newLd += ":" + exeDir + "/..";
     newLd += ":" + exeDir + "/../..";
     newLd += ":" + exeDir + "/../../..";
+
+    // Fix for broken AUR package / installation script
+    // which fails to find libcef.so in the root of the install dir
+    if (bin.find("/opt/linux-wallpaperengine") != std::string::npos) {
+      // Prioritize the install dir if we are running the binary directly
+      // Must include BOTH root (for libcef.so) and lib/ (for kissfft etc)
+      newLd =
+          "/opt/linux-wallpaperengine:/opt/linux-wallpaperengine/lib:" + newLd;
+    } else {
+      newLd += ":/opt/linux-wallpaperengine:/opt/linux-wallpaperengine/lib";
+    }
+    newLd += ":/usr/lib/linux-wallpaperengine";
+
     if (currentLd) {
       newLd += ":";
       newLd += currentLd;
     }
     setenv("LD_LIBRARY_PATH", newLd.c_str(), 1);
-    
+
     // Ensure DISPLAY is set for XWayland/GLX support on Wayland compositors
     // linux-wallpaperengine requires X11/GLX, so it needs XWayland
     const char *display = getenv("DISPLAY");
@@ -282,6 +310,23 @@ void WallpaperEngineRenderer::pause() {
   }
 }
 
+void WallpaperEngineRenderer::detach() {
+  LOG_SCOPE_AUTO();
+  if (m_pid != -1) {
+    LOG_INFO("Detaching wallpaper process " + std::to_string(m_pid) +
+             " (Persistence Enabled)");
+    m_detached = true;
+    // Signal watcher to stop without killing
+    m_stopWatcher = true;
+    m_cv.notify_all();
+    if (m_watcherThread.joinable()) {
+      m_watcherThread.join();
+    }
+    m_pid = -1;
+    m_isPlaying = false;
+  }
+}
+
 void WallpaperEngineRenderer::stop() {
   LOG_SCOPE_AUTO();
   terminateProcess();
@@ -292,7 +337,7 @@ void WallpaperEngineRenderer::terminateProcess() {
   m_stopWatcher = true;
   m_cv.notify_all();
 
-  if (m_pid != -1) {
+  if (m_pid != -1 && !m_detached) {
     kill(m_pid, SIGTERM);
     // waitpid handled by thread?
     // If we kill, watcher wakes up.

@@ -57,6 +57,10 @@
 - [ ] **Expansion**
     - [ ] WebGL/HTML5 Wallpaper Support [Roadmap #1]
     - [ ] Environmental/Smart Scheduling [Roadmap #2]
+    - [ ] **Experience Optimization** (Priority Request)
+        - [ ] **Faster Switching**: Optimize renderer loading pipeline.
+        - [ ] **Seamless Transition**: Ensure old wallpaper stays until new one is ready.
+        - [ ] **Persistence**: Detach wallpaper process on app exit so it stays running.
 - [ ] **Final Polish**
     - [x] Verify "No Full Black/White" Rule compliance.
     - [x] Performance Profiling (Memory/CPU).

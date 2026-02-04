@@ -46,6 +46,7 @@ public:
   void play() override;
   void pause() override;
   void stop() override;
+  void detach(); // New: Detach process on exit
 
   void setVolume(float volume) override;
   void setPlaybackSpeed(float speed) override;
@@ -63,6 +64,7 @@ private:
 
   std::thread m_watcherThread;
   std::atomic<bool> m_stopWatcher = false;
+  std::atomic<bool> m_detached = false; // New
   std::atomic<int> m_crashCount = 0;
   std::chrono::steady_clock::time_point m_lastLaunchTime;
 

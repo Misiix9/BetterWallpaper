@@ -26,7 +26,9 @@ int main(int argc, char **argv) {
     LOG_INFO("==========================================");
 
     auto *app = bwp::gui::Application::create();
-    return app->run(argc, argv);
+    int status = app->run(argc, argv);
+    delete app; // Ensure destructor runs for cleanup/persistence
+    return status;
   } catch (const std::exception &e) {
     std::cerr << "FATAL ERROR: " << e.what() << std::endl;
     // Try to log if logger is initialized
