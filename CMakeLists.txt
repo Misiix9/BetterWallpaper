@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(BetterWallpaper
-    VERSION 0.2.0
+    VERSION 0.3.1
     DESCRIPTION "Feature-rich wallpaper manager for Linux"
     LANGUAGES CXX C
 )
@@ -81,6 +81,8 @@ if(MSVC)
 else()
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
+
+add_compile_definitions(BWP_VERSION="${PROJECT_VERSION}")
 
 # Testing
 enable_testing()

@@ -4,6 +4,14 @@
 #include <stdexcept>
 
 int main(int argc, char **argv) {
+  // Check for version flag
+  for (int i = 1; i < argc; ++i) {
+    if (std::string(argv[i]) == "-v" || std::string(argv[i]) == "--version") {
+      std::cout << "BetterWallpaper v" << BWP_VERSION << std::endl;
+      return 0;
+    }
+  }
+
   // Initialize Logger
   // Use current directory or a temp specific one for now to ensure visibility
   // passed "local file" requirement.
