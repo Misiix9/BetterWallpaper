@@ -17,13 +17,14 @@ public:
 
   void setRenderer(std::weak_ptr<WallpaperRenderer> renderer) {}
   void transitionTo(std::shared_ptr<WallpaperRenderer> nextRenderer) {}
-  void render() {} 
+  void render() {}
 
-  // Stub GtkWindow* as void* or just remove getWindow() usage if possible
-  void* getWindow() { return nullptr; }
+  void *getWindow() { return nullptr; }
 
   void show() {}
   void hide() {}
+  void setOpacity(double opacity) {}
+  double getOpacity() const { return 1.0; }
 
   void updateMonitor(const monitor::MonitorInfo &monitor) {}
 };
@@ -33,15 +34,21 @@ public:
   WallpaperWindow(const monitor::MonitorInfo &monitor);
   ~WallpaperWindow();
 
-  void setRenderer(
-      std::weak_ptr<WallpaperRenderer> renderer); // Weak ptr? Or shared.
+  void setRenderer(std::weak_ptr<WallpaperRenderer> renderer);
   void transitionTo(std::shared_ptr<WallpaperRenderer> nextRenderer);
-  void render(); // Called on frame tick
+  void render();
 
   GtkWindow *getWindow() { return GTK_WINDOW(m_window); }
 
   void show();
   void hide();
+
+  /**
+   * Set the window opacity (0.0 = invisible, 1.0 = fully visible)
+   * Used for transitions where new wallpaper fades in over old one
+   */
+  void setOpacity(double opacity);
+  double getOpacity() const;
 
   void updateMonitor(const monitor::MonitorInfo &monitor);
 
@@ -56,6 +63,7 @@ private:
   monitor::MonitorInfo m_monitor;
   std::weak_ptr<WallpaperRenderer> m_renderer;
   bwp::transition::TransitionEngine m_transitionEngine;
+  double m_opacity = 1.0;
 };
 #endif
 

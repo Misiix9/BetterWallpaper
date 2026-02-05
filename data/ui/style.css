@@ -301,9 +301,11 @@ listbox.sidebar {
     border-radius: var(--radius-lg);
     border: 2px solid transparent;
     overflow: hidden;
+    /* Faster transitions for snappier hover response */
     transition: 
-        box-shadow 200ms ease,
-        border-color 200ms ease;
+        box-shadow 100ms ease-out,
+        border-color 100ms ease-out,
+        transform 80ms ease-out;
     box-shadow: none;
     padding: 0;
     margin: var(--space-1);
@@ -396,7 +398,8 @@ flowboxchild:hover {
     padding: var(--space-3) var(--space-3) var(--space-2) var(--space-3);
     margin: 0;
     opacity: 0;
-    transition: opacity 180ms ease;
+    /* Faster fade for snappier hover response */
+    transition: opacity 80ms ease-out;
     border-radius: 0 0 calc(var(--radius-xl) - 4px) calc(var(--radius-xl) - 4px);
     position: absolute;
     bottom: 0;

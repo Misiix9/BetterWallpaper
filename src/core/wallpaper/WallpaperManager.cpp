@@ -7,6 +7,8 @@
 #include "../utils/Logger.hpp"
 #include "../utils/SystemUtils.hpp"
 #include "NativeWallpaperSetter.hpp"
+#include "WallpaperPreloader.hpp"
+#include "WallpaperTransitionManager.hpp"
 #include "renderers/StaticRenderer.hpp"
 #include "renderers/VideoRenderer.hpp"
 #include "renderers/WallpaperEngineRenderer.hpp"
@@ -168,105 +170,140 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
   debugLog("WallpaperManager.cpp:createRenderer", "About to createRenderer",
            "C");
   // #endregion
-  // Determine type and create renderer
-  auto renderer = createRenderer(path);
-  // #region agent log
-  debugLog("WallpaperManager.cpp:createRenderer_done", "createRenderer done",
-           "C");
-  // #endregion
+
+  // Check if wallpaper is already preloaded for instant setting
+  std::shared_ptr<WallpaperRenderer> renderer;
+  auto &preloader = WallpaperPreloader::getInstance();
+
+  if (preloader.isReady(path)) {
+    LOG_INFO("Using preloaded renderer for instant wallpaper setting: " + path);
+    renderer = preloader.getPreloadedRenderer(path);
+  }
+
+  // If not preloaded, create renderer the normal way
   if (!renderer) {
-    LOG_ERROR("Failed to create renderer for path: " + path);
-    return false;
-  }
+    renderer = createRenderer(path);
+    // #region agent log
+    debugLog("WallpaperManager.cpp:createRenderer_done", "createRenderer done",
+             "C");
+    // #endregion
+    if (!renderer) {
+      LOG_ERROR("Failed to create renderer for path: " + path);
+      return false;
+    }
 
-  LOG_INFO("Created renderer for wallpaper");
+    LOG_INFO("Created renderer for wallpaper");
 
-  renderer->setMonitor(monitorName);
+    renderer->setMonitor(monitorName);
 
-  // #region agent log
-  debugLog("WallpaperManager.cpp:load", "About to load renderer", "C");
-  // #endregion
-  if (!renderer->load(path)) {
-    LOG_ERROR("Failed to load wallpaper: " + path);
-    return false;
-  }
-  // #region agent log
-  debugLog("WallpaperManager.cpp:load_done", "Renderer load done", "C");
-  // #endregion
-
-  LOG_INFO("Loaded wallpaper successfully"); // EXPERIMENTAL: Screenshot Freeze
-                                             // Transition
-  // 1. Capture current state
-  std::string screenshotPath = "/tmp/bwp_freeze_" + monitorName + ".png";
-  std::string cmd = "grim -o " + monitorName + " " + screenshotPath;
-
-  // Use runCommand to capture. Ignoring return code for now, assuming grim
-  // exists.
-  bwp::utils::SystemUtils::runCommand(cmd);
-
-  // 2. Create StaticRenderer from screenshot
-  auto freezeRenderer = std::make_shared<StaticRenderer>();
-  if (freezeRenderer->load(screenshotPath)) {
-    // 3. Set Freeze renderer immediately
-    LOG_INFO("Freezing screen with screenshot: " + screenshotPath);
-    it->second.renderer = freezeRenderer;
-    it->second.window->setRenderer(freezeRenderer);
-    it->second.currentPath = "TRANSITION_FREEZE"; // usage marker
+    // #region agent log
+    debugLog("WallpaperManager.cpp:load", "About to load renderer", "C");
+    // #endregion
+    if (!renderer->load(path)) {
+      LOG_ERROR("Failed to load wallpaper: " + path);
+      return false;
+    }
+    // #region agent log
+    debugLog("WallpaperManager.cpp:load_done", "Renderer load done", "C");
+    // #endregion
   } else {
-    LOG_WARN("Failed to load freeze screenshot, skipping freeze step.");
-    // If fail, just proceed normal flow (will cause black flash)
-  }
+    // Preloaded renderer - set monitor
+    renderer->setMonitor(monitorName);
 
-  // 4. Launch Target Renderer (starts process)
-  // already created `renderer` above
-  renderer->setMonitor(monitorName);
-  // Re-load? No, we haven't loaded it yet. Logic above says "createRenderer"
-  // then "load". Wait, I am replacing lines 189-237. The original code passed
-  // `renderer` (created but not loaded) to this block? Let's check
-  // `WallpaperManager.cpp`. Line 172: `createRenderer`. Line 189:
-  // `renderer->load(path)`. My patch STARTS at line 200 (Stop old). So
-  // `renderer` IS ALREADY LOADED and Process STARTED at line 189! So the
-  // process is running. If I set `freezeRenderer` NOW, it overlays the
-  // just-started process (which is black). This is correct. `freezeRenderer`
-  // (Static) is drawn by `WallpaperWindow` (GTK), which is likely TOP layer of
-  // the wallpaper plane. `linux-wallpaperengine` is BOTTOM layer. So GTK
-  // Overlay covers black WE window.
-
-  // 5. Spawn thread to wait and reveal
-  std::thread([this, monitorName, freezeRenderer, renderer, path]() {
-  // Wait for WE to initialize GL and show content
-#ifdef _WIN32
-    Sleep(2000);
-#else
-    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-#endif
-
-    std::lock_guard<std::recursive_mutex> asyncLock(m_mutex);
-
-    // Check if we are still the active renderer (handler for rapid switching)
-    auto &state = m_monitors[monitorName];
-    if (state.renderer == freezeRenderer) {
-      LOG_INFO("Revealing new wallpaper via transition");
-      state.renderer = renderer;
-      state.currentPath = path;
-      // Smooth fade from Screenshot -> Transparent (revealing WE)
-      state.window->transitionTo(renderer);
-
-      if (m_paused)
-        renderer->pause();
-      else
-        renderer->play();
-
-      if (m_scalingModes.count(monitorName)) {
-        renderer->setScalingMode(
-            static_cast<ScalingMode>(m_scalingModes[monitorName]));
+    // IMPORTANT: For WallpaperEngineRenderer, we MUST call load() even if preloaded
+    // because load() sets m_pkPath and triggers the process spawn.
+    // The "preload" for WE only validates assets, it doesn't actually preload.
+    auto weRenderer =
+        std::dynamic_pointer_cast<WallpaperEngineRenderer>(renderer);
+    if (weRenderer) {
+      LOG_INFO("WE renderer detected - calling load() to set path and spawn process");
+      if (!renderer->load(path)) {
+        LOG_ERROR("Failed to load WE wallpaper: " + path);
+        return false;
       }
     } else {
-      LOG_INFO("Wallpaper changed during transition, aborting reveal");
-      // `renderer` will be destroyed (if no other refs), causing
-      // `terminateProcess`
+      LOG_INFO("Preloaded renderer ready, skipping load step (instant!)");
     }
-  }).detach();
+  }
+
+  LOG_INFO("Loaded wallpaper successfully");
+
+  // === SEAMLESS WALLPAPER SWITCHING ===
+  // Key principle: New wallpaper appears IN FRONT of old wallpaper
+  // 1. Old wallpaper stays visible and running
+  // 2. Create NEW window for new wallpaper IN FRONT (opacity 0 initially)
+  // 3. Fade new wallpaper in (opacity 0 → 1)
+  // 4. After transition completes, destroy old window
+
+  // Save reference to old window (if any)
+  std::shared_ptr<WallpaperWindow> oldWindow = it->second.window;
+  std::shared_ptr<WallpaperRenderer> oldRenderer = it->second.renderer;
+  std::string oldPath = it->second.currentPath;
+
+  // Get monitor info for creating new window
+  auto &monitorManager = monitor::MonitorManager::getInstance();
+  auto monitors = monitorManager.getMonitors();
+  monitor::MonitorInfo monitorInfo;
+  bool foundMonitor = false;
+
+  for (const auto &mon : monitors) {
+    if (mon.name == monitorName) {
+      monitorInfo = mon;
+      foundMonitor = true;
+      break;
+    }
+  }
+
+  if (!foundMonitor) {
+    // Fallback - use basic info
+    LOG_WARN("Monitor info not found for: " + monitorName +
+             ", using basic info");
+    monitorInfo.name = monitorName;
+  }
+
+  // Create NEW window for the new wallpaper (will be in front of old one)
+  auto newWindow = std::make_shared<WallpaperWindow>(monitorInfo);
+  newWindow->setRenderer(renderer);
+  newWindow->setOpacity(0.0); // Start invisible
+
+  // Apply settings to new renderer
+  if (m_paused) {
+    renderer->pause();
+  } else {
+    renderer->play();
+  }
+
+  if (m_scalingModes.count(monitorName)) {
+    renderer->setScalingMode(
+        static_cast<ScalingMode>(m_scalingModes[monitorName]));
+  }
+
+  // Show new window (invisible but in front)
+  newWindow->show();
+
+  LOG_INFO("New wallpaper window created IN FRONT with opacity 0");
+
+  // Use WallpaperTransitionManager for smooth transition
+  auto &transitionManager = WallpaperTransitionManager::getInstance();
+  transitionManager.loadSettings(); // Ensure latest settings
+
+  // Store new state immediately (even before transition completes)
+  it->second.window = newWindow;
+  it->second.renderer = renderer;
+  it->second.currentPath = path;
+
+  // Start transition: new window fades in over old window
+  transitionManager.startTransition(
+      monitorName, oldWindow, newWindow,
+      [this, monitorName, path, oldPath](bool success) {
+        if (success) {
+          LOG_INFO("Seamless transition completed for monitor: " + monitorName);
+        } else {
+          LOG_WARN("Transition failed for monitor: " + monitorName);
+        }
+        // Old window and renderer will be automatically cleaned up
+        // when their shared_ptrs go out of scope
+      });
 
   // Return true immediately, effectively "set" from user perspective
   LOG_INFO("Wallpaper set initiated (Transitioning)");
@@ -621,14 +658,17 @@ void WallpaperManager::saveState() {
   nlohmann::json wallpapers;
 
   for (const auto &[name, state] : m_monitors) {
-    if (!state.currentPath.empty()) {
+    if (!state.currentPath.empty() &&
+        state.currentPath != "TRANSITION_FREEZE") {
       wallpapers[name] = state.currentPath;
     }
   }
 
   conf.set("wallpapers.current", wallpapers);
+  // Persist to disk immediately for reboot persistence
+  conf.save();
   LOG_INFO("Saved wallpaper state for " + std::to_string(wallpapers.size()) +
-           " monitors");
+           " monitors to disk");
 }
 
 void WallpaperManager::loadState() {
@@ -650,9 +690,14 @@ void WallpaperManager::shutdown() {
   LOG_INFO("Shutting down WallpaperManager...");
   stopResourceMonitor();
 
-  // Check if persistence is enabled (default true)
-  // We could make this a config option: "general.persistence"
-  bool persistence = true;
+  // Check if persistence is enabled (from config, default true)
+  // When enabled, WE processes continue running after app closes
+  auto &config = config::ConfigManager::getInstance();
+  bool persistence =
+      config.get<bool>("wallpaper.persistence_on_close", true);
+
+  LOG_INFO("Wallpaper persistence on close: " +
+           std::string(persistence ? "enabled" : "disabled"));
 
   std::lock_guard<std::recursive_mutex> lock(m_mutex);
   for (auto &[name, state] : m_monitors) {

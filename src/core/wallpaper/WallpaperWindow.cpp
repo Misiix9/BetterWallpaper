@@ -172,21 +172,40 @@ void WallpaperWindow::onDraw(GtkDrawingArea *area, cairo_t *cr, int width,
                              int height, gpointer user_data) {
   auto *self = static_cast<WallpaperWindow *>(user_data);
 
+  // Apply window opacity to drawing context
+  if (self->m_opacity < 1.0) {
+    cairo_push_group(cr);
+  }
+
   if (self->m_transitionEngine.isActive()) {
     if (!self->m_transitionEngine.render(cr, width, height)) {
       // Finished just now
       gtk_widget_queue_draw(GTK_WIDGET(area));
     }
-    return;
-  }
-
-  if (auto renderer = self->m_renderer.lock()) {
-    renderer->render(cr, width, height); // Corrected argument count
+  } else if (auto renderer = self->m_renderer.lock()) {
+    renderer->render(cr, width, height);
   } else {
     // Black background default
     cairo_set_source_rgb(cr, 0, 0, 0);
     cairo_paint(cr);
   }
+
+  // Apply opacity if less than 1.0
+  if (self->m_opacity < 1.0) {
+    cairo_pop_group_to_source(cr);
+    cairo_paint_with_alpha(cr, self->m_opacity);
+  }
 }
+
+void WallpaperWindow::setOpacity(double opacity) {
+  m_opacity = std::max(0.0, std::min(1.0, opacity));
+
+  // Queue a redraw to apply the new opacity
+  if (m_drawingArea) {
+    gtk_widget_queue_draw(m_drawingArea);
+  }
+}
+
+double WallpaperWindow::getOpacity() const { return m_opacity; }
 
 } // namespace bwp::wallpaper

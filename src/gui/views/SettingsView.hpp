@@ -24,23 +24,28 @@ private:
   GtkWidget *createAudioPage();
   GtkWidget *createPlaybackPage();
   GtkWidget *createSourcesPage();
+  GtkWidget *createTransitionsPage();
   GtkWidget *createAboutPage();
 
   // Helpers
   void setupLibraryList(GtkWidget *group);
-  void updateLibraryList(GtkWidget *group); // Modified to take group
+  void updateLibraryList(GtkWidget *group);
   void onAddSource(GtkWidget *group);
   void onRemoveSource(GtkWidget *group, const std::string &path);
+  void showTransitionPreviewDialog();
 
   GtkWidget *m_content;
-  GtkWidget *m_splitView; // AdwOverlaySplitView or container
-  GtkWidget *m_stack;     // AdwViewStack
+  GtkWidget *m_splitView;
+  GtkWidget *m_stack;
   GtkWidget *m_sidebarList;
 
-  // Track library rows for dynamic updates (might need mapping to group)
-  // Or simply rebuild the group content?
-  // Let's store the current library group pointer if needed.
   GtkWidget *m_currentLibraryGroup = nullptr;
+
+  // Transition settings widgets (for updates)
+  GtkWidget *m_transitionEffectDropdown = nullptr;
+  GtkWidget *m_transitionDurationSpin = nullptr;
+  GtkWidget *m_transitionEasingDropdown = nullptr;
+  GtkWidget *m_transitionEnabledSwitch = nullptr;
 
   // Transition preview dialog
   std::unique_ptr<TransitionDialog> m_transitionDialog;

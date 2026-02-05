@@ -1,10 +1,14 @@
 #pragma once
 #include "SettingsSchema.hpp"
+#include <atomic>
 #include <filesystem>
 #include <functional>
 #include <map>
 #include <mutex>
 #include "../utils/Logger.hpp"
+#ifndef _WIN32
+#include <gtk/gtk.h>
+#endif
 
 namespace bwp::config {
 
@@ -14,6 +18,12 @@ public:
 
   bool load();
   bool save();
+  
+  /**
+   * @brief Schedule a debounced save (saves after a delay, coalescing rapid changes)
+   * @param delayMs Delay in milliseconds before actual save (default 500ms)
+   */
+  void scheduleSave(int delayMs = 500);
 
   // Generic getters/setters
   // Generic getters/setters
@@ -48,6 +58,10 @@ private:
   nlohmann::json m_config;
   std::filesystem::path m_configPath;
   Callback m_callback;
+  
+  // Debounced save mechanism
+  std::atomic<guint> m_saveTimerId{0};
+  std::atomic<bool> m_dirty{false};
 };
 
 // Template implementation must be in header
@@ -93,7 +107,9 @@ void ConfigManager::set(const std::string &key, const T &value) {
       *ptr = value;
     }
   }
-  save();
+  
+  // Use debounced save to avoid excessive disk writes
+  scheduleSave();
 
   if (m_callback) {
     m_callback(key, value);

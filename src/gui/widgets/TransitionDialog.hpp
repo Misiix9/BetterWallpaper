@@ -29,6 +29,7 @@ public:
 
   void show();
   void show(const TransitionSettings &currentSettings);
+  void presentTo(GtkWidget *parent);
 
   void setCallback(ApplyCallback callback) { m_callback = callback; }
 

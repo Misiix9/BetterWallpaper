@@ -289,15 +289,32 @@ void ThumbnailCache::getAsync(const std::string &wallpaperPath, Size size,
     return;
   }
 
-  // Not cached - try to generate synchronously for now
-  // This blocks but ensures reliability
-  GdkPixbuf *generated = generateSync(wallpaperPath, size);
-  if (callback) {
-    callback(generated);
-  }
-  if (generated) {
-    g_object_unref(generated);
-  }
+  // Not cached - generate in background thread for better performance
+  // This prevents UI freezing when loading many thumbnails
+  std::thread([this, wallpaperPath, size, callback]() {
+    GdkPixbuf *generated = generateSync(wallpaperPath, size);
+
+    // Schedule callback on main thread via g_idle_add
+    struct CallbackData {
+      ThumbnailCallback callback;
+      GdkPixbuf *pixbuf;
+    };
+    CallbackData *data = new CallbackData{callback, generated};
+
+    g_idle_add(
+        [](gpointer userData) -> gboolean {
+          CallbackData *d = static_cast<CallbackData *>(userData);
+          if (d->callback) {
+            d->callback(d->pixbuf);
+          }
+          if (d->pixbuf) {
+            g_object_unref(d->pixbuf);
+          }
+          delete d;
+          return G_SOURCE_REMOVE;
+        },
+        data);
+  }).detach();
 }
 
 void ThumbnailCache::invalidate(const std::string &wallpaperPath) {

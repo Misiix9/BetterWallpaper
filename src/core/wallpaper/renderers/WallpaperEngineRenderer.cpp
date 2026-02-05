@@ -210,6 +210,19 @@ void WallpaperEngineRenderer::launchProcess() {
       setenv("DISPLAY", ":0", 1);
     }
 
+    // Create new session to detach from terminal (allows surviving app closure)
+    // This makes the process independent and it will continue running even after
+    // the parent app exits - key for wallpaper persistence
+    setsid();
+
+    // Close standard file descriptors to fully daemonize
+    // This prevents the process from being affected by terminal closure
+    close(STDIN_FILENO);
+    // Keep stdout/stderr open for logging - redirect to /dev/null for
+    // true daemonization if needed (comment these out for debugging)
+    // close(STDOUT_FILENO);
+    // close(STDERR_FILENO);
+
     std::vector<char *> c_args;
     for (const auto &a : args)
       c_args.push_back(const_cast<char *>(a.c_str()));
@@ -220,8 +233,8 @@ void WallpaperEngineRenderer::launchProcess() {
     m_pid = pid;
     m_isPlaying = true;
 
-    m_pid = pid;
-    m_isPlaying = true;
+    LOG_INFO("Spawned wallpaper process with PID: " + std::to_string(pid) +
+             " (independent session via setsid)");
 
     // Do NOT block invalidating the UI. Let the watcher thread handle crashes.
     // std::this_thread::sleep_for(std::chrono::milliseconds(500));

@@ -92,6 +92,8 @@ void SettingsView::setupUi() {
   addPage("audio", "Audio", "audio-volume-high-symbolic", createAudioPage());
   addPage("playback", "Playback", "media-playback-start-symbolic",
           createPlaybackPage());
+  addPage("transitions", "Transitions", "view-refresh-symbolic",
+          createTransitionsPage());
   addPage("controls", "Controls", "input-keyboard-symbolic",
           createControlsPage());
   addPage("sources", "Sources", "folder-pictures-symbolic",
@@ -700,6 +702,287 @@ GtkWidget *SettingsView::createPlaybackPage() {
 
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), batRow);
   return page;
+}
+
+GtkWidget *SettingsView::createTransitionsPage() {
+  GtkWidget *page = adw_preferences_page_new();
+  auto &conf = bwp::config::ConfigManager::getInstance();
+
+  // Group: Transition Settings
+  GtkWidget *transGroup = adw_preferences_group_new();
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(transGroup),
+                                  "Wallpaper Transitions");
+  adw_preferences_group_set_description(
+      ADW_PREFERENCES_GROUP(transGroup),
+      "Configure how wallpapers transition when switching");
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
+                           ADW_PREFERENCES_GROUP(transGroup));
+
+  // Enable Transitions
+  m_transitionEnabledSwitch = adw_switch_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(m_transitionEnabledSwitch),
+                                "Enable Transitions");
+  adw_action_row_set_subtitle(ADW_ACTION_ROW(m_transitionEnabledSwitch),
+                              "Smooth animation when changing wallpapers");
+  adw_switch_row_set_active(ADW_SWITCH_ROW(m_transitionEnabledSwitch),
+                            conf.get<bool>("transitions.enabled", true));
+  g_signal_connect(m_transitionEnabledSwitch, "notify::active",
+                   G_CALLBACK(+[](AdwSwitchRow *row, GParamSpec *, gpointer) {
+                     bwp::config::ConfigManager::getInstance().set(
+                         "transitions.enabled", adw_switch_row_get_active(row));
+                   }),
+                   nullptr);
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(transGroup),
+                            m_transitionEnabledSwitch);
+
+  // Effect Dropdown
+  m_transitionEffectDropdown = adw_combo_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(m_transitionEffectDropdown),
+                                "Transition Effect");
+  adw_action_row_set_subtitle(ADW_ACTION_ROW(m_transitionEffectDropdown),
+                              "Visual style of the transition");
+
+  const char *effects[] = {"Fade",
+                           "Slide",
+                           "Wipe",
+                           "Expanding Circle",
+                           "Expanding Square",
+                           "Dissolve",
+                           "Zoom",
+                           "Morph",
+                           "Angled Wipe",
+                           "Pixelate",
+                           "Blinds",
+                           nullptr};
+  GtkStringList *effectModel = gtk_string_list_new(effects);
+  adw_combo_row_set_model(ADW_COMBO_ROW(m_transitionEffectDropdown),
+                          G_LIST_MODEL(effectModel));
+  g_object_unref(effectModel);
+
+  // Set current effect
+  std::string currentEffect =
+      conf.get<std::string>("transitions.default_effect", "Fade");
+  int effectIdx = 0;
+  for (int effectIndex = 0; effects[effectIndex] != nullptr; ++effectIndex) {
+    if (currentEffect == effects[effectIndex]) {
+      effectIdx = effectIndex;
+      break;
+    }
+  }
+  adw_combo_row_set_selected(ADW_COMBO_ROW(m_transitionEffectDropdown),
+                             effectIdx);
+
+  g_signal_connect(m_transitionEffectDropdown, "notify::selected",
+                   G_CALLBACK(+[](AdwComboRow *row, GParamSpec *, gpointer) {
+                     guint i = adw_combo_row_get_selected(row);
+                     std::string e;
+                     switch (i) {
+                     case 0: e = "Fade"; break;
+                     case 1: e = "Slide"; break;
+                     case 2: e = "Wipe"; break;
+                     case 3: e = "Expanding Circle"; break;
+                     case 4: e = "Expanding Square"; break;
+                     case 5: e = "Dissolve"; break;
+                     case 6: e = "Zoom"; break;
+                     case 7: e = "Morph"; break;
+                     case 8: e = "Angled Wipe"; break;
+                     case 9: e = "Pixelate"; break;
+                     case 10: e = "Blinds"; break;
+                     default: return;
+                     }
+                     bwp::config::ConfigManager::getInstance().set(
+                         "transitions.default_effect", e);
+                   }),
+                   nullptr);
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(transGroup),
+                            m_transitionEffectDropdown);
+
+  // Duration Slider
+  m_transitionDurationSpin = adw_spin_row_new_with_range(100, 3000, 50);
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(m_transitionDurationSpin),
+                                "Duration (ms)");
+  adw_action_row_set_subtitle(ADW_ACTION_ROW(m_transitionDurationSpin),
+                              "How long the transition takes");
+  adw_spin_row_set_value(ADW_SPIN_ROW(m_transitionDurationSpin),
+                         conf.get<int>("transitions.duration_ms", 500));
+  g_signal_connect(m_transitionDurationSpin, "notify::value",
+                   G_CALLBACK(+[](AdwSpinRow *row, GParamSpec *, gpointer) {
+                     bwp::config::ConfigManager::getInstance().set(
+                         "transitions.duration_ms",
+                         static_cast<int>(adw_spin_row_get_value(row)));
+                   }),
+                   nullptr);
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(transGroup),
+                            m_transitionDurationSpin);
+
+  // Easing Dropdown
+  m_transitionEasingDropdown = adw_combo_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(m_transitionEasingDropdown),
+                                "Easing Function");
+  adw_action_row_set_subtitle(ADW_ACTION_ROW(m_transitionEasingDropdown),
+                              "How the animation accelerates/decelerates");
+
+  const char *easings[] = {"linear",     "easeIn",     "easeOut",
+                           "easeInOut",  "easeInQuad", "easeOutQuad",
+                           "easeInCubic", "easeOutCubic", "easeInOutCubic",
+                           "easeInSine", "easeOutSine", "easeInOutSine",
+                           "easeInExpo", "easeOutExpo", "easeInOutExpo",
+                           "easeOutBounce", nullptr};
+  GtkStringList *easingModel = gtk_string_list_new(easings);
+  adw_combo_row_set_model(ADW_COMBO_ROW(m_transitionEasingDropdown),
+                          G_LIST_MODEL(easingModel));
+  g_object_unref(easingModel);
+
+  // Set current easing
+  std::string currentEasing =
+      conf.get<std::string>("transitions.easing", "easeInOut");
+  int easingIdx = 3; // Default to easeInOut
+  for (int easingIndex = 0; easings[easingIndex] != nullptr; ++easingIndex) {
+    if (currentEasing == easings[easingIndex]) {
+      easingIdx = easingIndex;
+      break;
+    }
+  }
+  adw_combo_row_set_selected(ADW_COMBO_ROW(m_transitionEasingDropdown),
+                             easingIdx);
+
+  g_signal_connect(m_transitionEasingDropdown, "notify::selected",
+                   G_CALLBACK(+[](AdwComboRow *row, GParamSpec *, gpointer) {
+                     guint i = adw_combo_row_get_selected(row);
+                     std::string e;
+                     switch (i) {
+                     case 0: e = "linear"; break;
+                     case 1: e = "easeIn"; break;
+                     case 2: e = "easeOut"; break;
+                     case 3: e = "easeInOut"; break;
+                     case 4: e = "easeInQuad"; break;
+                     case 5: e = "easeOutQuad"; break;
+                     case 6: e = "easeInCubic"; break;
+                     case 7: e = "easeOutCubic"; break;
+                     case 8: e = "easeInOutCubic"; break;
+                     case 9: e = "easeInSine"; break;
+                     case 10: e = "easeOutSine"; break;
+                     case 11: e = "easeInOutSine"; break;
+                     case 12: e = "easeInExpo"; break;
+                     case 13: e = "easeOutExpo"; break;
+                     case 14: e = "easeInOutExpo"; break;
+                     case 15: e = "easeOutBounce"; break;
+                     default: return;
+                     }
+                     bwp::config::ConfigManager::getInstance().set(
+                         "transitions.easing", e);
+                   }),
+                   nullptr);
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(transGroup),
+                            m_transitionEasingDropdown);
+
+  // Preview Button Row
+  GtkWidget *previewRow = adw_action_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(previewRow),
+                                "Preview Transition");
+  adw_action_row_set_subtitle(ADW_ACTION_ROW(previewRow),
+                              "Test your transition settings");
+
+  GtkWidget *previewBtn = gtk_button_new_with_label("Preview");
+  gtk_widget_add_css_class(previewBtn, "suggested-action");
+  gtk_widget_set_valign(previewBtn, GTK_ALIGN_CENTER);
+
+  g_signal_connect(
+      previewBtn, "clicked",
+      G_CALLBACK(+[](GtkButton *, gpointer data) {
+        SettingsView *self = static_cast<SettingsView *>(data);
+        self->showTransitionPreviewDialog();
+      }),
+      this);
+
+  adw_action_row_add_suffix(ADW_ACTION_ROW(previewRow), previewBtn);
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(transGroup), previewRow);
+
+  // Group: Advanced
+  GtkWidget *advGroup = adw_preferences_group_new();
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(advGroup),
+                                  "Advanced Options");
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
+                           ADW_PREFERENCES_GROUP(advGroup));
+
+  // Info about linux-wallpaperengine compatibility
+  GtkWidget *infoRow = adw_action_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(infoRow),
+                                "Wallpaper Engine Transitions");
+  adw_action_row_set_subtitle(
+      ADW_ACTION_ROW(infoRow),
+      "For linux-wallpaperengine wallpapers, the new wallpaper fades in over "
+      "the old one using a custom overlay system.");
+  GtkWidget *infoIcon = gtk_image_new_from_icon_name("dialog-information-symbolic");
+  adw_action_row_add_prefix(ADW_ACTION_ROW(infoRow), infoIcon);
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(advGroup), infoRow);
+
+  return page;
+}
+
+void SettingsView::showTransitionPreviewDialog() {
+  if (!m_transitionDialog) {
+    GtkRoot *root = gtk_widget_get_root(m_content);
+    GtkWindow *window = GTK_IS_WINDOW(root) ? GTK_WINDOW(root) : nullptr;
+    m_transitionDialog = std::make_unique<TransitionDialog>(window);
+
+    // Set callback to apply settings from dialog back to config
+    m_transitionDialog->setCallback(
+        [this](const TransitionDialog::TransitionSettings &settings) {
+          auto &conf = bwp::config::ConfigManager::getInstance();
+          conf.set("transitions.default_effect", settings.effectName);
+          conf.set("transitions.duration_ms", settings.durationMs);
+          conf.set("transitions.easing", settings.easingName);
+
+          // Update UI dropdowns to reflect new settings
+          // Find effect index
+          const char *effects[] = {"Fade",
+                                   "Slide",
+                                   "Wipe",
+                                   "Expanding Circle",
+                                   "Expanding Square",
+                                   "Dissolve",
+                                   "Zoom",
+                                   "Morph",
+                                   "Angled Wipe",
+                                   "Pixelate",
+                                   "Blinds"};
+          for (int effectIndex = 0; effectIndex < 11; ++effectIndex) {
+            if (settings.effectName == effects[effectIndex]) {
+              adw_combo_row_set_selected(
+                  ADW_COMBO_ROW(m_transitionEffectDropdown), effectIndex);
+              break;
+            }
+          }
+
+          adw_spin_row_set_value(ADW_SPIN_ROW(m_transitionDurationSpin),
+                                 settings.durationMs);
+
+          const char *easings[] = {
+              "linear",     "easeIn",       "easeOut",      "easeInOut",
+              "easeInQuad", "easeOutQuad",  "easeInCubic",  "easeOutCubic",
+              "easeInOutCubic", "easeInSine", "easeOutSine", "easeInOutSine",
+              "easeInExpo", "easeOutExpo",  "easeInOutExpo", "easeOutBounce"};
+          for (int easingIndex = 0; easingIndex < 16; ++easingIndex) {
+            if (settings.easingName == easings[easingIndex]) {
+              adw_combo_row_set_selected(
+                  ADW_COMBO_ROW(m_transitionEasingDropdown), easingIndex);
+              break;
+            }
+          }
+        });
+  }
+
+  // Load current settings into dialog
+  auto &conf = bwp::config::ConfigManager::getInstance();
+  TransitionDialog::TransitionSettings current;
+  current.effectName =
+      conf.get<std::string>("transitions.default_effect", "Fade");
+  current.durationMs = conf.get<int>("transitions.duration_ms", 500);
+  current.easingName = conf.get<std::string>("transitions.easing", "easeInOut");
+
+  m_transitionDialog->show(current);
+  m_transitionDialog->presentTo(m_content);
 }
 
 GtkWidget *SettingsView::createControlsPage() {

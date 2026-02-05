@@ -6,6 +6,7 @@
 #include "../../core/wallpaper/NativeWallpaperSetter.hpp"
 #include "../../core/wallpaper/WallpaperLibrary.hpp"
 #include "../../core/wallpaper/WallpaperManager.hpp"
+#include "../../core/wallpaper/WallpaperPreloader.hpp"
 #include "../dialogs/ErrorDialog.hpp"
 #include <algorithm>
 #include <cctype>
@@ -259,6 +260,19 @@ void PreviewPanel::setWallpaper(const bwp::wallpaper::WallpaperInfo &info) {
   updateRatingDisplay();
   gtk_widget_set_sensitive(m_applyButton, TRUE);
   gtk_label_set_text(GTK_LABEL(m_statusLabel), "");
+
+  // Start preloading the wallpaper in the background for instant setting
+  LOG_INFO("Starting preload for selected wallpaper: " + info.path);
+  bwp::wallpaper::WallpaperPreloader::getInstance().preload(
+      info.path, [](const std::string &path,
+                    bwp::wallpaper::WallpaperPreloader::PreloadState state) {
+        if (state == bwp::wallpaper::WallpaperPreloader::PreloadState::Ready) {
+          LOG_INFO("Wallpaper preloaded and ready: " + path);
+        } else if (state ==
+                   bwp::wallpaper::WallpaperPreloader::PreloadState::Failed) {
+          LOG_WARN("Wallpaper preload failed: " + path);
+        }
+      });
 }
 
 void PreviewPanel::loadThumbnail(const std::string &path) {

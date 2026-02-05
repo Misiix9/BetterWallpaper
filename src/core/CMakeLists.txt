@@ -116,6 +116,8 @@ else()
         transition/TransitionEngine.cpp
         transition/effects/BasicEffects.cpp
         transition/effects/AdvancedEffects.cpp
+        wallpaper/WallpaperTransitionManager.cpp
+        wallpaper/WallpaperPreloader.cpp
         
         # Hyprland
         hyprland/HyprlandIPC.cpp

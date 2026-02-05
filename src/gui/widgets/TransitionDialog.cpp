@@ -212,8 +212,6 @@ void TransitionDialog::createPreviewArea() {
 
   gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(previewDrawing),
                                  onDrawTransitionPreview, this, nullptr);
-  // Store drawing area reference for later
-  g_object_set_data(G_OBJECT(m_previewArea), "draw-area", previewDrawing);
 
   gtk_frame_set_child(GTK_FRAME(previewFrame), previewDrawing);
   gtk_box_append(GTK_BOX(previewBox), previewFrame);
@@ -234,6 +232,9 @@ void TransitionDialog::createPreviewArea() {
   gtk_box_append(GTK_BOX(previewBox), m_previewButton);
 
   m_previewArea = previewBox;
+
+  // Store drawing area reference AFTER m_previewArea is set
+  g_object_set_data(G_OBJECT(m_previewArea), "draw-area", previewDrawing);
 }
 
 void TransitionDialog::updatePreview() {
@@ -413,9 +414,12 @@ void TransitionDialog::show(const TransitionSettings &currentSettings) {
   adw_spin_row_set_value(ADW_SPIN_ROW(m_durationScale),
                          currentSettings.durationMs);
 
-  // Present the dialog
-  // Find the parent window
-  GtkWidget *parent = gtk_widget_get_ancestor(m_dialog, GTK_TYPE_WINDOW);
+  // Present the dialog - it needs a parent widget to attach to
+  // The dialog will find the window automatically when presented
+  adw_dialog_present(ADW_DIALOG(m_dialog), m_dialog);
+}
+
+void TransitionDialog::presentTo(GtkWidget *parent) {
   if (parent) {
     adw_dialog_present(ADW_DIALOG(m_dialog), parent);
   }

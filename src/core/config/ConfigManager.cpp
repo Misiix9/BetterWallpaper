@@ -83,6 +83,38 @@ void ConfigManager::resetToDefaults() {
 
 void ConfigManager::startWatching(Callback callback) { m_callback = callback; }
 
+void ConfigManager::scheduleSave(int delayMs) {
+#ifndef _WIN32
+  // Mark as dirty
+  m_dirty = true;
+  
+  // Cancel any pending save timer
+  guint oldTimer = m_saveTimerId.exchange(0);
+  if (oldTimer > 0) {
+    g_source_remove(oldTimer);
+  }
+  
+  // Schedule a new save after delay
+  guint newTimer = g_timeout_add(
+      delayMs,
+      [](gpointer userData) -> gboolean {
+        ConfigManager *self = static_cast<ConfigManager *>(userData);
+        if (self->m_dirty) {
+          self->m_dirty = false;
+          self->save();
+          LOG_DEBUG("Config saved (debounced)");
+        }
+        self->m_saveTimerId = 0;
+        return G_SOURCE_REMOVE;
+      },
+      this);
+  m_saveTimerId = newTimer;
+#else
+  // On Windows, just save immediately for simplicity
+  save();
+#endif
+}
+
 nlohmann::json *ConfigManager::getValuePtr(const std::string &key) {
   // Handle dot notation "general.autostart"
   std::vector<std::string> parts = utils::StringUtils::split(key, '.');

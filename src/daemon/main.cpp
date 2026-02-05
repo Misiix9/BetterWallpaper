@@ -66,6 +66,10 @@ private:
     // Initialize Core Services
     bwp::wallpaper::WallpaperManager::getInstance().initialize();
 
+    // Restore wallpapers from saved state (for reboot persistence)
+    LOG_INFO("Restoring wallpaper state from previous session...");
+    bwp::wallpaper::WallpaperManager::getInstance().loadState();
+
     // Initialize IPC
     self->m_ipcService = bwp::ipc::IPCServiceFactory::createService();
 
