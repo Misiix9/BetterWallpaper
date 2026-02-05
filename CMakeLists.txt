@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(BetterWallpaper
-    VERSION 0.3.1
+    VERSION 0.3.2
     DESCRIPTION "Feature-rich wallpaper manager for Linux"
     LANGUAGES CXX C
 )
@@ -109,5 +109,10 @@ if(NOT WIN32)
 
     install(FILES packaging/betterwallpaper-tray.desktop
         DESTINATION /etc/xdg/autostart
+    )
+    
+    # Install data (UI, CSS, etc.)
+    install(DIRECTORY data/
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/betterwallpaper
     )
 endif()
