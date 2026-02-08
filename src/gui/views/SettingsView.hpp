@@ -2,6 +2,7 @@
 #include <adwaita.h>
 #include <gtk/gtk.h>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
 
@@ -12,7 +13,7 @@ public:
   SettingsView();
   ~SettingsView();
 
-  GtkWidget *getWidget() const { return m_content; }
+  GtkWidget *getWidget() const { return m_outerBox; }
 
 private:
   void setupUi();
@@ -34,10 +35,32 @@ private:
   void onRemoveSource(GtkWidget *group, const std::string &path);
   void showTransitionPreviewDialog();
 
-  GtkWidget *m_content;
-  GtkWidget *m_splitView;
-  GtkWidget *m_stack;
-  GtkWidget *m_sidebarList;
+  // Save/Discard workflow
+  void takeSnapshot();
+  void showUnsavedBar();
+  void hideUnsavedBar();
+  void onKeepChanges();
+  void onDiscardChanges();
+  void rebuildPages();
+
+  GtkWidget *m_outerBox = nullptr;    // Top-level vertical box
+  GtkWidget *m_content = nullptr;     // For internal use (split view)
+  GtkWidget *m_splitView = nullptr;
+  GtkWidget *m_stack = nullptr;
+  GtkWidget *m_sidebarList = nullptr;
+  GtkWidget *m_searchEntry = nullptr;
+  GtkWidget *m_unsavedRevealer = nullptr;
+  bool m_hasUnsavedChanges = false;
+  nlohmann::json m_configSnapshot;
+
+  // Search/filter support
+  struct SettingsPageInfo {
+    std::string id;
+    std::string title;
+    std::vector<std::string> keywords; // Searchable terms for this page
+  };
+  std::vector<SettingsPageInfo> m_pageInfos;
+  void filterSettings(const std::string &query);
 
   GtkWidget *m_currentLibraryGroup = nullptr;
 

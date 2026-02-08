@@ -1,11 +1,9 @@
 #pragma once
-#include "../models/WallpaperObject.hpp"
-#include "TagEditorDialog.hpp"
+#include "../../core/wallpaper/WallpaperInfo.hpp"
 #include <functional>
 #include <gtk/gtk.h>
 #include <memory>
 #include <unordered_set>
-#include <vector>
 
 namespace bwp::gui {
 
@@ -26,6 +24,8 @@ public:
 
   void clear();
   void addWallpaper(const bwp::wallpaper::WallpaperInfo &info);
+  void updateWallpaperInStore(const bwp::wallpaper::WallpaperInfo &info);
+  void notifyDataChanged();
 
   // Filtering
   void filter(const std::string &query);
@@ -43,6 +43,10 @@ public:
       const std::string &sourceId, const std::string &targetId, bool after)>;
   void setReorderCallback(ReorderCallback callback);
 
+  // Scroll Persistence
+  double getVScroll() const;
+  void setVScroll(double value);
+
 private:
   GtkWidget *m_scrolledWindow;
   GtkWidget *m_gridView;
@@ -56,7 +60,6 @@ private:
 
   SelectionCallback m_callback;
   ReorderCallback m_reorderCallback;
-  std::unique_ptr<TagEditorDialog> m_tagEditor;
 
   // Filter state
   std::string m_filterQuery;

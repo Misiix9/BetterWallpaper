@@ -1,4 +1,6 @@
 #include "MonitorConfigPanel.hpp"
+#include "../../core/config/ConfigManager.hpp"
+#include "../../core/utils/Logger.hpp"
 #include <string>
 
 namespace bwp::gui {
@@ -24,12 +26,46 @@ void MonitorConfigPanel::setupUi() {
   GtkWidget *group = adw_preferences_group_new();
   gtk_box_append(GTK_BOX(m_box), group);
 
-  // Name Row
+  // System Name Row (read-only, shows connector like "DP-1")
   GtkWidget *nameRow = adw_action_row_new();
-  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nameRow), "Name");
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nameRow), "Connector");
   m_nameLabel = gtk_label_new("-");
+  gtk_widget_add_css_class(m_nameLabel, "dim-label");
   adw_action_row_add_suffix(ADW_ACTION_ROW(nameRow), m_nameLabel);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), nameRow);
+
+  // Custom Name Row (editable entry for user alias)
+  GtkWidget *customNameRow = adw_action_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(customNameRow),
+                                "Display Name");
+  adw_action_row_set_subtitle(ADW_ACTION_ROW(customNameRow),
+                              "Custom label for this monitor");
+
+  m_customNameEntry = gtk_entry_new();
+  gtk_entry_set_placeholder_text(GTK_ENTRY(m_customNameEntry),
+                                 "e.g. Main Display");
+  gtk_widget_set_valign(m_customNameEntry, GTK_ALIGN_CENTER);
+  gtk_widget_set_size_request(m_customNameEntry, 160, -1);
+  adw_action_row_add_suffix(ADW_ACTION_ROW(customNameRow), m_customNameEntry);
+
+  // Save custom name when the user finishes editing (focus-out or Enter)
+  g_signal_connect(
+      m_customNameEntry, "activate",
+      G_CALLBACK(+[](GtkEntry *, gpointer data) {
+        static_cast<MonitorConfigPanel *>(data)->saveCustomName();
+      }),
+      this);
+
+  auto *focusCtrl = gtk_event_controller_focus_new();
+  g_signal_connect(
+      focusCtrl, "leave",
+      G_CALLBACK(+[](GtkEventControllerFocus *, gpointer data) {
+        static_cast<MonitorConfigPanel *>(data)->saveCustomName();
+      }),
+      this);
+  gtk_widget_add_controller(m_customNameEntry, focusCtrl);
+
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), customNameRow);
 
   // Resolution Row
   GtkWidget *resRow = adw_action_row_new();
@@ -73,10 +109,40 @@ void MonitorConfigPanel::setupUi() {
   gtk_box_append(GTK_BOX(m_box), m_changeButton);
 }
 
+void MonitorConfigPanel::saveCustomName() {
+  if (m_currentMonitorName.empty())
+    return;
+
+  const char *text =
+      gtk_editable_get_text(GTK_EDITABLE(m_customNameEntry));
+  std::string customName = text ? text : "";
+
+  // Store under monitors.<connector>.custom_name
+  std::string key =
+      "monitors." + m_currentMonitorName + ".custom_name";
+
+  auto &config = bwp::config::ConfigManager::getInstance();
+  std::string existing = config.get<std::string>(key, "");
+  if (existing != customName) {
+    config.set(key, customName);
+    LOG_INFO("Custom name for " + m_currentMonitorName + " set to: " +
+             customName);
+  }
+}
+
 void MonitorConfigPanel::setMonitor(const bwp::monitor::MonitorInfo &info) {
   m_currentMonitorName = info.name;
 
+  // Show system connector name
   gtk_label_set_text(GTK_LABEL(m_nameLabel), info.name.c_str());
+
+  // Load saved custom name from config
+  std::string key =
+      "monitors." + info.name + ".custom_name";
+  auto &config = bwp::config::ConfigManager::getInstance();
+  std::string customName = config.get<std::string>(key, "");
+  gtk_editable_set_text(GTK_EDITABLE(m_customNameEntry),
+                        customName.c_str());
 
   std::string res = std::to_string(info.width) + "x" +
                     std::to_string(info.height) + " @ " +
@@ -92,6 +158,7 @@ void MonitorConfigPanel::setMonitor(const bwp::monitor::MonitorInfo &info) {
 void MonitorConfigPanel::clear() {
   m_currentMonitorName = "";
   gtk_label_set_text(GTK_LABEL(m_nameLabel), "-");
+  gtk_editable_set_text(GTK_EDITABLE(m_customNameEntry), "");
   gtk_label_set_text(GTK_LABEL(m_resLabel), "-");
   gtk_label_set_text(GTK_LABEL(m_scaleLabel), "-");
   gtk_widget_set_sensitive(m_box, FALSE);

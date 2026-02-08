@@ -1,6 +1,6 @@
 #include "LinuxTrayIcon.hpp"
 #include "../core/utils/Logger.hpp"
-#include "../core/utils/ProcessUtils.hpp"
+#include "../core/utils/SafeProcess.hpp"
 #include <iostream>
 
 namespace bwp::tray {
@@ -63,9 +63,10 @@ void LinuxTrayIcon::setupMenu() {
 
   // Separator
   // Volume controls (Submenu or inline? Inline simpler for now)
-  GtkWidget *muteItem = gtk_check_menu_item_new_with_label("Mute"); // Checkbox? or just "Toggle Mute"
-  // If we want state, we need to query state. For now, simple action "Mute/Unmute".  
-  // Let's use "Mute" toggle.
+  GtkWidget *muteItem = gtk_check_menu_item_new_with_label(
+      "Mute"); // Checkbox? or just "Toggle Mute"
+  // If we want state, we need to query state. For now, simple action
+  // "Mute/Unmute". Let's use "Mute" toggle.
   g_signal_connect(muteItem, "activate", G_CALLBACK(onMute), this);
   gtk_menu_shell_append(GTK_MENU_SHELL(m_menu), muteItem);
 
@@ -96,51 +97,52 @@ void LinuxTrayIcon::setupMenu() {
 void LinuxTrayIcon::onNext(GtkMenuItem *, gpointer user_data) {
   auto *self = static_cast<LinuxTrayIcon *>(user_data);
   LOG_INFO("Tray: Next Wallpaper requested");
-  self->m_client.nextWallpaper("eDP-1"); // TODO: Use actual monitor name
+  // Use empty string to let the daemon decide the active monitor
+  self->m_client.nextWallpaper("");
 }
 
 void LinuxTrayIcon::onPrevious(GtkMenuItem *, gpointer user_data) {
   auto *self = static_cast<LinuxTrayIcon *>(user_data);
   LOG_INFO("Tray: Previous Wallpaper requested");
-  self->m_client.previousWallpaper("eDP-1"); // TODO: Use actual monitor name
+  self->m_client.previousWallpaper("");
 }
 
 void LinuxTrayIcon::onPause(GtkMenuItem *, gpointer user_data) {
   auto *self = static_cast<LinuxTrayIcon *>(user_data);
   LOG_INFO("Tray: Pause requested");
-  self->m_client.pauseWallpaper("eDP-1");
+  self->m_client.pauseWallpaper("");
 }
 
-void LinuxTrayIcon::onShow(GtkMenuItem *, gpointer user_data) {
+void LinuxTrayIcon::onShow(GtkMenuItem *, gpointer /*user_data*/) {
   // Launch GUI
-  // system("betterwallpaper &");
-  // Use ProcessUtils instead (Phase 5 fix)
-  utils::ProcessUtils::runAsync("betterwallpaper");
+  utils::SafeProcess::execDetached({"betterwallpaper"});
 }
 
-void LinuxTrayIcon::onSettings(GtkMenuItem *, gpointer user_data) {
+void LinuxTrayIcon::onSettings(GtkMenuItem *, gpointer /*user_data*/) {
   // Launch GUI and navigate to settings
-  utils::ProcessUtils::runAsync("betterwallpaper --settings");
+  utils::SafeProcess::execDetached({"betterwallpaper", "--settings"});
 }
 
-void LinuxTrayIcon::onVolumeUp(GtkMenuItem *, gpointer user_data) {
-    auto *self = static_cast<LinuxTrayIcon *>(user_data);
-    LOG_INFO("Tray: Volume Up requested");
+void LinuxTrayIcon::onVolumeUp(GtkMenuItem *, gpointer /*user_data*/) {
+  LOG_INFO("Tray: Volume Up requested");
+  // TODO: Implement volume control via IPC
 }
 
-void LinuxTrayIcon::onVolumeDown(GtkMenuItem *, gpointer user_data) {
-    auto *self = static_cast<LinuxTrayIcon *>(user_data);
-    LOG_INFO("Tray: Volume Down requested");
+void LinuxTrayIcon::onVolumeDown(GtkMenuItem *, gpointer /*user_data*/) {
+  LOG_INFO("Tray: Volume Down requested");
+  // TODO: Implement volume control via IPC
 }
 
 void LinuxTrayIcon::onMute(GtkMenuItem *item, gpointer user_data) {
-    auto *self = static_cast<LinuxTrayIcon *>(user_data);
-    bool active = gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(item));
-    LOG_INFO("Tray: Mute toggled: " + std::string(active ? "True" : "False"));
-    self->m_client.setMuted("eDP-1", active);
+  auto *self = static_cast<LinuxTrayIcon *>(user_data);
+  bool active = gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(item));
+  LOG_INFO("Tray: Mute toggled: " + std::string(active ? "True" : "False"));
+  self->m_client.setMuted("", active);
 }
 
-void LinuxTrayIcon::onQuit(GtkMenuItem *, gpointer user_data) { gtk_main_quit(); }
+void LinuxTrayIcon::onQuit(GtkMenuItem *, gpointer /*user_data*/) {
+  gtk_main_quit();
+}
 
 void LinuxTrayIcon::run() { gtk_main(); }
 

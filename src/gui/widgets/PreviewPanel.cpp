@@ -1,15 +1,19 @@
 #include "PreviewPanel.hpp"
 
+#include "../../core/config/ConfigManager.hpp"
 #include "../../core/monitor/MonitorManager.hpp"
 #include "../../core/slideshow/SlideshowManager.hpp"
 #include "../../core/utils/Logger.hpp"
+#include "../../core/utils/ToastManager.hpp"
 #include "../../core/wallpaper/NativeWallpaperSetter.hpp"
 #include "../../core/wallpaper/WallpaperLibrary.hpp"
 #include "../../core/wallpaper/WallpaperManager.hpp"
 #include "../../core/wallpaper/WallpaperPreloader.hpp"
+#include "../../core/wallpaper/ThumbnailCache.hpp"
 #include "../dialogs/ErrorDialog.hpp"
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <gdk-pixbuf/gdk-pixbuf.h>
@@ -45,7 +49,7 @@ void PreviewPanel::setupUi() {
   gtk_widget_set_valign(m_box, GTK_ALIGN_START);
   gtk_widget_add_css_class(m_box, "preview-panel");
 
-  // Preview Image
+  // Preview Image (Always Visible at Top)
   GtkWidget *imageFrame = gtk_frame_new(nullptr);
   gtk_widget_add_css_class(imageFrame, "preview-frame");
   gtk_widget_set_size_request(imageFrame, PREVIEW_WIDTH, PREVIEW_HEIGHT);
@@ -55,6 +59,17 @@ void PreviewPanel::setupUi() {
   gtk_stack_set_transition_type(GTK_STACK(m_imageStack),
                                 GTK_STACK_TRANSITION_TYPE_CROSSFADE);
   gtk_stack_set_transition_duration(GTK_STACK(m_imageStack), 300);
+
+  // Scrolled Window for Zoom/Pan
+  m_scrolledWindow = gtk_scrolled_window_new();
+  gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(m_scrolledWindow),
+                                 GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+  gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(m_scrolledWindow),
+                                m_imageStack);
+
+  setupGestures(m_scrolledWindow); // Attach to ScrolledWindow event controller
+
+  // Initial size match
   gtk_widget_set_size_request(m_imageStack, PREVIEW_WIDTH, PREVIEW_HEIGHT);
 
   m_picture1 = gtk_picture_new();
@@ -65,8 +80,38 @@ void PreviewPanel::setupUi() {
   gtk_picture_set_content_fit(GTK_PICTURE(m_picture2), GTK_CONTENT_FIT_COVER);
   gtk_stack_add_named(GTK_STACK(m_imageStack), m_picture2, "page2");
 
-  gtk_frame_set_child(GTK_FRAME(imageFrame), m_imageStack);
-  gtk_box_append(GTK_BOX(m_box), imageFrame);
+  gtk_frame_set_child(GTK_FRAME(imageFrame), m_scrolledWindow);
+
+  // Wrap imageFrame in an overlay for zoom indicator
+  GtkWidget *previewOverlay = gtk_overlay_new();
+  gtk_overlay_set_child(GTK_OVERLAY(previewOverlay), imageFrame);
+
+  // Zoom level indicator (top-right corner, initially hidden)
+  m_zoomIndicator = gtk_label_new("1.0\u00d7");
+  gtk_widget_add_css_class(m_zoomIndicator, "zoom-indicator");
+  gtk_widget_set_halign(m_zoomIndicator, GTK_ALIGN_END);
+  gtk_widget_set_valign(m_zoomIndicator, GTK_ALIGN_START);
+  gtk_widget_set_margin_top(m_zoomIndicator, 8);
+  gtk_widget_set_margin_end(m_zoomIndicator, 8);
+  gtk_widget_set_visible(m_zoomIndicator, FALSE);
+  gtk_overlay_add_overlay(GTK_OVERLAY(previewOverlay), m_zoomIndicator);
+
+  gtk_box_append(GTK_BOX(m_box), previewOverlay);
+
+  // Mini Video Controls (hidden by default, shown for video wallpapers)
+  setupVideoControls();
+
+  // Notebook for Controls / History
+  GtkWidget *notebook = gtk_notebook_new();
+  gtk_widget_set_vexpand(notebook, TRUE);
+  gtk_box_append(GTK_BOX(m_box), notebook);
+
+  // === Page 1: Apply (Controls) ===
+  GtkWidget *applyPage = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+  gtk_widget_set_margin_start(applyPage, 4);
+  gtk_widget_set_margin_end(applyPage, 4);
+  gtk_widget_set_margin_top(applyPage, 12);
+  gtk_widget_set_margin_bottom(applyPage, 12);
 
   // Title
   m_titleLabel = gtk_label_new("Select a wallpaper");
@@ -75,18 +120,16 @@ void PreviewPanel::setupUi() {
   gtk_label_set_max_width_chars(GTK_LABEL(m_titleLabel), 26);
   gtk_label_set_ellipsize(GTK_LABEL(m_titleLabel), PANGO_ELLIPSIZE_END);
   gtk_widget_set_halign(m_titleLabel, GTK_ALIGN_START);
-  gtk_widget_set_margin_top(m_titleLabel, 12);
-  gtk_box_append(GTK_BOX(m_box), m_titleLabel);
+  gtk_box_append(GTK_BOX(applyPage), m_titleLabel);
 
   // Details
   m_detailsLabel = gtk_label_new("");
   gtk_widget_add_css_class(m_detailsLabel, "dim-label");
   gtk_widget_set_halign(m_detailsLabel, GTK_ALIGN_START);
-  gtk_box_append(GTK_BOX(m_box), m_detailsLabel);
+  gtk_box_append(GTK_BOX(applyPage), m_detailsLabel);
 
   // Monitor selector
-  GtkWidget *monitorBox = gtk_box_new(GTK_ORIENTATION_VERTICAL,
-                                      4); // changed to vertical to hold check
+  GtkWidget *monitorBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
   gtk_widget_set_margin_top(monitorBox, 12);
 
   GtkWidget *monitorRow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
@@ -97,17 +140,14 @@ void PreviewPanel::setupUi() {
   gtk_widget_set_hexpand(m_monitorDropdown, TRUE);
   gtk_box_append(GTK_BOX(monitorRow), m_monitorDropdown);
   gtk_box_append(GTK_BOX(monitorBox), monitorRow);
-
-  // m_applyAllCheck removed as requested
-
-  gtk_box_append(GTK_BOX(m_box), monitorBox);
+  gtk_box_append(GTK_BOX(applyPage), monitorBox);
 
   updateMonitorList();
 
   // Settings Expander
   GtkWidget *expander = gtk_expander_new("Wallpaper Settings");
   gtk_widget_set_margin_top(expander, 12);
-  gtk_box_append(GTK_BOX(m_box), expander);
+  gtk_box_append(GTK_BOX(applyPage), expander);
 
   GtkWidget *settingsBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
   gtk_widget_set_margin_top(settingsBox, 8);
@@ -117,6 +157,16 @@ void PreviewPanel::setupUi() {
   // Silent
   m_silentCheck = gtk_check_button_new_with_label("Silent (Mute)");
   gtk_check_button_set_active(GTK_CHECK_BUTTON(m_silentCheck), TRUE);
+  g_signal_connect(m_silentCheck, "toggled",
+                   G_CALLBACK(+[](GtkCheckButton *btn, gpointer data) {
+                     auto *self = static_cast<PreviewPanel *>(data);
+                     if (!self->m_currentInfo.id.empty()) {
+                       self->m_currentInfo.settings.muted =
+                           gtk_check_button_get_active(btn);
+                       self->saveCurrentSettings();
+                     }
+                   }),
+                   this);
   gtk_box_append(GTK_BOX(settingsBox), m_silentCheck);
 
   // No Audio Processing
@@ -140,6 +190,16 @@ void PreviewPanel::setupUi() {
   gtk_box_append(GTK_BOX(fpsBox), gtk_label_new("FPS Limit:"));
   m_fpsSpin = gtk_spin_button_new_with_range(1, 144, 1);
   gtk_spin_button_set_value(GTK_SPIN_BUTTON(m_fpsSpin), 30);
+  g_signal_connect(m_fpsSpin, "value-changed",
+                   G_CALLBACK(+[](GtkSpinButton *btn, gpointer data) {
+                     auto *self = static_cast<PreviewPanel *>(data);
+                     if (!self->m_currentInfo.id.empty()) {
+                       self->m_currentInfo.settings.fps =
+                           static_cast<int>(gtk_spin_button_get_value(btn));
+                       self->saveCurrentSettings();
+                     }
+                   }),
+                   this);
   gtk_box_append(GTK_BOX(fpsBox), m_fpsSpin);
   gtk_box_append(GTK_BOX(settingsBox), fpsBox);
 
@@ -152,6 +212,16 @@ void PreviewPanel::setupUi() {
       gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0, 100, 5);
   gtk_range_set_value(GTK_RANGE(m_volumeScale), 50);
   gtk_widget_set_size_request(m_volumeScale, 100, -1);
+  g_signal_connect(m_volumeScale, "value-changed",
+                   G_CALLBACK(+[](GtkRange *range, gpointer data) {
+                     auto *self = static_cast<PreviewPanel *>(data);
+                     if (!self->m_currentInfo.id.empty()) {
+                       self->m_currentInfo.settings.volume =
+                           static_cast<int>(gtk_range_get_value(range));
+                       self->saveCurrentSettings();
+                     }
+                   }),
+                   this);
   gtk_box_append(GTK_BOX(settingsBox), m_volumeScale);
 
   // Scaling
@@ -161,6 +231,18 @@ void PreviewPanel::setupUi() {
   const char *scaling_options[] = {"Default", "Stretch", "Fit", "Fill",
                                    nullptr};
   m_scalingDropdown = gtk_drop_down_new_from_strings(scaling_options);
+  g_signal_connect(m_scalingDropdown, "notify::selected",
+                   G_CALLBACK(+[](GObject *obj, GParamSpec *, gpointer data) {
+                     auto *self = static_cast<PreviewPanel *>(data);
+                     if (!self->m_currentInfo.id.empty()) {
+                       guint sel = gtk_drop_down_get_selected(
+                           GTK_DROP_DOWN(obj));
+                       self->m_currentInfo.settings.scaling =
+                           static_cast<bwp::wallpaper::ScalingMode>(sel);
+                       self->saveCurrentSettings();
+                     }
+                   }),
+                   this);
   gtk_box_append(GTK_BOX(scalingBox), m_scalingDropdown);
   gtk_box_append(GTK_BOX(settingsBox), scalingBox);
 
@@ -175,7 +257,7 @@ void PreviewPanel::setupUi() {
                      self->onApplyClicked();
                    }),
                    this);
-  gtk_box_append(GTK_BOX(m_box), m_applyButton);
+  gtk_box_append(GTK_BOX(applyPage), m_applyButton);
 
   // Rating and Fav
   GtkWidget *metaBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
@@ -184,14 +266,20 @@ void PreviewPanel::setupUi() {
   setupRating();
   gtk_box_append(GTK_BOX(metaBox), m_ratingBox);
 
-  gtk_box_append(GTK_BOX(m_box), metaBox);
+  gtk_box_append(GTK_BOX(applyPage), metaBox);
 
   // Status
   m_statusLabel = gtk_label_new("");
   gtk_widget_add_css_class(m_statusLabel, "dim-label");
   gtk_widget_set_halign(m_statusLabel, GTK_ALIGN_START);
   gtk_widget_set_margin_top(m_statusLabel, 4);
-  gtk_box_append(GTK_BOX(m_box), m_statusLabel);
+  gtk_box_append(GTK_BOX(applyPage), m_statusLabel);
+
+  gtk_notebook_append_page(GTK_NOTEBOOK(notebook), applyPage,
+                           gtk_label_new("Start"));
+
+  // Hide notebook tabs since we only have one page now
+  gtk_notebook_set_show_tabs(GTK_NOTEBOOK(notebook), FALSE);
 }
 
 void PreviewPanel::updateMonitorList() {
@@ -229,7 +317,10 @@ void PreviewPanel::updateMonitorList() {
 void PreviewPanel::setWallpaper(const bwp::wallpaper::WallpaperInfo &info) {
   m_currentInfo = info;
 
-  std::string name = std::filesystem::path(info.path).stem().string();
+  std::string name = info.title;
+  if (name.empty()) {
+    name = std::filesystem::path(info.path).stem().string();
+  }
   gtk_label_set_text(GTK_LABEL(m_titleLabel), name.c_str());
 
   std::string details = "Type: ";
@@ -246,8 +337,34 @@ void PreviewPanel::setWallpaper(const bwp::wallpaper::WallpaperInfo &info) {
   case bwp::wallpaper::WallpaperType::WEVideo:
     details += "WE Video";
     break;
+  case bwp::wallpaper::WallpaperType::WEWeb:
+    details += "WE Web";
+    break;
   default:
     details += "Unknown";
+  }
+
+  // File Size
+  try {
+    if (std::filesystem::exists(info.path)) {
+      auto fsize = std::filesystem::file_size(info.path);
+      // Format to MB or KB
+      char buf[64];
+      if (fsize > 1024 * 1024)
+        snprintf(buf, 64, "%.1f MB", fsize / 1024.0 / 1024.0);
+      else
+        snprintf(buf, 64, "%.1f KB", fsize / 1024.0);
+      details += "\nSize: " + std::string(buf);
+    }
+  } catch (...) {
+  }
+
+  // Resolution (for Images)
+  if (info.type == bwp::wallpaper::WallpaperType::StaticImage) {
+    int w, h;
+    if (gdk_pixbuf_get_file_info(info.path.c_str(), &w, &h)) {
+      details += "\nRes: " + std::to_string(w) + "x" + std::to_string(h);
+    }
   }
 
   if (info.workshop_id != 0) {
@@ -257,9 +374,44 @@ void PreviewPanel::setWallpaper(const bwp::wallpaper::WallpaperInfo &info) {
   gtk_label_set_text(GTK_LABEL(m_detailsLabel), details.c_str());
 
   loadThumbnail(info.path);
+  loadThumbnail(info.path);
   updateRatingDisplay();
   gtk_widget_set_sensitive(m_applyButton, TRUE);
   gtk_label_set_text(GTK_LABEL(m_statusLabel), "");
+
+  // Load per-wallpaper settings (fall back to global defaults when not set)
+  m_updatingWidgets = true;
+  auto &conf = bwp::config::ConfigManager::getInstance();
+
+  // Muted: use per-wallpaper setting; if wallpaper has no explicit setting, use global default
+  bool muted = info.settings.muted;
+  if (!muted) {
+    // If not explicitly muted per-wallpaper, check global default
+    bool audioEnabled = conf.get<bool>("defaults.audio_enabled", false);
+    muted = !audioEnabled;
+  }
+  gtk_check_button_set_active(GTK_CHECK_BUTTON(m_silentCheck), muted);
+  gtk_check_button_set_active(GTK_CHECK_BUTTON(m_noAudioProcCheck), muted);
+  gtk_check_button_set_active(GTK_CHECK_BUTTON(m_disableMouseCheck), TRUE);
+  gtk_check_button_set_active(GTK_CHECK_BUTTON(m_noAutomuteCheck), FALSE);
+
+  // Volume: per-wallpaper setting, fall back to global
+  int volume = info.settings.volume;
+  if (volume <= 0)
+    volume = conf.get<int>("defaults.audio_volume", 50);
+  gtk_range_set_value(GTK_RANGE(m_volumeScale), volume);
+
+  // FPS: per-wallpaper setting (0 = use global default)
+  int fpsLimit = info.settings.fps;
+  if (fpsLimit <= 0)
+    fpsLimit = conf.get<int>("performance.fps_limit", 60);
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(m_fpsSpin), fpsLimit);
+
+  // Scaling mode: per-wallpaper setting
+  gtk_drop_down_set_selected(GTK_DROP_DOWN(m_scalingDropdown),
+                             static_cast<guint>(info.settings.scaling));
+
+  m_updatingWidgets = false;
 
   // Start preloading the wallpaper in the background for instant setting
   LOG_INFO("Starting preload for selected wallpaper: " + info.path);
@@ -273,6 +425,9 @@ void PreviewPanel::setWallpaper(const bwp::wallpaper::WallpaperInfo &info) {
           LOG_WARN("Wallpaper preload failed: " + path);
         }
       });
+
+  // Show/hide video controls based on wallpaper type
+  updateVideoControlsVisibility();
 }
 
 void PreviewPanel::loadThumbnail(const std::string &path) {
@@ -382,15 +537,26 @@ void PreviewPanel::onApplyClicked() {
 
   auto &wm = bwp::wallpaper::WallpaperManager::getInstance();
 
-  // 1. Configure settings
-  // Mute
+  // 1. Configure ALL settings on WallpaperManager BEFORE setWallpaper
+  // These get applied to the new renderer before load() is called
   bool muted = gtk_check_button_get_active(GTK_CHECK_BUTTON(m_silentCheck));
   wm.setMuted(muted);
 
-  // FPS
+  bool noAudioProc = gtk_check_button_get_active(GTK_CHECK_BUTTON(m_noAudioProcCheck));
+  wm.setNoAudioProcessing(noAudioProc);
+
+  bool disableMouse = gtk_check_button_get_active(GTK_CHECK_BUTTON(m_disableMouseCheck));
+  wm.setDisableMouse(disableMouse);
+
+  bool noAutomute = gtk_check_button_get_active(GTK_CHECK_BUTTON(m_noAutomuteCheck));
+  wm.setNoAutomute(noAutomute);
+
   int fps = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(m_fpsSpin));
   if (fps > 0)
     wm.setFpsLimit(fps);
+
+  int volume = static_cast<int>(gtk_range_get_value(GTK_RANGE(m_volumeScale)));
+  wm.setVolumeLevel(volume);
 
   // Refresh monitor list to ensure we have latest
   updateMonitorList();
@@ -452,8 +618,8 @@ void PreviewPanel::onApplyClicked() {
     LOG_INFO("Target Monitor: " + t);
   }
 
-  // WallpaperManager uses GTK functions internally, so it MUST run on main thread
-  // Use g_idle_add to run it asynchronously but on the GTK main loop
+  // WallpaperManager uses GTK functions internally, so it MUST run on main
+  // thread Use g_idle_add to run it asynchronously but on the GTK main loop
   struct ApplyData {
     PreviewPanel *panel;
     std::vector<std::string> targets;
@@ -463,30 +629,18 @@ void PreviewPanel::onApplyClicked() {
   ApplyData *data =
       new ApplyData{this, targets, m_currentInfo.path, scalingMode};
 
-  // #region agent log
-  auto ppDebugLog = [](const char* loc, const char* msg, const char* hyp) {
-    FILE* f = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
-    if (f) { fprintf(f, "{\"location\":\"%s\",\"message\":\"%s\",\"hypothesisId\":\"%s\",\"timestamp\":%ld}\n", loc, msg, hyp, (long)time(nullptr)); fclose(f); }
-  };
-  ppDebugLog("PreviewPanel.cpp:g_idle_add", "Scheduling setWallpaper on main thread", "A");
   // #endregion
 
   // Schedule on main thread (async but thread-safe for GTK)
   g_idle_add(
       +[](gpointer user_data) -> gboolean {
-        // #region agent log
-        FILE* f1 = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
-        if (f1) { fprintf(f1, "{\"location\":\"PreviewPanel.cpp:callback_entry\",\"message\":\"g_idle_add callback started\",\"hypothesisId\":\"A\",\"timestamp\":%ld}\n", (long)time(nullptr)); fclose(f1); }
         // #endregion
-        
+
         ApplyData *d = static_cast<ApplyData *>(user_data);
         auto &wm = bwp::wallpaper::WallpaperManager::getInstance();
-        
+
         bool success = true;
 
-        // #region agent log
-        FILE* f2a = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
-        if (f2a) { fprintf(f2a, "{\"location\":\"PreviewPanel.cpp:before_setScalingMode\",\"message\":\"About to call setScalingMode\",\"hypothesisId\":\"G\",\"timestamp\":%ld}\n", (long)time(nullptr)); fclose(f2a); }
         // #endregion
 
         // Update scaling modes
@@ -494,31 +648,19 @@ void PreviewPanel::onApplyClicked() {
           wm.setScalingMode(mon, d->scalingMode);
         }
 
-        // #region agent log
-        FILE* f2b = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
-        if (f2b) { fprintf(f2b, "{\"location\":\"PreviewPanel.cpp:after_setScalingMode\",\"message\":\"setScalingMode complete\",\"hypothesisId\":\"G\",\"timestamp\":%ld}\n", (long)time(nullptr)); fclose(f2b); }
         // #endregion
 
-        // #region agent log
-        FILE* f2 = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
-        if (f2) { fprintf(f2, "{\"location\":\"PreviewPanel.cpp:before_setWallpaper\",\"message\":\"About to call setWallpaper\",\"hypothesisId\":\"A\",\"timestamp\":%ld}\n", (long)time(nullptr)); fclose(f2); }
         // #endregion
 
         if (d->targets.size() > 1) {
           LOG_INFO("Calling bulk setWallpaper for " +
                    std::to_string(d->targets.size()) + " monitors");
-          // #region agent log
-          FILE* fx1 = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
-          if (fx1) { fprintf(fx1, "{\"location\":\"PreviewPanel.cpp:calling_bulk\",\"message\":\"Calling bulk setWallpaper NOW\",\"hypothesisId\":\"H\",\"timestamp\":%ld}\n", (long)time(nullptr)); fflush(fx1); fclose(fx1); }
           // #endregion
           if (!wm.setWallpaper(d->targets, d->path)) {
             success = false;
           }
         } else if (!d->targets.empty()) {
           LOG_INFO("Calling single setWallpaper for " + d->targets[0]);
-          // #region agent log
-          FILE* fx2 = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
-          if (fx2) { fprintf(fx2, "{\"location\":\"PreviewPanel.cpp:calling_single\",\"message\":\"Calling single setWallpaper NOW\",\"hypothesisId\":\"H\",\"timestamp\":%ld}\n", (long)time(nullptr)); fflush(fx2); fclose(fx2); }
           // #endregion
           if (!wm.setWallpaper(d->targets[0], d->path)) {
             success = false;
@@ -527,18 +669,21 @@ void PreviewPanel::onApplyClicked() {
           success = false;
         }
 
-        // #region agent log
-        FILE* f3 = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
-        if (f3) { fprintf(f3, "{\"location\":\"PreviewPanel.cpp:after_setWallpaper\",\"message\":\"setWallpaper returned\",\"hypothesisId\":\"A\",\"timestamp\":%ld}\n", (long)time(nullptr)); fclose(f3); }
         // #endregion
 
         // Update UI (we're already on main thread)
         if (success) {
           gtk_label_set_text(GTK_LABEL(d->panel->m_statusLabel),
                              "✓ Wallpaper set!");
+          // Show success toast
+          bwp::core::utils::ToastManager::getInstance().showSuccess(
+              "Wallpaper applied successfully");
         } else {
           gtk_label_set_text(GTK_LABEL(d->panel->m_statusLabel),
                              "✗ Failed to set wallpaper");
+          // Show error toast
+          bwp::core::utils::ToastManager::getInstance().showError(
+              "Failed to set wallpaper: " + d->path);
 
           GtkRoot *root =
               gtk_widget_get_root(GTK_WIDGET(d->panel->m_applyButton));
@@ -548,9 +693,6 @@ void PreviewPanel::onApplyClicked() {
           }
         }
 
-        // #region agent log
-        FILE* f4 = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
-        if (f4) { fprintf(f4, "{\"location\":\"PreviewPanel.cpp:callback_exit\",\"message\":\"g_idle_add callback done, returning FALSE\",\"hypothesisId\":\"A\",\"timestamp\":%ld}\n", (long)time(nullptr)); fclose(f4); }
         // #endregion
 
         delete d;
@@ -616,4 +758,269 @@ void PreviewPanel::updateRatingDisplay() {
   }
 }
 
+void PreviewPanel::saveCurrentSettings() {
+  if (m_updatingWidgets || m_currentInfo.id.empty())
+    return;
+  auto &lib = bwp::wallpaper::WallpaperLibrary::getInstance();
+  lib.updateWallpaper(m_currentInfo);
+}
+
+void PreviewPanel::setupGestures(GtkWidget *widget) {
+  // Double-click to reset zoom
+  auto *clickGesture = gtk_gesture_click_new();
+  gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(clickGesture),
+                                GDK_BUTTON_PRIMARY);
+  g_signal_connect(
+      clickGesture, "pressed",
+      G_CALLBACK(+[](GtkGestureClick *, int n_press, double, double,
+                      gpointer data) {
+        if (n_press == 2) {
+          auto *self = static_cast<PreviewPanel *>(data);
+          self->resetZoom();
+        }
+      }),
+      this);
+  gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(clickGesture));
+
+  // Scroll wheel to zoom
+  auto *scrollController = gtk_event_controller_scroll_new(
+      GTK_EVENT_CONTROLLER_SCROLL_VERTICAL);
+  g_signal_connect(
+      scrollController, "scroll",
+      G_CALLBACK(+[](GtkEventControllerScroll *, double, double dy,
+                      gpointer data) -> gboolean {
+        auto *self = static_cast<PreviewPanel *>(data);
+        double newZoom = self->m_zoomLevel - dy * ZOOM_STEP;
+        self->applyZoom(newZoom);
+        return TRUE; // Consume the event
+      }),
+      this);
+  gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(scrollController));
+
+  // Drag to Pan
+  auto *dragGesture = gtk_gesture_drag_new();
+  g_signal_connect(
+      dragGesture, "drag-begin",
+      G_CALLBACK(+[](GtkGestureDrag *c, double x, double y, gpointer data) {
+        auto *self = static_cast<PreviewPanel *>(data);
+        self->onPanBegin(c, x, y);
+      }),
+      this);
+  g_signal_connect(
+      dragGesture, "drag-update",
+      G_CALLBACK(+[](GtkGestureDrag *c, double x, double y, gpointer data) {
+        auto *self = static_cast<PreviewPanel *>(data);
+        self->onPanGesture(c, x, y);
+      }),
+      this);
+  g_signal_connect(
+      dragGesture, "drag-end",
+      G_CALLBACK(+[](GtkGestureDrag *, double, double, gpointer data) {
+        auto *self = static_cast<PreviewPanel *>(data);
+        // Restore default cursor
+        gtk_widget_set_cursor_from_name(self->m_scrolledWindow, nullptr);
+      }),
+      this);
+  gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(dragGesture));
+}
+
+void PreviewPanel::applyZoom(double newZoom, double /*focusX*/,
+                             double /*focusY*/) {
+  newZoom = std::clamp(newZoom, ZOOM_MIN, ZOOM_MAX);
+  if (std::abs(newZoom - m_zoomLevel) < 0.01)
+    return;
+
+  m_zoomLevel = newZoom;
+
+  int w = static_cast<int>(PREVIEW_WIDTH * m_zoomLevel);
+  int h = static_cast<int>(PREVIEW_HEIGHT * m_zoomLevel);
+  gtk_widget_set_size_request(m_imageStack, w, h);
+
+  updateZoomIndicator();
+
+  // Set cursor hint based on zoom state
+  if (m_zoomLevel > ZOOM_MIN) {
+    gtk_widget_set_cursor_from_name(m_scrolledWindow, "grab");
+  } else {
+    gtk_widget_set_cursor_from_name(m_scrolledWindow, nullptr);
+  }
+}
+
+void PreviewPanel::resetZoom() {
+  applyZoom(ZOOM_MIN);
+
+  // Reset scroll position to origin
+  GtkAdjustment *hadj = gtk_scrolled_window_get_hadjustment(
+      GTK_SCROLLED_WINDOW(m_scrolledWindow));
+  GtkAdjustment *vadj = gtk_scrolled_window_get_vadjustment(
+      GTK_SCROLLED_WINDOW(m_scrolledWindow));
+  gtk_adjustment_set_value(hadj, 0);
+  gtk_adjustment_set_value(vadj, 0);
+}
+
+void PreviewPanel::updateZoomIndicator() {
+  if (!m_zoomIndicator)
+    return;
+
+  if (m_zoomLevel <= ZOOM_MIN + 0.01) {
+    gtk_widget_set_visible(m_zoomIndicator, FALSE);
+    return;
+  }
+
+  char buf[32];
+  std::snprintf(buf, sizeof(buf), "%.1f\u00d7", m_zoomLevel);
+  gtk_label_set_text(GTK_LABEL(m_zoomIndicator), buf);
+  gtk_widget_set_visible(m_zoomIndicator, TRUE);
+
+  // Auto-hide after 2 seconds
+  g_timeout_add(
+      2000,
+      +[](gpointer data) -> gboolean {
+        auto *label = static_cast<GtkWidget *>(data);
+        if (GTK_IS_WIDGET(label)) {
+          gtk_widget_set_visible(label, FALSE);
+        }
+        return G_SOURCE_REMOVE;
+      },
+      m_zoomIndicator);
+}
+
+void PreviewPanel::onPanBegin(GtkGestureDrag *, double /*start_x*/,
+                              double /*start_y*/) {
+  GtkAdjustment *hadj = gtk_scrolled_window_get_hadjustment(
+      GTK_SCROLLED_WINDOW(m_scrolledWindow));
+  GtkAdjustment *vadj = gtk_scrolled_window_get_vadjustment(
+      GTK_SCROLLED_WINDOW(m_scrolledWindow));
+
+  m_dragStartX = gtk_adjustment_get_value(hadj);
+  m_dragStartY = gtk_adjustment_get_value(vadj);
+
+  // Grabbing cursor while dragging
+  if (m_zoomLevel > ZOOM_MIN) {
+    gtk_widget_set_cursor_from_name(m_scrolledWindow, "grabbing");
+  }
+}
+
+void PreviewPanel::onPanGesture(GtkGestureDrag *, double offset_x,
+                                double offset_y) {
+  if (m_zoomLevel <= ZOOM_MIN)
+    return; // No pan if not zoomed
+
+  GtkAdjustment *hadj = gtk_scrolled_window_get_hadjustment(
+      GTK_SCROLLED_WINDOW(m_scrolledWindow));
+  GtkAdjustment *vadj = gtk_scrolled_window_get_vadjustment(
+      GTK_SCROLLED_WINDOW(m_scrolledWindow));
+
+  gtk_adjustment_set_value(hadj, m_dragStartX - offset_x);
+  gtk_adjustment_set_value(vadj, m_dragStartY - offset_y);
+}
+
+void PreviewPanel::setupVideoControls() {
+  m_videoControlsBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+  gtk_widget_add_css_class(m_videoControlsBox, "video-controls");
+  gtk_widget_set_margin_start(m_videoControlsBox, 4);
+  gtk_widget_set_margin_end(m_videoControlsBox, 4);
+  gtk_widget_set_margin_top(m_videoControlsBox, 6);
+  gtk_widget_set_margin_bottom(m_videoControlsBox, 2);
+  gtk_widget_set_visible(m_videoControlsBox, FALSE);
+
+  // Play/Pause button
+  m_playPauseBtn = gtk_button_new_from_icon_name("media-playback-start-symbolic");
+  gtk_widget_add_css_class(m_playPauseBtn, "flat");
+  gtk_widget_add_css_class(m_playPauseBtn, "circular");
+  gtk_widget_set_tooltip_text(m_playPauseBtn, "Play / Pause");
+  g_signal_connect(
+      m_playPauseBtn, "clicked",
+      G_CALLBACK(+[](GtkButton *, gpointer data) {
+        auto *self = static_cast<PreviewPanel *>(data);
+        self->m_isVideoPlaying = !self->m_isVideoPlaying;
+        gtk_button_set_icon_name(
+            GTK_BUTTON(self->m_playPauseBtn),
+            self->m_isVideoPlaying ? "media-playback-pause-symbolic"
+                                   : "media-playback-start-symbolic");
+      }),
+      this);
+  gtk_box_append(GTK_BOX(m_videoControlsBox), m_playPauseBtn);
+
+  // Time label (shows type info for now since we don't have mpv preview)
+  m_videoTimeLabel = gtk_label_new("Video");
+  gtk_widget_add_css_class(m_videoTimeLabel, "dim-label");
+  gtk_widget_add_css_class(m_videoTimeLabel, "caption");
+  gtk_widget_set_hexpand(m_videoTimeLabel, TRUE);
+  gtk_widget_set_halign(m_videoTimeLabel, GTK_ALIGN_START);
+  gtk_box_append(GTK_BOX(m_videoControlsBox), m_videoTimeLabel);
+
+  // Volume button + scale
+  m_videoVolumeBtn =
+      gtk_button_new_from_icon_name("audio-volume-medium-symbolic");
+  gtk_widget_add_css_class(m_videoVolumeBtn, "flat");
+  gtk_widget_add_css_class(m_videoVolumeBtn, "circular");
+  gtk_widget_set_tooltip_text(m_videoVolumeBtn, "Toggle Mute");
+  g_signal_connect(
+      m_videoVolumeBtn, "clicked",
+      G_CALLBACK(+[](GtkButton *, gpointer data) {
+        auto *self = static_cast<PreviewPanel *>(data);
+        double vol = gtk_range_get_value(GTK_RANGE(self->m_videoVolumeScale));
+        if (vol > 0) {
+          gtk_range_set_value(GTK_RANGE(self->m_videoVolumeScale), 0);
+          gtk_button_set_icon_name(GTK_BUTTON(self->m_videoVolumeBtn),
+                                   "audio-volume-muted-symbolic");
+        } else {
+          gtk_range_set_value(GTK_RANGE(self->m_videoVolumeScale), 50);
+          gtk_button_set_icon_name(GTK_BUTTON(self->m_videoVolumeBtn),
+                                   "audio-volume-medium-symbolic");
+        }
+      }),
+      this);
+  gtk_box_append(GTK_BOX(m_videoControlsBox), m_videoVolumeBtn);
+
+  m_videoVolumeScale =
+      gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0, 100, 5);
+  gtk_range_set_value(GTK_RANGE(m_videoVolumeScale), 50);
+  gtk_widget_set_size_request(m_videoVolumeScale, 60, -1);
+  gtk_scale_set_draw_value(GTK_SCALE(m_videoVolumeScale), FALSE);
+  g_signal_connect(
+      m_videoVolumeScale, "value-changed",
+      G_CALLBACK(+[](GtkRange *range, gpointer data) {
+        auto *self = static_cast<PreviewPanel *>(data);
+        double val = gtk_range_get_value(range);
+        const char *icon = val <= 0    ? "audio-volume-muted-symbolic"
+                           : val < 50  ? "audio-volume-low-symbolic"
+                                       : "audio-volume-medium-symbolic";
+        gtk_button_set_icon_name(GTK_BUTTON(self->m_videoVolumeBtn), icon);
+      }),
+      this);
+  gtk_box_append(GTK_BOX(m_videoControlsBox), m_videoVolumeScale);
+
+  gtk_box_append(GTK_BOX(m_box), m_videoControlsBox);
+}
+
+void PreviewPanel::updateVideoControlsVisibility() {
+  if (!m_videoControlsBox)
+    return;
+
+  bool isVideo =
+      (m_currentInfo.type == bwp::wallpaper::WallpaperType::Video ||
+       m_currentInfo.type == bwp::wallpaper::WallpaperType::WEVideo ||
+       m_currentInfo.type == bwp::wallpaper::WallpaperType::WEScene);
+
+  gtk_widget_set_visible(m_videoControlsBox, isVideo);
+
+  if (isVideo) {
+    // Reset play state
+    m_isVideoPlaying = false;
+    gtk_button_set_icon_name(GTK_BUTTON(m_playPauseBtn),
+                             "media-playback-start-symbolic");
+
+    // Update time label with type info
+    const char *typeStr = "Video";
+    if (m_currentInfo.type == bwp::wallpaper::WallpaperType::WEScene)
+      typeStr = "WE Scene";
+    else if (m_currentInfo.type == bwp::wallpaper::WallpaperType::WEVideo)
+      typeStr = "WE Video";
+    gtk_label_set_text(GTK_LABEL(m_videoTimeLabel), typeStr);
+  }
+}
+
 } // namespace bwp::gui
+

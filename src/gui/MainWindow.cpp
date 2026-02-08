@@ -5,6 +5,7 @@
 #include "../core/slideshow/SlideshowManager.hpp"
 #include "../core/utils/Constants.hpp"
 #include "../core/utils/Logger.hpp"
+#include "../core/utils/ToastManager.hpp"
 #include "../core/wallpaper/FolderManager.hpp"
 #include "../core/wallpaper/NativeWallpaperSetter.hpp"
 #include "../core/wallpaper/WallpaperLibrary.hpp"
@@ -25,18 +26,11 @@ static constexpr int DEFAULT_WINDOW_HEIGHT =
     bwp::constants::defaults::WINDOW_HEIGHT;
 // Sidebar width handled in Sidebar class (240px)
 
-// #region agent log
-static void mwDebugLog(const char* loc, const char* msg, const char* hyp) {
-  FILE* f = fopen("/home/onxy/Documents/scripts/BetterWallpaper/.cursor/debug.log", "a");
-  if (f) { fprintf(f, "{\"location\":\"%s\",\"message\":\"%s\",\"hypothesisId\":\"%s\",\"timestamp\":%ld}\n", loc, msg, hyp, (long)time(nullptr)); fclose(f); }
-}
 // #endregion
 
 MainWindow::MainWindow(AdwApplication *app) {
-  // #region agent log
-  mwDebugLog("MainWindow.cpp:ctor_entry", "MainWindow constructor started", "F");
   // #endregion
-  
+
   LOG_SCOPE_AUTO();
   m_window = GTK_WIDGET(adw_application_window_new(GTK_APPLICATION(app)));
   gtk_window_set_title(GTK_WINDOW(m_window), bwp::constants::APP_NAME);
@@ -55,14 +49,61 @@ MainWindow::MainWindow(AdwApplication *app) {
 
   g_signal_connect(m_window, "close-request", G_CALLBACK(onCloseRequest), this);
 
-  // #region agent log
-  mwDebugLog("MainWindow.cpp:before_setupUi", "About to call setupUi", "F");
   // #endregion
-  
+
   setupUi();
-  
-  // #region agent log
-  mwDebugLog("MainWindow.cpp:after_setupUi", "setupUi complete", "F");
+
+  // Register toast notification callback
+  bwp::core::utils::ToastManager::getInstance().setExtendedCallback(
+      [this](const bwp::core::utils::ToastRequest &request) {
+        // Must run on GTK main thread
+        auto *req = new bwp::core::utils::ToastRequest(request);
+        g_idle_add(+[](gpointer data) -> gboolean {
+          auto *r = static_cast<bwp::core::utils::ToastRequest *>(data);
+          // Find the MainWindow's toast overlay from the app
+          auto *app = g_application_get_default();
+          if (!app) { delete r; return FALSE; }
+          auto *win = gtk_application_get_active_window(GTK_APPLICATION(app));
+          if (!win) { delete r; return FALSE; }
+
+          // Navigate to the toast overlay (it's the content of the AdwApplicationWindow)
+          GtkWidget *content = adw_application_window_get_content(ADW_APPLICATION_WINDOW(win));
+          if (!content || !ADW_IS_TOAST_OVERLAY(content)) { delete r; return FALSE; }
+
+          // Create toast with type-specific prefix
+          std::string prefix;
+          switch (r->type) {
+            case bwp::core::utils::ToastType::Success: prefix = "\u2713 "; break;
+            case bwp::core::utils::ToastType::Error:   prefix = "\u2717 "; break;
+            case bwp::core::utils::ToastType::Warning: prefix = "\u26A0 "; break;
+            default: break;
+          }
+
+          AdwToast *toast = adw_toast_new((prefix + r->message).c_str());
+          adw_toast_set_timeout(toast, r->durationMs > 0 ? (r->durationMs / 1000) : 0);
+
+          // Add first action button if present
+          if (!r->actions.empty()) {
+            adw_toast_set_button_label(toast, r->actions[0].label.c_str());
+            auto *cb = new std::function<void()>(r->actions[0].callback);
+            g_signal_connect_data(toast, "button-clicked",
+                G_CALLBACK(+[](AdwToast*, gpointer data) {
+                  auto *fn = static_cast<std::function<void()>*>(data);
+                  if (fn && *fn) (*fn)();
+                }),
+                cb,
+                +[](gpointer data, GClosure*) {
+                  delete static_cast<std::function<void()>*>(data);
+                },
+                G_CONNECT_DEFAULT);
+          }
+
+          adw_toast_overlay_add_toast(ADW_TOAST_OVERLAY(content), toast);
+          delete r;
+          return FALSE;
+        }, req);
+      });
+
   // #endregion
 
   bwp::input::InputManager::getInstance().setup(GTK_WINDOW(m_window));
@@ -83,15 +124,11 @@ MainWindow::MainWindow(AdwApplication *app) {
   bwp::core::PowerManager::getInstance().startMonitoring();
 
   gtk_widget_set_visible(m_window, TRUE);
-  
-  // #region agent log
-  mwDebugLog("MainWindow.cpp:before_weRenderer", "About to create WallpaperEngineRenderer", "F");
+
   // #endregion
-  
+
   m_weRenderer = std::make_unique<bwp::wallpaper::WallpaperEngineRenderer>();
-  
-  // #region agent log
-  mwDebugLog("MainWindow.cpp:after_weRenderer", "WallpaperEngineRenderer created", "F");
+
   // #endregion
 
   // Slideshow Logic
@@ -109,7 +146,8 @@ MainWindow::MainWindow(AdwApplication *app) {
                                        : conf.get<int>("performance.fps_limit");
         bool mute = wp->settings.muted;
         if (!mute && !conf.get<bool>("defaults.audio_enabled"))
-          mute = true;
+          if (!mute && !conf.get<bool>("defaults.audio_enabled"))
+            mute = true;
 
         m_weRenderer->setFpsLimit(fps);
         m_weRenderer->setMuted(mute);
@@ -121,6 +159,18 @@ MainWindow::MainWindow(AdwApplication *app) {
             wp->path);
       }
     }
+
+    // Update Favorite Count (Proof of concept implementation - counts all
+    // favorites) Optimization: Cache this or only re-count if favorite status
+    // changed? For now, simple count.
+    auto all = lib.getAllWallpapers();
+    int favCount = 0;
+    for (const auto &w : all) {
+      if (w.favorite)
+        favCount++;
+    }
+    if (m_sidebar)
+      m_sidebar->updateBadge("favorites", favCount);
   });
 }
 
@@ -137,8 +187,15 @@ void MainWindow::setupUi() {
   // Root: GtkBox (Horizontal) -> [Sidebar] [Separator] [Stack]
   // Wrapped in AdwApplicationWindow content.
 
+  // 0. Toast Overlay
+  m_toastOverlay = adw_toast_overlay_new();
+  adw_application_window_set_content(ADW_APPLICATION_WINDOW(m_window),
+                                     m_toastOverlay);
+
   GtkWidget *rootBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-  adw_application_window_set_content(ADW_APPLICATION_WINDOW(m_window), rootBox);
+  // adw_application_window_set_content(ADW_APPLICATION_WINDOW(m_window),
+  // rootBox); // Old way
+  adw_toast_overlay_set_child(ADW_TOAST_OVERLAY(m_toastOverlay), rootBox);
 
   // 1. Sidebar
   m_sidebar = std::make_unique<Sidebar>();
@@ -210,6 +267,15 @@ void MainWindow::setupUi() {
   m_folderView = std::make_unique<FolderView>();
   adw_view_stack_add_named(ADW_VIEW_STACK(m_contentStack),
                            m_folderView->getWidget(), "folder");
+
+  // Initial Favorite Count
+  auto all = bwp::wallpaper::WallpaperLibrary::getInstance().getAllWallpapers();
+  int favCount = 0;
+  for (const auto &w : all) {
+    if (w.favorite)
+      favCount++;
+  }
+  m_sidebar->updateBadge("favorites", favCount);
 }
 
 void MainWindow::ensureWorkshopView() {

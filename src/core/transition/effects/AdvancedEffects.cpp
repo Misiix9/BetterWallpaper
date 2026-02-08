@@ -11,7 +11,7 @@ namespace bwp::transition {
 void ExpandingCircleEffect::render(cairo_t *cr, cairo_surface_t *from,
                                    cairo_surface_t *to, double progress,
                                    int width, int height,
-                                   const TransitionParams &params) {
+                                   const TransitionParams & /*params*/) {
   // Draw the old wallpaper as background
   cairo_set_source_surface(cr, from, 0, 0);
   cairo_paint(cr);
@@ -45,7 +45,7 @@ void ExpandingCircleEffect::render(cairo_t *cr, cairo_surface_t *from,
 void ExpandingSquareEffect::render(cairo_t *cr, cairo_surface_t *from,
                                    cairo_surface_t *to, double progress,
                                    int width, int height,
-                                   const TransitionParams &params) {
+                                   const TransitionParams & /*params*/) {
   // Draw old wallpaper
   cairo_set_source_surface(cr, from, 0, 0);
   cairo_paint(cr);
@@ -54,10 +54,9 @@ void ExpandingSquareEffect::render(cairo_t *cr, cairo_surface_t *from,
   double centerY = height * m_originYRatio;
 
   // Max half-size to cover screen
-  double maxHalfSize =
-      std::max(std::max(centerX, width - centerX),
-               std::max(centerY, height - centerY)) *
-      1.5;
+  double maxHalfSize = std::max(std::max(centerX, width - centerX),
+                                std::max(centerY, height - centerY)) *
+                       1.5;
 
   double halfSize = maxHalfSize * progress;
   double cornerRad = m_cornerRadius * progress;
@@ -182,8 +181,8 @@ void ZoomEffect::render(cairo_t *cr, cairo_surface_t *from, cairo_surface_t *to,
 // ============ Morph Effect ============
 
 void MorphEffect::render(cairo_t *cr, cairo_surface_t *from,
-                         cairo_surface_t *to, double progress, int width,
-                         int height, const TransitionParams &params) {
+                         cairo_surface_t *to, double progress, int /*width*/,
+                         int /*height*/, const TransitionParams & /*params*/) {
   // Simple crossfade with slight blur simulation via multiple paints
   // For a real morph, we'd need pixel-level operations
 
@@ -200,7 +199,7 @@ void MorphEffect::render(cairo_t *cr, cairo_surface_t *from,
 
 void AngledWipeEffect::render(cairo_t *cr, cairo_surface_t *from,
                               cairo_surface_t *to, double progress, int width,
-                              int height, const TransitionParams &params) {
+                              int height, const TransitionParams & /*params*/) {
   // Draw old wallpaper
   cairo_set_source_surface(cr, from, 0, 0);
   cairo_paint(cr);
@@ -288,8 +287,7 @@ void PixelateEffect::render(cairo_t *cr, cairo_surface_t *from,
   }
 
   // Calculate block size based on progress
-  int blockSize =
-      1 + static_cast<int>((m_maxBlockSize - 1) * pixelProgress);
+  int blockSize = 1 + static_cast<int>((m_maxBlockSize - 1) * pixelProgress);
 
   if (blockSize <= 1) {
     // No pixelation needed
@@ -337,7 +335,7 @@ void PixelateEffect::render(cairo_t *cr, cairo_surface_t *from,
 
 void BlindsEffect::render(cairo_t *cr, cairo_surface_t *from,
                           cairo_surface_t *to, double progress, int width,
-                          int height, const TransitionParams &params) {
+                          int height, const TransitionParams & /*params*/) {
   // Draw old wallpaper as background
   cairo_set_source_surface(cr, from, 0, 0);
   cairo_paint(cr);

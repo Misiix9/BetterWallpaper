@@ -33,8 +33,7 @@ WallpaperWindow::WallpaperWindow(const monitor::MonitorInfo &monitor)
   GListModel *monitors = gdk_display_get_monitors(display);
   for (guint i = 0; i < g_list_model_get_n_items(monitors); i++) {
     GdkMonitor *gdkMonitor = GDK_MONITOR(g_list_model_get_item(monitors, i));
-    const char *model =
-        gdk_monitor_get_model(gdkMonitor); // Not name, but might match
+
     const char *connector = gdk_monitor_get_connector(gdkMonitor);
 
     if (connector && std::string(connector) == monitor.name) {
@@ -66,7 +65,7 @@ void WallpaperWindow::setRenderer(std::weak_ptr<WallpaperRenderer> renderer) {
 
 void WallpaperWindow::show() {
   if (gtk_layer_is_layer_window(GTK_WINDOW(m_window))) {
-    gtk_widget_show(m_window);
+    gtk_widget_set_visible(m_window, TRUE);
   } else {
     LOG_ERROR("Window is not a layer surface! strict layer shell compliance "
               "enabled. Hiding window.");
@@ -74,9 +73,9 @@ void WallpaperWindow::show() {
   }
 }
 
-void WallpaperWindow::hide() { gtk_widget_hide(m_window); }
+void WallpaperWindow::hide() { gtk_widget_set_visible(m_window, FALSE); }
 
-void WallpaperWindow::updateMonitor(const monitor::MonitorInfo &monitor) {
+void WallpaperWindow::updateMonitor(const monitor::MonitorInfo & /*monitor*/) {
   // Re-assign monitor logic if changed
 }
 
@@ -135,7 +134,7 @@ void WallpaperWindow::transitionTo(
 }
 
 gboolean WallpaperWindow::onExtractFrame(GtkWidget *widget,
-                                         GdkFrameClock *clock,
+                                         GdkFrameClock * /*clock*/,
                                          gpointer user_data) {
   auto *self = static_cast<WallpaperWindow *>(user_data);
 
@@ -148,9 +147,10 @@ gboolean WallpaperWindow::onExtractFrame(GtkWidget *widget,
   static auto lastLog = std::chrono::steady_clock::now();
   static int frameCount = 0;
   frameCount++;
-  
+
   auto now = std::chrono::steady_clock::now();
-  if (std::chrono::duration_cast<std::chrono::seconds>(now - lastLog).count() >= 5) {
+  if (std::chrono::duration_cast<std::chrono::seconds>(now - lastLog).count() >=
+      5) {
     double fps = frameCount / 5.0;
     LOG_DEBUG("Render FPS: " + std::to_string(fps));
     frameCount = 0;

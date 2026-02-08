@@ -1,26 +1,42 @@
 #include "VideoRenderer.hpp"
 #include "../../utils/Logger.hpp"
+#include <clocale>
+#include <cstdlib>
 #include <iostream>
 #include <vector>
 
 namespace bwp::wallpaper {
 
 VideoRenderer::VideoRenderer() {
+  // Ensure LC_NUMERIC is set to "C" for mpv (it requires C locale for parsing)
+  const char *oldLocale = std::setlocale(LC_NUMERIC, nullptr);
+  std::string savedLocale = oldLocale ? oldLocale : "C";
+  std::setlocale(LC_NUMERIC, "C");
+
   m_mpv = mpv_create();
   if (!m_mpv) {
-    LOG_ERROR("Failed to create MPV instance");
+    LOG_ERROR("Failed to create MPV instance — libmpv may not be available or "
+              "incompatible. Check that libmpv is installed (e.g., "
+              "libmpv-dev).");
+    // Restore locale
+    std::setlocale(LC_NUMERIC, savedLocale.c_str());
     return;
   }
 
-  // Enable SW render API
-  // mpv_set_option_string(m_mpv, "vo", "libmpv"); // Deprecated/removed in new
-  // API? Modern MPV uses render context
-
-  // Low latency options?
+  // Set essential options before initialize
+  mpv_set_option_string(m_mpv, "terminal", "no");
+  mpv_set_option_string(m_mpv, "msg-level", "all=no");
   mpv_set_option_string(m_mpv, "loop", "yes");
+  mpv_set_option_string(m_mpv, "audio", "no");  // Wallpapers typically silent
+  mpv_set_option_string(m_mpv, "ytdl", "no");
+  mpv_set_option_string(m_mpv, "vo", "libmpv");
 
-  if (mpv_initialize(m_mpv) < 0) {
-    LOG_ERROR("Failed to initialize MPV");
+  int err = mpv_initialize(m_mpv);
+  if (err < 0) {
+    LOG_ERROR("Failed to initialize MPV: " + std::string(mpv_error_string(err)));
+    mpv_terminate_destroy(m_mpv);
+    m_mpv = nullptr;
+    std::setlocale(LC_NUMERIC, savedLocale.c_str());
     return;
   }
 
@@ -29,8 +45,20 @@ VideoRenderer::VideoRenderer() {
       {MPV_RENDER_PARAM_API_TYPE, (void *)MPV_RENDER_API_TYPE_SW},
       {MPV_RENDER_PARAM_INVALID, nullptr}};
 
-  if (mpv_render_context_create(&m_mpv_ctx, m_mpv, params) < 0) {
-    LOG_ERROR("Failed to create MPV render context");
+  err = mpv_render_context_create(&m_mpv_ctx, m_mpv, params);
+  if (err < 0) {
+    LOG_ERROR("Failed to create MPV render context: " +
+              std::string(mpv_error_string(err)) +
+              " — SW render API may not be supported by this mpv build");
+    m_mpv_ctx = nullptr;
+    // mpv is still usable for non-render operations, but we need render ctx
+  }
+
+  // Restore locale
+  std::setlocale(LC_NUMERIC, savedLocale.c_str());
+
+  if (m_mpv && m_mpv_ctx) {
+    LOG_INFO("MPV video renderer initialized successfully");
   }
 }
 

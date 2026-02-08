@@ -18,17 +18,17 @@ public:
   virtual void render(cairo_t *cr, int width, int height) = 0;
 
   virtual void setScalingMode(ScalingMode mode) = 0;
-  virtual void setMonitor(const std::string &monitor) {}
-  virtual void setMonitors(const std::vector<std::string> &monitors) {}
-  virtual void update(double dt) {} // For animations
+  virtual void setMonitor(const std::string & /*monitor*/) {}
+  virtual void setMonitors(const std::vector<std::string> & /*monitors*/) {}
+  virtual void update(double /*dt*/) {} // For animations
 
   virtual void play() {}
   virtual void pause() {}
   virtual void stop() {}
 
-  virtual void setVolume(float volume) {}
-  virtual void setPlaybackSpeed(float speed) {}
-  virtual void setMuted(bool muted) {}
+  virtual void setVolume(float /*volume*/) {}
+  virtual void setPlaybackSpeed(float /*speed*/) {}
+  virtual void setMuted(bool /*muted*/) {}
 
   // Audio visualization data (frequency bands, normalized 0-1)
   virtual void setAudioData(const std::vector<float> & /*audioBands*/) {}

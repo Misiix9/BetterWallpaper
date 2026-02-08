@@ -27,11 +27,7 @@ void TagEditorDialog::setupUi() {
 
   adw_window_set_content(ADW_WINDOW(m_dialog), box);
 
-  // Toolbar
-  GtkWidget *header = adw_header_bar_new();
-  // In AdwWindow, headerbar is top child usually, but here we construct content
-  // manually Actually best to use AdwToolbarView if AdwWindow. Simplifying:
-  // just put a box.
+  // Toolbar header (omitted for simplicity - content-only layout)
 
   // Title
   GtkWidget *titleLabel = gtk_label_new("Manage Tags");

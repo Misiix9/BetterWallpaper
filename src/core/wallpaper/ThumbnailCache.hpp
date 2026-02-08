@@ -99,6 +99,14 @@ public:
    */
   void pruneCache();
 
+  /**
+   * @brief Compute a blurhash string from a cached thumbnail
+   * @param wallpaperPath Path to the wallpaper (for cache lookup)
+   * @param size Thumbnail size to use for computation
+   * @return Blurhash string (4x3 components), empty if no thumbnail available
+   */
+  std::string computeBlurhash(const std::string &wallpaperPath, Size size);
+
 private:
   ThumbnailCache();
   ~ThumbnailCache();

@@ -27,9 +27,11 @@ public:
 
 private:
   void setupUi();
+  void saveCustomName();
 
   GtkWidget *m_box;
-  GtkWidget *m_nameLabel;
+  GtkWidget *m_nameLabel;      // System name (e.g. "DP-1")
+  GtkWidget *m_customNameEntry; // User-configurable alias
   GtkWidget *m_resLabel;
   GtkWidget *m_scaleLabel;
   GtkWidget *m_wallpaperLabel;

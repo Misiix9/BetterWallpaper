@@ -11,6 +11,7 @@ else()
         main.cpp
         LinuxTrayIcon.cpp
         ../core/utils/ProcessUtils.cpp
+        ../core/utils/SafeProcess.cpp
     )
     target_link_libraries(betterwallpaper-tray PRIVATE
         bwp_ipc

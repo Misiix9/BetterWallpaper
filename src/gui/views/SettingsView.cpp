@@ -2,17 +2,190 @@
 #include "../../core/config/ConfigManager.hpp"
 #include "../../core/system/AutostartManager.hpp"
 #include "../../core/utils/Logger.hpp"
+#include "../../core/utils/ToastManager.hpp"
 #include "../../core/wallpaper/LibraryScanner.hpp"
 #include <algorithm>
 #include <iostream>
 
 namespace bwp::gui {
 
-SettingsView::SettingsView() { setupUi(); }
+SettingsView::SettingsView() {
+  setupUi();
+  takeSnapshot();
 
-SettingsView::~SettingsView() {}
+  // Watch for config changes to show the unsaved bar
+  bwp::config::ConfigManager::getInstance().startWatching(
+      [this](const std::string &, const nlohmann::json &) {
+        if (!m_hasUnsavedChanges) {
+          m_hasUnsavedChanges = true;
+          // Must update UI on main thread
+          g_idle_add(
+              +[](gpointer data) -> gboolean {
+                auto *self = static_cast<SettingsView *>(data);
+                self->showUnsavedBar();
+                return G_SOURCE_REMOVE;
+              },
+              this);
+        }
+      });
+}
+
+SettingsView::~SettingsView() {
+  // Clear the watcher so it doesn't reference destroyed SettingsView
+  bwp::config::ConfigManager::getInstance().startWatching(nullptr);
+}
+
+void SettingsView::takeSnapshot() {
+  auto &conf = bwp::config::ConfigManager::getInstance();
+  m_configSnapshot = conf.getJson();
+  m_hasUnsavedChanges = false;
+}
+
+void SettingsView::showUnsavedBar() {
+  if (m_unsavedRevealer) {
+    gtk_revealer_set_reveal_child(GTK_REVEALER(m_unsavedRevealer), TRUE);
+  }
+}
+
+void SettingsView::hideUnsavedBar() {
+  if (m_unsavedRevealer) {
+    gtk_revealer_set_reveal_child(GTK_REVEALER(m_unsavedRevealer), FALSE);
+  }
+}
+
+void SettingsView::onKeepChanges() {
+  takeSnapshot();
+  hideUnsavedBar();
+  bwp::core::utils::ToastManager::getInstance().showSuccess("Settings saved");
+}
+
+void SettingsView::onDiscardChanges() {
+  // Restore the snapshot to ConfigManager
+  auto &conf = bwp::config::ConfigManager::getInstance();
+  // Temporarily disable watcher to avoid re-triggering
+  conf.startWatching(nullptr);
+
+  conf.getJson() = m_configSnapshot;
+
+  m_hasUnsavedChanges = false;
+  hideUnsavedBar();
+
+  // Rebuild pages to reflect restored values
+  rebuildPages();
+
+  // Re-enable watcher
+  conf.startWatching(
+      [this](const std::string &, const nlohmann::json &) {
+        if (!m_hasUnsavedChanges) {
+          m_hasUnsavedChanges = true;
+          g_idle_add(
+              +[](gpointer data) -> gboolean {
+                auto *self = static_cast<SettingsView *>(data);
+                self->showUnsavedBar();
+                return G_SOURCE_REMOVE;
+              },
+              this);
+        }
+      });
+
+  bwp::core::utils::ToastManager::getInstance().showInfo("Changes discarded");
+}
+
+void SettingsView::rebuildPages() {
+  // Remove all pages from the stack and sidebar, then recreate
+  m_pageInfos.clear();
+
+  // Remove all children from sidebar
+  while (true) {
+    GtkListBoxRow *row =
+        gtk_list_box_get_row_at_index(GTK_LIST_BOX(m_sidebarList), 0);
+    if (!row)
+      break;
+    gtk_list_box_remove(GTK_LIST_BOX(m_sidebarList), GTK_WIDGET(row));
+  }
+
+  // Remove all pages from stack
+#if ADW_CHECK_VERSION(1, 4, 0)
+  while (gtk_widget_get_first_child(m_stack)) {
+    adw_view_stack_remove(ADW_VIEW_STACK(m_stack),
+                          gtk_widget_get_first_child(m_stack));
+  }
+#else
+  while (true) {
+    GtkWidget *child = gtk_widget_get_first_child(m_stack);
+    if (!child)
+      break;
+    gtk_stack_remove(GTK_STACK(m_stack), child);
+  }
+#endif
+
+  // Reset transition widget pointers
+  m_transitionEffectDropdown = nullptr;
+  m_transitionDurationSpin = nullptr;
+  m_transitionEasingDropdown = nullptr;
+  m_transitionEnabledSwitch = nullptr;
+  m_currentLibraryGroup = nullptr;
+
+  auto addPage = [&](const char *id, const char *title, const char *icon,
+                     GtkWidget *pageWidget,
+                     std::vector<std::string> keywords = {}) {
+#if ADW_CHECK_VERSION(1, 4, 0)
+    adw_view_stack_add_named(ADW_VIEW_STACK(m_stack), pageWidget, id);
+#else
+    gtk_stack_add_named(GTK_STACK(m_stack), pageWidget, id);
+#endif
+
+    keywords.push_back(title);
+    keywords.push_back(id);
+    m_pageInfos.push_back({id, title, keywords});
+
+    GtkWidget *row = gtk_list_box_row_new();
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+    gtk_widget_set_margin_start(box, 12);
+    gtk_widget_set_margin_end(box, 12);
+    gtk_widget_set_margin_top(box, 8);
+    gtk_widget_set_margin_bottom(box, 8);
+
+    gtk_box_append(GTK_BOX(box), gtk_image_new_from_icon_name(icon));
+    gtk_box_append(GTK_BOX(box), gtk_label_new(title));
+    gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(row), box);
+
+    g_object_set_data_full(G_OBJECT(row), "page_id", g_strdup(id), g_free);
+    gtk_list_box_append(GTK_LIST_BOX(m_sidebarList), row);
+  };
+
+  addPage("general", "General", "emblem-system-symbolic", createGeneralPage(),
+          {"startup", "autostart", "theme", "language", "notification"});
+  addPage("graphics", "Graphics", "video-display-symbolic",
+          createGraphicsPage(),
+          {"fps", "framerate", "resolution", "rendering", "gpu"});
+  addPage("audio", "Audio", "audio-volume-high-symbolic", createAudioPage(),
+          {"volume", "mute", "sound", "speaker"});
+  addPage("playback", "Playback", "media-playback-start-symbolic",
+          createPlaybackPage(),
+          {"speed", "loop", "shuffle", "slideshow", "interval"});
+  addPage("transitions", "Transitions", "view-refresh-symbolic",
+          createTransitionsPage(),
+          {"fade", "slide", "effect", "animation", "duration", "easing"});
+  addPage("controls", "Controls", "input-keyboard-symbolic",
+          createControlsPage(),
+          {"keybind", "shortcut", "hotkey", "keyboard", "mouse"});
+  addPage("sources", "Sources", "folder-pictures-symbolic",
+          createSourcesPage(),
+          {"folder", "directory", "library", "path", "steam", "workshop"});
+  addPage("about", "About", "help-about-symbolic", createAboutPage(),
+          {"version", "license", "credits", "author"});
+
+  GtkListBoxRow *first =
+      gtk_list_box_get_row_at_index(GTK_LIST_BOX(m_sidebarList), 0);
+  if (first)
+    gtk_list_box_select_row(GTK_LIST_BOX(m_sidebarList), first);
+}
 
 void SettingsView::setupUi() {
+  // Outer box: split view + unsaved changes bar
+  m_outerBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+
 #if ADW_CHECK_VERSION(1, 4, 0)
   m_splitView = adw_overlay_split_view_new();
 #else
@@ -20,6 +193,53 @@ void SettingsView::setupUi() {
   m_splitView = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 #endif
   m_content = m_splitView;
+  gtk_widget_set_vexpand(m_splitView, TRUE);
+  gtk_box_append(GTK_BOX(m_outerBox), m_splitView);
+
+  // === Unsaved Changes Bar ===
+  m_unsavedRevealer = gtk_revealer_new();
+  gtk_revealer_set_transition_type(GTK_REVEALER(m_unsavedRevealer),
+                                   GTK_REVEALER_TRANSITION_TYPE_SLIDE_UP);
+  gtk_revealer_set_transition_duration(GTK_REVEALER(m_unsavedRevealer), 200);
+  gtk_revealer_set_reveal_child(GTK_REVEALER(m_unsavedRevealer), FALSE);
+
+  GtkWidget *barBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+  gtk_widget_add_css_class(barBox, "toolbar");
+  gtk_widget_set_margin_start(barBox, 16);
+  gtk_widget_set_margin_end(barBox, 16);
+  gtk_widget_set_margin_top(barBox, 8);
+  gtk_widget_set_margin_bottom(barBox, 8);
+
+  GtkWidget *barIcon = gtk_image_new_from_icon_name("document-edit-symbolic");
+  gtk_box_append(GTK_BOX(barBox), barIcon);
+
+  GtkWidget *barLabel = gtk_label_new("You have unsaved changes");
+  gtk_widget_set_hexpand(barLabel, TRUE);
+  gtk_label_set_xalign(GTK_LABEL(barLabel), 0.0);
+  gtk_box_append(GTK_BOX(barBox), barLabel);
+
+  GtkWidget *discardBtn = gtk_button_new_with_label("Discard");
+  gtk_widget_add_css_class(discardBtn, "destructive-action");
+  g_signal_connect(
+      discardBtn, "clicked",
+      G_CALLBACK(+[](GtkButton *, gpointer data) {
+        static_cast<SettingsView *>(data)->onDiscardChanges();
+      }),
+      this);
+  gtk_box_append(GTK_BOX(barBox), discardBtn);
+
+  GtkWidget *saveBtn = gtk_button_new_with_label("Save");
+  gtk_widget_add_css_class(saveBtn, "suggested-action");
+  g_signal_connect(
+      saveBtn, "clicked",
+      G_CALLBACK(+[](GtkButton *, gpointer data) {
+        static_cast<SettingsView *>(data)->onKeepChanges();
+      }),
+      this);
+  gtk_box_append(GTK_BOX(barBox), saveBtn);
+
+  gtk_revealer_set_child(GTK_REVEALER(m_unsavedRevealer), barBox);
+  gtk_box_append(GTK_BOX(m_outerBox), m_unsavedRevealer);
 
   // 1. Sidebar
   GtkWidget *sidebarBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
@@ -29,8 +249,23 @@ void SettingsView::setupUi() {
   GtkWidget *header = gtk_label_new("Settings");
   gtk_widget_add_css_class(header, "title-2");
   gtk_widget_set_margin_top(header, 12);
-  gtk_widget_set_margin_bottom(header, 12);
+  gtk_widget_set_margin_bottom(header, 8);
   gtk_box_append(GTK_BOX(sidebarBox), header);
+
+  // Search entry for filtering settings pages
+  m_searchEntry = gtk_search_entry_new();
+  gtk_widget_set_margin_start(m_searchEntry, 8);
+  gtk_widget_set_margin_end(m_searchEntry, 8);
+  gtk_widget_set_margin_bottom(m_searchEntry, 8);
+  g_signal_connect(
+      m_searchEntry, "search-changed",
+      G_CALLBACK(+[](GtkSearchEntry *entry, gpointer data) {
+        auto *self = static_cast<SettingsView *>(data);
+        const char *text = gtk_editable_get_text(GTK_EDITABLE(entry));
+        self->filterSettings(text ? text : "");
+      }),
+      this);
+  gtk_box_append(GTK_BOX(sidebarBox), m_searchEntry);
 
   m_sidebarList = gtk_list_box_new();
   gtk_widget_add_css_class(m_sidebarList, "navigation-sidebar");
@@ -60,13 +295,19 @@ void SettingsView::setupUi() {
 #endif
 
   auto addPage = [&](const char *id, const char *title, const char *icon,
-                     GtkWidget *pageWidget) {
+                     GtkWidget *pageWidget,
+                     std::vector<std::string> keywords = {}) {
   // Add to stack
 #if ADW_CHECK_VERSION(1, 4, 0)
     adw_view_stack_add_named(ADW_VIEW_STACK(m_stack), pageWidget, id);
 #else
     gtk_stack_add_named(GTK_STACK(m_stack), pageWidget, id);
 #endif
+
+    // Store searchable info
+    keywords.push_back(title);
+    keywords.push_back(id);
+    m_pageInfos.push_back({id, title, keywords});
 
     // Add sidebar row
     GtkWidget *row = gtk_list_box_row_new();
@@ -86,19 +327,27 @@ void SettingsView::setupUi() {
   };
 
   // Create Pages
-  addPage("general", "General", "emblem-system-symbolic", createGeneralPage());
+  addPage("general", "General", "emblem-system-symbolic", createGeneralPage(),
+          {"startup", "autostart", "theme", "language", "notification"});
   addPage("graphics", "Graphics", "video-display-symbolic",
-          createGraphicsPage());
-  addPage("audio", "Audio", "audio-volume-high-symbolic", createAudioPage());
+          createGraphicsPage(),
+          {"fps", "framerate", "resolution", "rendering", "gpu"});
+  addPage("audio", "Audio", "audio-volume-high-symbolic", createAudioPage(),
+          {"volume", "mute", "sound", "speaker"});
   addPage("playback", "Playback", "media-playback-start-symbolic",
-          createPlaybackPage());
+          createPlaybackPage(),
+          {"speed", "loop", "shuffle", "slideshow", "interval"});
   addPage("transitions", "Transitions", "view-refresh-symbolic",
-          createTransitionsPage());
+          createTransitionsPage(),
+          {"fade", "slide", "effect", "animation", "duration", "easing"});
   addPage("controls", "Controls", "input-keyboard-symbolic",
-          createControlsPage());
+          createControlsPage(),
+          {"keybind", "shortcut", "hotkey", "keyboard", "mouse"});
   addPage("sources", "Sources", "folder-pictures-symbolic",
-          createSourcesPage());
-  addPage("about", "About", "help-about-symbolic", createAboutPage());
+          createSourcesPage(),
+          {"folder", "directory", "library", "path", "steam", "workshop"});
+  addPage("about", "About", "help-about-symbolic", createAboutPage(),
+          {"version", "license", "credits", "author"});
 
   // Navigation Logic
   g_signal_connect(
@@ -123,6 +372,47 @@ void SettingsView::setupUi() {
       gtk_list_box_get_row_at_index(GTK_LIST_BOX(m_sidebarList), 0);
   if (first)
     gtk_list_box_select_row(GTK_LIST_BOX(m_sidebarList), first);
+}
+
+void SettingsView::filterSettings(const std::string &query) {
+  std::string lower = query;
+  std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+
+  for (int i = 0; i < static_cast<int>(m_pageInfos.size()); ++i) {
+    GtkListBoxRow *row =
+        gtk_list_box_get_row_at_index(GTK_LIST_BOX(m_sidebarList), i);
+    if (!row)
+      continue;
+
+    if (lower.empty()) {
+      gtk_widget_set_visible(GTK_WIDGET(row), TRUE);
+      continue;
+    }
+
+    bool match = false;
+    for (const auto &kw : m_pageInfos[i].keywords) {
+      std::string kwLower = kw;
+      std::transform(kwLower.begin(), kwLower.end(), kwLower.begin(),
+                     ::tolower);
+      if (kwLower.find(lower) != std::string::npos) {
+        match = true;
+        break;
+      }
+    }
+    gtk_widget_set_visible(GTK_WIDGET(row), match);
+
+    // If match found and it's the first visible, navigate to it
+    if (match) {
+      const char *id = (const char *)g_object_get_data(G_OBJECT(row), "page_id");
+      if (id) {
+#if ADW_CHECK_VERSION(1, 4, 0)
+        adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(m_stack), id);
+#else
+        gtk_stack_set_visible_child_name(GTK_STACK(m_stack), id);
+#endif
+      }
+    }
+  }
 }
 
 GtkWidget *SettingsView::createSourcesPage() {
@@ -313,6 +603,8 @@ GtkWidget *SettingsView::createGeneralPage() {
                      } else {
                        bwp::core::AutostartManager::getInstance().disable();
                      }
+                     bwp::core::utils::ToastManager::getInstance().showToast(
+                         "Settings saved");
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(appGroup), autostartRow);
@@ -424,6 +716,25 @@ GtkWidget *SettingsView::createGeneralPage() {
   gtk_widget_set_valign(exportBtn, GTK_ALIGN_CENTER);
   adw_action_row_add_suffix(ADW_ACTION_ROW(exportRow), exportBtn);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(backupGroup), exportRow);
+
+  // Reset to Defaults
+  GtkWidget *resetRow = adw_action_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(resetRow),
+                                "Reset to Defaults");
+  adw_action_row_set_subtitle(ADW_ACTION_ROW(resetRow),
+                              "Restore all settings to their original values");
+  GtkWidget *resetBtn = gtk_button_new_with_label("Reset");
+  gtk_widget_add_css_class(resetBtn, "destructive-action");
+  gtk_widget_set_valign(resetBtn, GTK_ALIGN_CENTER);
+  g_signal_connect(
+      resetBtn, "clicked", G_CALLBACK(+[](GtkButton *, gpointer) {
+        bwp::config::ConfigManager::getInstance().resetToDefaults();
+        bwp::core::utils::ToastManager::getInstance().showToast(
+            "All settings reset to defaults. Restart recommended.");
+      }),
+      nullptr);
+  adw_action_row_add_suffix(ADW_ACTION_ROW(resetRow), resetBtn);
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(backupGroup), resetRow);
 
   return page;
 }
@@ -742,18 +1053,10 @@ GtkWidget *SettingsView::createTransitionsPage() {
   adw_action_row_set_subtitle(ADW_ACTION_ROW(m_transitionEffectDropdown),
                               "Visual style of the transition");
 
-  const char *effects[] = {"Fade",
-                           "Slide",
-                           "Wipe",
-                           "Expanding Circle",
-                           "Expanding Square",
-                           "Dissolve",
-                           "Zoom",
-                           "Morph",
-                           "Angled Wipe",
-                           "Pixelate",
-                           "Blinds",
-                           nullptr};
+  const char *effects[] = {
+      "Fade",     "Slide", "Wipe",  "Expanding Circle", "Expanding Square",
+      "Dissolve", "Zoom",  "Morph", "Angled Wipe",      "Pixelate",
+      "Blinds",   nullptr};
   GtkStringList *effectModel = gtk_string_list_new(effects);
   adw_combo_row_set_model(ADW_COMBO_ROW(m_transitionEffectDropdown),
                           G_LIST_MODEL(effectModel));
@@ -777,18 +1080,41 @@ GtkWidget *SettingsView::createTransitionsPage() {
                      guint i = adw_combo_row_get_selected(row);
                      std::string e;
                      switch (i) {
-                     case 0: e = "Fade"; break;
-                     case 1: e = "Slide"; break;
-                     case 2: e = "Wipe"; break;
-                     case 3: e = "Expanding Circle"; break;
-                     case 4: e = "Expanding Square"; break;
-                     case 5: e = "Dissolve"; break;
-                     case 6: e = "Zoom"; break;
-                     case 7: e = "Morph"; break;
-                     case 8: e = "Angled Wipe"; break;
-                     case 9: e = "Pixelate"; break;
-                     case 10: e = "Blinds"; break;
-                     default: return;
+                     case 0:
+                       e = "Fade";
+                       break;
+                     case 1:
+                       e = "Slide";
+                       break;
+                     case 2:
+                       e = "Wipe";
+                       break;
+                     case 3:
+                       e = "Expanding Circle";
+                       break;
+                     case 4:
+                       e = "Expanding Square";
+                       break;
+                     case 5:
+                       e = "Dissolve";
+                       break;
+                     case 6:
+                       e = "Zoom";
+                       break;
+                     case 7:
+                       e = "Morph";
+                       break;
+                     case 8:
+                       e = "Angled Wipe";
+                       break;
+                     case 9:
+                       e = "Pixelate";
+                       break;
+                     case 10:
+                       e = "Blinds";
+                       break;
+                     default:
+                       return;
                      }
                      bwp::config::ConfigManager::getInstance().set(
                          "transitions.default_effect", e);
@@ -822,11 +1148,11 @@ GtkWidget *SettingsView::createTransitionsPage() {
   adw_action_row_set_subtitle(ADW_ACTION_ROW(m_transitionEasingDropdown),
                               "How the animation accelerates/decelerates");
 
-  const char *easings[] = {"linear",     "easeIn",     "easeOut",
-                           "easeInOut",  "easeInQuad", "easeOutQuad",
-                           "easeInCubic", "easeOutCubic", "easeInOutCubic",
-                           "easeInSine", "easeOutSine", "easeInOutSine",
-                           "easeInExpo", "easeOutExpo", "easeInOutExpo",
+  const char *easings[] = {"linear",        "easeIn",       "easeOut",
+                           "easeInOut",     "easeInQuad",   "easeOutQuad",
+                           "easeInCubic",   "easeOutCubic", "easeInOutCubic",
+                           "easeInSine",    "easeOutSine",  "easeInOutSine",
+                           "easeInExpo",    "easeOutExpo",  "easeInOutExpo",
                            "easeOutBounce", nullptr};
   GtkStringList *easingModel = gtk_string_list_new(easings);
   adw_combo_row_set_model(ADW_COMBO_ROW(m_transitionEasingDropdown),
@@ -851,23 +1177,56 @@ GtkWidget *SettingsView::createTransitionsPage() {
                      guint i = adw_combo_row_get_selected(row);
                      std::string e;
                      switch (i) {
-                     case 0: e = "linear"; break;
-                     case 1: e = "easeIn"; break;
-                     case 2: e = "easeOut"; break;
-                     case 3: e = "easeInOut"; break;
-                     case 4: e = "easeInQuad"; break;
-                     case 5: e = "easeOutQuad"; break;
-                     case 6: e = "easeInCubic"; break;
-                     case 7: e = "easeOutCubic"; break;
-                     case 8: e = "easeInOutCubic"; break;
-                     case 9: e = "easeInSine"; break;
-                     case 10: e = "easeOutSine"; break;
-                     case 11: e = "easeInOutSine"; break;
-                     case 12: e = "easeInExpo"; break;
-                     case 13: e = "easeOutExpo"; break;
-                     case 14: e = "easeInOutExpo"; break;
-                     case 15: e = "easeOutBounce"; break;
-                     default: return;
+                     case 0:
+                       e = "linear";
+                       break;
+                     case 1:
+                       e = "easeIn";
+                       break;
+                     case 2:
+                       e = "easeOut";
+                       break;
+                     case 3:
+                       e = "easeInOut";
+                       break;
+                     case 4:
+                       e = "easeInQuad";
+                       break;
+                     case 5:
+                       e = "easeOutQuad";
+                       break;
+                     case 6:
+                       e = "easeInCubic";
+                       break;
+                     case 7:
+                       e = "easeOutCubic";
+                       break;
+                     case 8:
+                       e = "easeInOutCubic";
+                       break;
+                     case 9:
+                       e = "easeInSine";
+                       break;
+                     case 10:
+                       e = "easeOutSine";
+                       break;
+                     case 11:
+                       e = "easeInOutSine";
+                       break;
+                     case 12:
+                       e = "easeInExpo";
+                       break;
+                     case 13:
+                       e = "easeOutExpo";
+                       break;
+                     case 14:
+                       e = "easeInOutExpo";
+                       break;
+                     case 15:
+                       e = "easeOutBounce";
+                       break;
+                     default:
+                       return;
                      }
                      bwp::config::ConfigManager::getInstance().set(
                          "transitions.easing", e);
@@ -887,13 +1246,12 @@ GtkWidget *SettingsView::createTransitionsPage() {
   gtk_widget_add_css_class(previewBtn, "suggested-action");
   gtk_widget_set_valign(previewBtn, GTK_ALIGN_CENTER);
 
-  g_signal_connect(
-      previewBtn, "clicked",
-      G_CALLBACK(+[](GtkButton *, gpointer data) {
-        SettingsView *self = static_cast<SettingsView *>(data);
-        self->showTransitionPreviewDialog();
-      }),
-      this);
+  g_signal_connect(previewBtn, "clicked",
+                   G_CALLBACK(+[](GtkButton *, gpointer data) {
+                     SettingsView *self = static_cast<SettingsView *>(data);
+                     self->showTransitionPreviewDialog();
+                   }),
+                   this);
 
   adw_action_row_add_suffix(ADW_ACTION_ROW(previewRow), previewBtn);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(transGroup), previewRow);
@@ -913,7 +1271,8 @@ GtkWidget *SettingsView::createTransitionsPage() {
       ADW_ACTION_ROW(infoRow),
       "For linux-wallpaperengine wallpapers, the new wallpaper fades in over "
       "the old one using a custom overlay system.");
-  GtkWidget *infoIcon = gtk_image_new_from_icon_name("dialog-information-symbolic");
+  GtkWidget *infoIcon =
+      gtk_image_new_from_icon_name("dialog-information-symbolic");
   adw_action_row_add_prefix(ADW_ACTION_ROW(infoRow), infoIcon);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(advGroup), infoRow);
 
@@ -959,10 +1318,12 @@ void SettingsView::showTransitionPreviewDialog() {
                                  settings.durationMs);
 
           const char *easings[] = {
-              "linear",     "easeIn",       "easeOut",      "easeInOut",
-              "easeInQuad", "easeOutQuad",  "easeInCubic",  "easeOutCubic",
-              "easeInOutCubic", "easeInSine", "easeOutSine", "easeInOutSine",
-              "easeInExpo", "easeOutExpo",  "easeInOutExpo", "easeOutBounce"};
+              "linear",       "easeIn",       "easeOut",
+              "easeInOut",    "easeInQuad",   "easeOutQuad",
+              "easeInCubic",  "easeOutCubic", "easeInOutCubic",
+              "easeInSine",   "easeOutSine",  "easeInOutSine",
+              "easeInExpo",   "easeOutExpo",  "easeInOutExpo",
+              "easeOutBounce"};
           for (int easingIndex = 0; easingIndex < 16; ++easingIndex) {
             if (settings.easingName == easings[easingIndex]) {
               adw_combo_row_set_selected(

@@ -68,7 +68,9 @@ void SlideshowManager::start(const std::vector<std::string> &wallpaperIds,
   LOG_INFO("Slideshow started with " + std::to_string(m_playlist.size()) +
            " wallpapers, interval: " + std::to_string(m_intervalSeconds) + "s");
 
-  saveToConfig();
+  if (!m_loading) {
+    saveToConfig();
+  }
 }
 
 void SlideshowManager::startFromFolder(const std::string &folderPath,
@@ -263,7 +265,9 @@ void SlideshowManager::loadFromConfig() {
   if (wasRunning) {
     auto playlist = conf.get<std::vector<std::string>>("slideshow.playlist");
     if (!playlist.empty()) {
+      m_loading = true;  // Prevent start() from saving back to config
       start(playlist, m_intervalSeconds);
+      m_loading = false;
       m_currentIndex = conf.get<int>("slideshow.current_index");
       if (m_currentIndex >= static_cast<int>(m_playlist.size())) {
         m_currentIndex = 0;

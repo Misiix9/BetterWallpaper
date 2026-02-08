@@ -27,7 +27,7 @@ public:
   ~MainWindow();
 
   void show();
-  
+
   GtkWindow *getGtkWindow() const { return GTK_WINDOW(m_window); }
 
 private:
@@ -39,7 +39,6 @@ private:
   void ensureSettingsView();
   void ensureWorkshopView();
   void ensureFavoritesView();
-  void ensureRecentView();
   void ensureProfilesView();
   void ensureScheduleView();
   void ensureHyprlandView();
@@ -48,6 +47,7 @@ private:
   static gboolean onCloseRequest(GtkWindow *window, gpointer user_data);
 
   GtkWidget *m_window;
+  GtkWidget *m_toastOverlay;
   GtkWidget *m_splitView; // AdwOverlaySplitView or similar
   GtkWidget *m_contentStack;
 

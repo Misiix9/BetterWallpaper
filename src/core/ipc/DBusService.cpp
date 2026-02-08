@@ -86,8 +86,8 @@ void DBusService::onNameLost(GDBusConnection *, const char *name, void *) {
   LOG_WARN(std::string("Lost D-Bus name: ") + name);
 }
 
-void DBusService::handle_method_call(GDBusConnection *connection, const char *,
-                                     const char *, const char *,
+void DBusService::handle_method_call(GDBusConnection * /*connection*/,
+                                     const char *, const char *, const char *,
                                      const char *method_name,
                                      GVariant *parameters,
                                      GDBusMethodInvocation *invocation,
@@ -157,7 +157,8 @@ void DBusService::setSetWallpaperHandler(IIPCService::BoolHandler handler) {
   m_setWallpaperHandler = handler;
 }
 
-void DBusService::setGetWallpaperHandler(IIPCService::GetStringHandler handler) {
+void DBusService::setGetWallpaperHandler(
+    IIPCService::GetStringHandler handler) {
   m_getWallpaperHandler = handler;
 }
 
@@ -181,7 +182,9 @@ void DBusService::setStopHandler(IIPCService::VoidHandler handler) {
   m_stopHandler = handler;
 }
 
-void DBusService::setSetVolumeHandler(IIPCService::VolumeHandler) {} // Not implemented in DBusService yet
-void DBusService::setSetMutedHandler(IIPCService::MuteHandler) {} // Not implemented in DBusService yet
+void DBusService::setSetVolumeHandler(IIPCService::VolumeHandler) {
+} // Not implemented in DBusService yet
+void DBusService::setSetMutedHandler(IIPCService::MuteHandler) {
+} // Not implemented in DBusService yet
 
 } // namespace bwp::ipc

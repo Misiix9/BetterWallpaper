@@ -1,6 +1,7 @@
 #include "NotificationManager.hpp"
 #include "../config/ConfigManager.hpp"
 #include "../utils/Logger.hpp"
+#include "../utils/SafeProcess.hpp"
 
 // libnotify is optional - we'll check at runtime
 #ifdef HAVE_LIBNOTIFY
@@ -105,7 +106,7 @@ void NotificationManager::sendSystemNotification(const std::string &title,
 
   g_object_unref(notification);
 #else
-  // Fallback: use notify-send command
+  // Fallback: use notify-send command (safe — no shell interpolation)
   std::string urgency = "normal";
   if (type == NotificationType::Error)
     urgency = "critical";
@@ -114,15 +115,11 @@ void NotificationManager::sendSystemNotification(const std::string &title,
   else
     urgency = "low";
 
-  std::string cmd = "notify-send";
-  cmd += " -u " + urgency;
-  cmd += " -t " + std::to_string(timeoutMs);
-  cmd += " -i " + typeToIconName(type);
-  cmd += " \"" + title + "\"";
-  cmd += " \"" + message + "\"";
-  cmd += " &";
-
-  (void)system(cmd.c_str());
+  utils::SafeProcess::execDetached(
+      {"notify-send", "-u", urgency,
+       "-t", std::to_string(timeoutMs),
+       "-i", typeToIconName(type),
+       title, message});
 #endif
 #endif
   LOG_DEBUG("System notification: " + title);

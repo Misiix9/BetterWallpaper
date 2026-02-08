@@ -10,97 +10,20 @@ TagManager &TagManager::getInstance() {
   return instance;
 }
 
-TagManager::TagManager() { initializeDefaultTags(); }
+TagManager::TagManager() {}
 
 TagManager::~TagManager() {}
 
-std::vector<std::string> TagManager::getDefaultTags() const {
-  return {"Anime",  "Nature",   "Sci-Fi",    "Abstract",
-          "Gaming", "Space",    "Fantasy",   "Minimalist",
-          "Dark",   "Colorful", "Cyberpunk", "Landscape",
-          "Art",    "Music",    "Movies",    "City"};
-}
-
-void TagManager::initializeDefaultTags() {
-  std::lock_guard<std::mutex> lock(m_mutex);
-  if (m_knownTags.empty()) {
-    m_knownTags = getDefaultTags();
-  }
-}
-
 std::vector<std::string> TagManager::getAllTags() const {
-  // Copy known tags first to avoid holding lock during WallpaperLibrary call
-  std::vector<std::string> knownTagsCopy;
-  {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    knownTagsCopy = m_knownTags;
-  }
-
-  std::set<std::string> tags(knownTagsCopy.begin(), knownTagsCopy.end());
-
-  // Now safe to call WallpaperLibrary without holding our mutex
+  // Tags are auto-discovered from wallpapers only (read from project.json)
   auto wallpapers = WallpaperLibrary::getInstance().getAllWallpapers();
+  std::set<std::string> tags;
   for (const auto &wp : wallpapers) {
     for (const auto &tag : wp.tags) {
       tags.insert(tag);
     }
   }
   return std::vector<std::string>(tags.begin(), tags.end());
-}
-
-void TagManager::addTag(const std::string &tag) {
-  std::lock_guard<std::mutex> lock(m_mutex);
-  if (std::find(m_knownTags.begin(), m_knownTags.end(), tag) ==
-      m_knownTags.end()) {
-    m_knownTags.push_back(tag);
-  }
-}
-
-void TagManager::removeTag(const std::string &tag) {
-  std::lock_guard<std::mutex> lock(m_mutex);
-
-  // Remove from known tags
-  auto it = std::remove(m_knownTags.begin(), m_knownTags.end(), tag);
-  if (it != m_knownTags.end()) {
-    m_knownTags.erase(it, m_knownTags.end());
-  }
-
-  // Remove from all wallpapers
-  auto all = WallpaperLibrary::getInstance().getAllWallpapers();
-  for (const auto &wp : all) {
-    untagWallpaper(wp.id, tag);
-  }
-}
-
-void TagManager::tagWallpaper(const std::string &wallpaperId,
-                              const std::string &tag) {
-  auto &lib = WallpaperLibrary::getInstance();
-  auto wpOpt = lib.getWallpaper(wallpaperId);
-  if (wpOpt) {
-    auto wp = *wpOpt;
-    // Check duplicate
-    if (std::find(wp.tags.begin(), wp.tags.end(), tag) == wp.tags.end()) {
-      wp.tags.push_back(tag);
-      lib.updateWallpaper(wp);
-    }
-  }
-
-  // Also add to known tags
-  addTag(tag);
-}
-
-void TagManager::untagWallpaper(const std::string &wallpaperId,
-                                const std::string &tag) {
-  auto &lib = WallpaperLibrary::getInstance();
-  auto wpOpt = lib.getWallpaper(wallpaperId);
-  if (wpOpt) {
-    auto wp = *wpOpt;
-    auto it = std::remove(wp.tags.begin(), wp.tags.end(), tag);
-    if (it != wp.tags.end()) {
-      wp.tags.erase(it, wp.tags.end());
-      lib.updateWallpaper(wp);
-    }
-  }
 }
 
 int TagManager::levenshteinDistance(const std::string &s1,

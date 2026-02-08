@@ -1,13 +1,32 @@
 #include "WallpaperGrid.hpp"
 #include "../../core/monitor/MonitorManager.hpp"
 #include "../../core/utils/Logger.hpp"
+#include "../../core/utils/SafeProcess.hpp"
 #include "../../core/utils/StringUtils.hpp"
 #include "../../core/wallpaper/FolderManager.hpp"
 #include "../../core/wallpaper/WallpaperLibrary.hpp"
-#include "TagEditorDialog.hpp"
+#include "../models/WallpaperObject.hpp"
 #include "WallpaperCard.hpp"
 
+#include <filesystem>
+
 namespace bwp::gui {
+
+double WallpaperGrid::getVScroll() const {
+  if (!m_scrolledWindow)
+    return 0.0;
+  GtkAdjustment *adj = gtk_scrolled_window_get_vadjustment(
+      GTK_SCROLLED_WINDOW(m_scrolledWindow));
+  return gtk_adjustment_get_value(adj);
+}
+
+void WallpaperGrid::setVScroll(double value) {
+  if (!m_scrolledWindow)
+    return;
+  GtkAdjustment *adj = gtk_scrolled_window_get_vadjustment(
+      GTK_SCROLLED_WINDOW(m_scrolledWindow));
+  gtk_adjustment_set_value(adj, value);
+}
 
 WallpaperGrid::WallpaperGrid() {
   // Scrolled Window
@@ -64,24 +83,6 @@ WallpaperGrid::WallpaperGrid() {
 
   gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(m_scrolledWindow),
                                 m_gridView);
-
-  // Initialize Tag Editor
-  // Note: Parent window might not be fully ready here, but we can pass null or
-  // handle it later Better: create it lazily or pass root later. AdwWindow
-  // doesn't Strictly need parent. We'll traverse up to find root when needed,
-  // or pass nullptr for now.
-  m_tagEditor = std::make_unique<TagEditorDialog>(nullptr);
-
-  m_tagEditor->setCallback(
-      [](const std::string &id, const std::vector<std::string> &tags) {
-        auto &library = bwp::wallpaper::WallpaperLibrary::getInstance();
-        auto infoOpt = library.getWallpaper(id);
-        if (infoOpt) {
-          auto info = *infoOpt;
-          info.tags = tags;
-          library.updateWallpaper(info);
-        }
-      });
 }
 
 WallpaperGrid::~WallpaperGrid() {
@@ -117,6 +118,35 @@ void WallpaperGrid::addWallpaper(const bwp::wallpaper::WallpaperInfo &info) {
   g_object_unref(obj);
 }
 
+void WallpaperGrid::updateWallpaperInStore(
+    const bwp::wallpaper::WallpaperInfo &info) {
+  guint n = g_list_model_get_n_items(G_LIST_MODEL(m_store));
+  for (guint i = 0; i < n; ++i) {
+    BwpWallpaperObject *obj =
+        BWP_WALLPAPER_OBJECT(g_list_model_get_item(G_LIST_MODEL(m_store), i));
+    if (obj) {
+      const auto *stored = bwp_wallpaper_object_get_info(obj);
+      if (stored && stored->id == info.id) {
+        bwp_wallpaper_object_update_info(obj, info);
+        g_object_unref(obj);
+        break;
+      }
+      g_object_unref(obj);
+    }
+  }
+}
+
+void WallpaperGrid::notifyDataChanged() {
+  // Re-evaluate the current filter and sorter against updated data
+  if (m_filter) {
+    gtk_filter_changed(GTK_FILTER(m_filter), GTK_FILTER_CHANGE_DIFFERENT);
+  }
+  GtkSorter *sorter = gtk_sort_list_model_get_sorter(m_sortModel);
+  if (sorter) {
+    gtk_sorter_changed(sorter, GTK_SORTER_CHANGE_DIFFERENT);
+  }
+}
+
 // Helper struct to pass filter state to C callback
 struct FilterState {
   std::string query;
@@ -146,8 +176,8 @@ void WallpaperGrid::setFilterSource(const std::string &source) {
 }
 
 void WallpaperGrid::updateFilter() {
-  FilterState *state =
-      new FilterState{m_filterQuery, m_filterFavorites, m_filterTag, m_filterSource};
+  FilterState *state = new FilterState{m_filterQuery, m_filterFavorites,
+                                       m_filterTag, m_filterSource};
 
   auto matchFunc = [](gpointer item, gpointer user_data) -> gboolean {
     FilterState *s = static_cast<FilterState *>(user_data);
@@ -159,13 +189,20 @@ void WallpaperGrid::updateFilter() {
 
     // 0. Check Source
     if (s->source != "all") {
-        if (s->source == "local") {
-            // Local means NOT steam
-             if (info->source == "steam" || info->type == bwp::wallpaper::WallpaperType::WEScene || info->type == bwp::wallpaper::WallpaperType::WEVideo) return FALSE;
-        } else if (s->source == "steam") {
-            // Steam means IS steam
-             if (info->source != "steam" && info->type != bwp::wallpaper::WallpaperType::WEScene && info->type != bwp::wallpaper::WallpaperType::WEVideo) return FALSE;
-        }
+      if (s->source == "local") {
+        // Local means explicitly local source OR not steam/workshop types if
+        // source is missing
+        if (info->source == "steam" || info->source == "workshop" ||
+            info->type == bwp::wallpaper::WallpaperType::WEScene ||
+            info->type == bwp::wallpaper::WallpaperType::WEVideo)
+          return FALSE;
+      } else if (s->source == "steam") {
+        // Steam means explicitly steam/workshop source OR steam types
+        if ((info->source != "steam" && info->source != "workshop") &&
+            (info->type != bwp::wallpaper::WallpaperType::WEScene &&
+             info->type != bwp::wallpaper::WallpaperType::WEVideo))
+          return FALSE;
+      }
     }
 
     // 1. Check favorites
@@ -185,24 +222,94 @@ void WallpaperGrid::updateFilter() {
         return FALSE;
     }
 
-    // 3. Check Query (Name, path, tags)
+    // 3. Check Query (Name, title, tags) — with fuzzy matching
     if (!s->query.empty()) {
-      // Re-use logic or implement simple check here
       std::string q = bwp::utils::StringUtils::toLower(s->query);
+
+      // Get wallpaper name from filename stem (without extension)
       std::string name = bwp::utils::StringUtils::toLower(
-          std::filesystem::path(info->path).filename().string());
+          std::filesystem::path(info->path).stem().string());
+
+      // Also check title field
+      std::string title = bwp::utils::StringUtils::toLower(info->title);
 
       bool match = false;
+
+      // Priority 1: Substring match on name or title
       if (name.find(q) != std::string::npos)
         match = true;
+      if (!match && !title.empty() && title.find(q) != std::string::npos)
+        match = true;
 
-      // Search tags too
-      for (const auto &t : info->tags) {
-        if (bwp::utils::StringUtils::toLower(t).find(q) != std::string::npos) {
-          match = true;
-          break;
+      // Priority 2: Substring match on tags
+      if (!match) {
+        for (const auto &t : info->tags) {
+          if (bwp::utils::StringUtils::toLower(t).find(q) !=
+              std::string::npos) {
+            match = true;
+            break;
+          }
         }
       }
+
+      // Priority 3: Fuzzy match (Levenshtein distance) on name words
+      if (!match) {
+        // Split name by common delimiters and check individual words
+        auto fuzzyCheck = [&q](const std::string &text) -> bool {
+          // Levenshtein distance inline
+          auto levenshtein = [](const std::string &s1,
+                                const std::string &s2) -> int {
+            const size_t m = s1.size();
+            const size_t n = s2.size();
+            if (m == 0)
+              return static_cast<int>(n);
+            if (n == 0)
+              return static_cast<int>(m);
+            std::vector<int> prev(n + 1), curr(n + 1);
+            for (size_t j = 0; j <= n; ++j)
+              prev[j] = static_cast<int>(j);
+            for (size_t i = 1; i <= m; ++i) {
+              curr[0] = static_cast<int>(i);
+              for (size_t j = 1; j <= n; ++j) {
+                int cost = (s1[i - 1] == s2[j - 1]) ? 0 : 1;
+                curr[j] = std::min(
+                    {prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost});
+              }
+              std::swap(prev, curr);
+            }
+            return prev[n];
+          };
+
+          int threshold = std::max(2, static_cast<int>(q.length()) / 3);
+
+          // Check whole text
+          int dist = levenshtein(q, text);
+          if (dist <= threshold)
+            return true;
+
+          // Check individual words in the text (split by space, _, -)
+          std::string word;
+          for (size_t i = 0; i <= text.size(); ++i) {
+            char c = (i < text.size()) ? text[i] : ' ';
+            if (c == ' ' || c == '_' || c == '-' || i == text.size()) {
+              if (!word.empty() && word.length() >= 2) {
+                if (levenshtein(q, word) <= threshold)
+                  return true;
+              }
+              word.clear();
+            } else {
+              word += c;
+            }
+          }
+          return false;
+        };
+
+        if (fuzzyCheck(name))
+          match = true;
+        if (!match && !title.empty() && fuzzyCheck(title))
+          match = true;
+      }
+
       if (!match)
         return FALSE;
     }
@@ -212,14 +319,17 @@ void WallpaperGrid::updateFilter() {
 
   // Create new filter and set on model
   // Note: gtk_custom_filter_new returns a floating ref that the model sinks
-  GtkCustomFilter* newFilter = gtk_custom_filter_new(matchFunc, state, [](gpointer data) {
-    delete static_cast<FilterState *>(data);
-  });
-  
-  // Set on model - this replaces the old filter (model handles old filter's lifecycle)
+  GtkCustomFilter *newFilter =
+      gtk_custom_filter_new(matchFunc, state, [](gpointer data) {
+        delete static_cast<FilterState *>(data);
+      });
+
+  // Set on model - this replaces the old filter (model handles old filter's
+  // lifecycle)
   gtk_filter_list_model_set_filter(m_filterModel, GTK_FILTER(newFilter));
-  
-  // Keep reference for destructor - ref it since model already sunk the floating ref
+
+  // Keep reference for destructor - ref it since model already sunk the
+  // floating ref
   g_object_ref(newFilter);
   if (m_filter) {
     g_object_unref(m_filter);
@@ -228,49 +338,76 @@ void WallpaperGrid::updateFilter() {
 }
 
 void WallpaperGrid::setSortOrder(SortOrder order) {
-    m_currentSort = order;
+  m_currentSort = order;
 
-    auto sortFunc = [](gconstpointer a, gconstpointer b, gpointer user_data) -> gint {
-        SortOrder order = static_cast<SortOrder>(reinterpret_cast<intptr_t>(user_data));
-        
-        BwpWallpaperObject *objA = BWP_WALLPAPER_OBJECT((gpointer)a);
-        BwpWallpaperObject *objB = BWP_WALLPAPER_OBJECT((gpointer)b);
-        const auto *infoA = bwp_wallpaper_object_get_info(objA);
-        const auto *infoB = bwp_wallpaper_object_get_info(objB);
+  auto sortFunc = [](gconstpointer a, gconstpointer b,
+                     gpointer user_data) -> gint {
+    SortOrder order =
+        static_cast<SortOrder>(reinterpret_cast<intptr_t>(user_data));
 
-        if (!infoA || !infoB) return 0;
+    BwpWallpaperObject *objA = BWP_WALLPAPER_OBJECT((gpointer)a);
+    BwpWallpaperObject *objB = BWP_WALLPAPER_OBJECT((gpointer)b);
+    const auto *infoA = bwp_wallpaper_object_get_info(objA);
+    const auto *infoB = bwp_wallpaper_object_get_info(objB);
 
-        switch (order) {
-            case SortOrder::NameAsc: {
-                std::string nA = bwp::utils::StringUtils::toLower(std::filesystem::path(infoA->path).stem().string());
-                std::string nB = bwp::utils::StringUtils::toLower(std::filesystem::path(infoB->path).stem().string());
-                return nA.compare(nB);
-            }
-            case SortOrder::NameDesc: {
-                std::string nA = bwp::utils::StringUtils::toLower(std::filesystem::path(infoA->path).stem().string());
-                std::string nB = bwp::utils::StringUtils::toLower(std::filesystem::path(infoB->path).stem().string());
-                return nB.compare(nA);
-            }
-            case SortOrder::DateNewest:
-                if (infoA->added > infoB->added) return -1;
-                if (infoA->added < infoB->added) return 1;
-                return 0;
-            case SortOrder::DateOldest:
-                if (infoA->added < infoB->added) return -1;
-                if (infoA->added > infoB->added) return 1;
-                return 0;
-            case SortOrder::RatingDesc:
-                return infoB->rating - infoA->rating; // Descending
-            default:
-                return 0;
-        }
+    if (!infoA || !infoB)
+      return 0;
+
+    // Helper: get display name — use title if available, otherwise filename stem
+    auto getDisplayName = [](const bwp::wallpaper::WallpaperInfo *info) {
+      if (!info->title.empty()) {
+        return bwp::utils::StringUtils::toLower(info->title);
+      }
+      return bwp::utils::StringUtils::toLower(
+          std::filesystem::path(info->path).stem().string());
     };
 
-    if (m_sortModel) {
-        GtkSorter *sorter = GTK_SORTER(gtk_custom_sorter_new(sortFunc, reinterpret_cast<gpointer>(static_cast<intptr_t>(order)), nullptr));
-        gtk_sort_list_model_set_sorter(m_sortModel, sorter);
-        g_object_unref(sorter);
+    switch (order) {
+    case SortOrder::NameAsc: {
+      return getDisplayName(infoA).compare(getDisplayName(infoB));
     }
+    case SortOrder::NameDesc: {
+      return getDisplayName(infoB).compare(getDisplayName(infoA));
+    }
+    case SortOrder::DateNewest:
+      if (infoA->added > infoB->added)
+        return -1;
+      if (infoA->added < infoB->added)
+        return 1;
+      return 0;
+    case SortOrder::DateOldest:
+      if (infoA->added < infoB->added)
+        return -1;
+      if (infoA->added > infoB->added)
+        return 1;
+      return 0;
+    case SortOrder::RatingDesc: {
+      // Primary: rating descending, secondary: name ascending for stable sort
+      int cmp = infoB->rating - infoA->rating;
+      if (cmp != 0) return cmp;
+      return getDisplayName(infoA).compare(getDisplayName(infoB));
+    }
+    default:
+      return 0;
+    }
+  };
+
+  if (m_sortModel) {
+    GtkSorter *sorter = GTK_SORTER(gtk_custom_sorter_new(
+        sortFunc, reinterpret_cast<gpointer>(static_cast<intptr_t>(order)),
+        nullptr));
+    gtk_sort_list_model_set_sorter(m_sortModel, sorter);
+    // Explicitly notify the sorter changed to force re-sort propagation
+    gtk_sorter_changed(sorter, GTK_SORTER_CHANGE_DIFFERENT);
+    g_object_unref(sorter);
+
+    // Scroll to top so user sees the re-sorted results
+    if (m_scrolledWindow) {
+      GtkAdjustment *adj = gtk_scrolled_window_get_vadjustment(
+          GTK_SCROLLED_WINDOW(m_scrolledWindow));
+      gtk_adjustment_set_value(adj, 0);
+    }
+  }
 }
 
 void WallpaperGrid::setSelectionCallback(SelectionCallback callback) {
@@ -306,6 +443,15 @@ void WallpaperGrid::onSetup(GtkSignalListItemFactory * /*factory*/,
                                   gpointer) -> GdkContentProvider * {
                      WallpaperGrid *grid = static_cast<WallpaperGrid *>(
                          g_object_get_data(G_OBJECT(source), "grid"));
+                     (void)grid; // unused but required for logic? No, actually
+                                 // lines below dont use it.
+                     // Ah wait, original code:
+                     // WallpaperGrid *grid = static_cast<WallpaperGrid
+                     // *>(g_object_get_data(G_OBJECT(source), "grid"));
+                     // GtkWidget *widget =
+                     // gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(source));
+                     // ...
+                     // It doesn't use `grid`. So just remove the line.
                      GtkWidget *widget = gtk_event_controller_get_widget(
                          GTK_EVENT_CONTROLLER(source));
                      WallpaperCard *card = static_cast<WallpaperCard *>(
@@ -386,62 +532,91 @@ void WallpaperGrid::onSetup(GtkSignalListItemFactory * /*factory*/,
     if (card && grid) {
       const auto &info = card->getInfo();
 
-      // Show Menu
+      // Show full context menu
       GtkWidget *popover = gtk_popover_new();
       gtk_widget_set_parent(popover, widget);
 
       GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
       gtk_popover_set_child(GTK_POPOVER(popover), box);
 
-      auto addButton = [&](const char *label, const char *icon) {
-        GtkWidget *btn = gtk_button_new_from_icon_name(icon);
-        GtkWidget *lb = gtk_label_new(label);
-
+      // Helper to create a flat button row with icon + label
+      auto makeButton = [&](const char *label, const char *icon) -> GtkWidget* {
         GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
         gtk_box_append(GTK_BOX(row), gtk_image_new_from_icon_name(icon));
-        gtk_box_append(GTK_BOX(row), lb);
-
+        gtk_box_append(GTK_BOX(row), gtk_label_new(label));
         GtkWidget *button = gtk_button_new();
         gtk_button_set_child(GTK_BUTTON(button), row);
         gtk_widget_add_css_class(button, "flat");
+        gtk_box_append(GTK_BOX(box), button);
+        return button;
+      };
 
-        // Pass copy of ID to ensure valid reference
+      // === Set as Wallpaper ===
+      {
+        GtkWidget *btn = makeButton("Set as Wallpaper", "wallpaper-symbolic");
         std::string *idPtr = new std::string(info.id);
-        std::vector<std::string> *tagsPtr =
-            new std::vector<std::string>(info.tags);
-
-        g_object_set_data_full(
-            G_OBJECT(button), "wp_id", idPtr,
+        g_object_set_data_full(G_OBJECT(btn), "wp_id", idPtr,
             [](gpointer d) { delete static_cast<std::string *>(d); });
-        g_object_set_data_full(
-            G_OBJECT(button), "wp_tags", tagsPtr, [](gpointer d) {
-              delete static_cast<std::vector<std::string> *>(d);
-            });
-
-        g_signal_connect(
-            button, "clicked", G_CALLBACK(+[](GtkButton *b, gpointer d) {
+        g_signal_connect(btn, "clicked",
+            G_CALLBACK(+[](GtkButton *b, gpointer d) {
               auto *g = static_cast<WallpaperGrid *>(d);
               std::string *id = static_cast<std::string *>(
                   g_object_get_data(G_OBJECT(b), "wp_id"));
-              std::vector<std::string> *tags =
-                  static_cast<std::vector<std::string> *>(
-                      g_object_get_data(G_OBJECT(b), "wp_tags"));
-
-              if (id && tags && g->m_tagEditor) {
-                g->m_tagEditor->show(*id, *tags);
+              if (id && g->m_callback) {
+                auto &lib = bwp::wallpaper::WallpaperLibrary::getInstance();
+                auto wp = lib.getWallpaper(*id);
+                if (wp) {
+                  g->m_callback(*wp);
+                }
               }
+              GtkWidget *pop = gtk_widget_get_ancestor(GTK_WIDGET(b), GTK_TYPE_POPOVER);
+              if (pop) gtk_popover_popdown(GTK_POPOVER(pop));
+            }), grid);
+      }
 
-              GtkWidget *pop =
-                  gtk_widget_get_ancestor(GTK_WIDGET(b), GTK_TYPE_POPOVER);
-              if (pop)
-                gtk_popover_popdown(GTK_POPOVER(pop));
-            }),
-            grid);
+      // === Toggle Favorite ===
+      {
+        const char *favLabel = info.favorite ? "Unfavorite" : "Favorite";
+        GtkWidget *btn = makeButton(favLabel, info.favorite ? "starred-symbolic" : "non-starred-symbolic");
+        std::string *idPtr = new std::string(info.id);
+        g_object_set_data_full(G_OBJECT(btn), "wp_id", idPtr,
+            [](gpointer d) { delete static_cast<std::string *>(d); });
+        g_signal_connect(btn, "clicked",
+            G_CALLBACK(+[](GtkButton *b, gpointer) {
+              std::string *id = static_cast<std::string *>(
+                  g_object_get_data(G_OBJECT(b), "wp_id"));
+              if (id) {
+                auto &lib = bwp::wallpaper::WallpaperLibrary::getInstance();
+                auto wp = lib.getWallpaper(*id);
+                if (wp) {
+                  auto updated = *wp;
+                  updated.favorite = !updated.favorite;
+                  lib.updateWallpaper(updated);
+                }
+              }
+              GtkWidget *pop = gtk_widget_get_ancestor(GTK_WIDGET(b), GTK_TYPE_POPOVER);
+              if (pop) gtk_popover_popdown(GTK_POPOVER(pop));
+            }), nullptr);
+      }
 
-        gtk_box_append(GTK_BOX(box), button);
-      };
-
-      addButton("Edit Tags", "tag-symbolic");
+      // === Show in Files ===
+      {
+        GtkWidget *btn = makeButton("Show in Files", "folder-open-symbolic");
+        std::string *pathPtr = new std::string(info.path);
+        g_object_set_data_full(G_OBJECT(btn), "wp_path", pathPtr,
+            [](gpointer d) { delete static_cast<std::string *>(d); });
+        g_signal_connect(btn, "clicked",
+            G_CALLBACK(+[](GtkButton *b, gpointer) {
+              std::string *path = static_cast<std::string *>(
+                  g_object_get_data(G_OBJECT(b), "wp_path"));
+              if (path) {
+                std::string dir = std::filesystem::path(*path).parent_path().string();
+                bwp::utils::SafeProcess::execDetached({"xdg-open", dir});
+              }
+              GtkWidget *pop = gtk_widget_get_ancestor(GTK_WIDGET(b), GTK_TYPE_POPOVER);
+              if (pop) gtk_popover_popdown(GTK_POPOVER(pop));
+            }), nullptr);
+      }
 
       // Add to Folder section
       auto folders = bwp::wallpaper::FolderManager::getInstance().getFolders();
@@ -478,7 +653,7 @@ void WallpaperGrid::onSetup(GtkSignalListItemFactory * /*factory*/,
               [](gpointer d) { delete static_cast<std::string *>(d); });
 
           g_signal_connect(
-              btn, "clicked", G_CALLBACK(+[](GtkButton *b, gpointer d) {
+              btn, "clicked", G_CALLBACK(+[](GtkButton *b, gpointer /*d*/) {
                 std::string *wpId = static_cast<std::string *>(
                     g_object_get_data(G_OBJECT(b), "wp_id"));
                 std::string *folderId = static_cast<std::string *>(
@@ -503,6 +678,7 @@ void WallpaperGrid::onSetup(GtkSignalListItemFactory * /*factory*/,
       }
 
       gtk_popover_set_has_arrow(GTK_POPOVER(popover), FALSE);
+      gtk_popover_set_autohide(GTK_POPOVER(popover), TRUE);
 
       // Position at click
       GdkRectangle rect = {(int)x, (int)y, 1, 1};
@@ -517,13 +693,13 @@ void WallpaperGrid::onSetup(GtkSignalListItemFactory * /*factory*/,
   gtk_widget_add_controller(card->getWidget(),
                             GTK_EVENT_CONTROLLER(rightClick));
 
-  // Center alignment for the grid cell
-  gtk_widget_set_halign(card->getWidget(), GTK_ALIGN_CENTER);
-  gtk_widget_set_valign(card->getWidget(), GTK_ALIGN_CENTER);
-  gtk_widget_set_margin_start(card->getWidget(), 8);
-  gtk_widget_set_margin_end(card->getWidget(), 8);
-  gtk_widget_set_margin_top(card->getWidget(), 8);
-  gtk_widget_set_margin_bottom(card->getWidget(), 8);
+  // Fill alignment so cards expand to fill column width reactively
+  gtk_widget_set_halign(card->getWidget(), GTK_ALIGN_FILL);
+  gtk_widget_set_valign(card->getWidget(), GTK_ALIGN_START);
+  gtk_widget_set_margin_start(card->getWidget(), 4);
+  gtk_widget_set_margin_end(card->getWidget(), 4);
+  gtk_widget_set_margin_top(card->getWidget(), 4);
+  gtk_widget_set_margin_bottom(card->getWidget(), 4);
 
   // Attach card pointer to widget so we can retrieve it
   g_object_set_data(G_OBJECT(card->getWidget()), "card-ptr", card);
@@ -533,7 +709,7 @@ void WallpaperGrid::onSetup(GtkSignalListItemFactory * /*factory*/,
 }
 
 void WallpaperGrid::onBind(GtkSignalListItemFactory * /*factory*/,
-                           GtkListItem *item, gpointer /*user_data*/) {
+                           GtkListItem *item, gpointer user_data) {
   GtkWidget *widget = gtk_list_item_get_child(item);
   if (!widget || !G_IS_OBJECT(widget)) {
     LOG_WARN("onBind: widget is null or invalid");
@@ -549,15 +725,38 @@ void WallpaperGrid::onBind(GtkSignalListItemFactory * /*factory*/,
 
   if (card && info) {
     LOG_DEBUG("onBind: " + info->path);
-    card->setInfo(*info);
+    // Read fresh data from library to reflect any favorite/rating changes
+    auto &lib = bwp::wallpaper::WallpaperLibrary::getInstance();
+    auto freshInfo = lib.getWallpaper(info->id);
+    if (freshInfo.has_value()) {
+      card->setInfo(freshInfo.value());
+    } else {
+      card->setInfo(*info);
+    }
+
+    // Apply Highlight
+    WallpaperGrid *self = static_cast<WallpaperGrid *>(user_data);
+    if (self) {
+      card->setHighlight(self->m_filterQuery);
+    }
   } else {
     LOG_WARN("onBind: card or info is null");
   }
 }
 
 void WallpaperGrid::onUnbind(GtkSignalListItemFactory * /*factory*/,
-                             GtkListItem * /*item*/, gpointer /*user_data*/) {
-  // Optional: clear large resources if needed, but not strictly required
+                             GtkListItem *item, gpointer /*user_data*/) {
+  // Lazy loading: cancel pending thumbnail loads and release texture memory
+  // when the card scrolls out of the visible viewport
+  GtkWidget *widget = gtk_list_item_get_child(item);
+  if (!widget || !G_IS_OBJECT(widget))
+    return;
+
+  WallpaperCard *card = static_cast<WallpaperCard *>(
+      g_object_get_data(G_OBJECT(widget), "card-ptr"));
+  if (card) {
+    card->releaseResources();
+  }
 }
 
 void WallpaperGrid::onTeardown(GtkSignalListItemFactory * /*factory*/,

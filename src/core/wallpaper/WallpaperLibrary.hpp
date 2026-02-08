@@ -19,6 +19,7 @@ public:
   // CRUD
   void addWallpaper(const WallpaperInfo &info);
   void updateWallpaper(const WallpaperInfo &info);
+  void updateBlurhash(const std::string &id, const std::string &hash);
   void removeWallpaper(const std::string &id);
 
   std::optional<WallpaperInfo> getWallpaper(const std::string &id) const;
@@ -38,6 +39,8 @@ public:
   std::filesystem::path getDataDirectory() const;
 
 private:
+  void removeDuplicates();
+
   WallpaperLibrary();
   ~WallpaperLibrary();
 
@@ -45,6 +48,7 @@ private:
   std::filesystem::path getDatabasePath() const;
 
   std::unordered_map<std::string, WallpaperInfo> m_wallpapers;
+  std::unordered_map<std::string, std::string> m_pathToId;
   mutable std::mutex m_mutex;
   std::filesystem::path m_dbPath;
   bool m_dirty = false;

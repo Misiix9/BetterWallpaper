@@ -17,6 +17,7 @@ public:
   using NavigationCallback = std::function<void(const std::string &page)>;
   void setCallback(NavigationCallback callback);
   void refresh();
+  void updateBadge(const std::string &id, int count);
 
 private:
   void setupUi();
@@ -31,6 +32,7 @@ private:
 
   // Store mapping from row to ID
   std::map<GtkListBoxRow *, std::string> m_rowIds;
+  std::map<std::string, GtkWidget *> m_badges;
 };
 
 } // namespace bwp::gui

@@ -1,6 +1,5 @@
 #include "LibraryView.hpp"
 #include "../../core/config/ConfigManager.hpp"
-#include "../../core/services/AutoTagService.hpp"
 #include "../../core/utils/FileUtils.hpp"
 #include "../../core/utils/Logger.hpp"
 #include "../../core/wallpaper/LibraryScanner.hpp"
@@ -25,7 +24,7 @@ LibraryView::LibraryView() {
         lib.setChangeCallback(
             [self](const bwp::wallpaper::WallpaperInfo &info) {
               g_idle_add(
-                  +[](gpointer d) -> gboolean {
+                  +[](gpointer /*d*/) -> gboolean {
                     // Info logic would go here if needed, or trigger refresh
                     return G_SOURCE_REMOVE;
                   },
@@ -42,7 +41,13 @@ LibraryView::LibraryView() {
       this);
 }
 
-LibraryView::~LibraryView() {}
+LibraryView::~LibraryView() {
+  if (m_grid) {
+    double scroll = m_grid->getVScroll();
+    bwp::config::ConfigManager::getInstance().set("ui.library.scroll_y",
+                                                  scroll);
+  }
+}
 
 void LibraryView::setupUi() {
   m_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
@@ -132,7 +137,9 @@ void LibraryView::setupUi() {
   m_tagList = gtk_string_list_new(nullptr);
   gtk_string_list_append(m_tagList, "All Tags");
 
-  m_filterCombo = gtk_drop_down_new(G_LIST_MODEL(m_tagList), nullptr);
+  GtkExpression *tagExpr =
+      gtk_property_expression_new(GTK_TYPE_STRING_OBJECT, nullptr, "string");
+  m_filterCombo = gtk_drop_down_new(G_LIST_MODEL(m_tagList), tagExpr);
   gtk_widget_set_margin_start(m_filterCombo, 8);
 
   g_signal_connect(
@@ -197,27 +204,6 @@ void LibraryView::setupUi() {
       this);
   gtk_box_append(GTK_BOX(headerBox), sortCombo);
 
-  // Simulate Scan Button (Mock)
-  GtkWidget *scanBtn = gtk_button_new_from_icon_name("system-search-symbolic");
-  gtk_widget_set_tooltip_text(scanBtn, "Simulate AI Scan");
-  gtk_widget_set_margin_start(scanBtn, 8);
-  g_signal_connect(
-      scanBtn, "clicked", G_CALLBACK(+[](GtkButton *, gpointer data) {
-        // Trigger scan on random wallpaper
-        LOG_INFO("Simulating AI Scan...");
-        auto &lib = bwp::wallpaper::WallpaperLibrary::getInstance();
-        auto wallpapers = lib.getAllWallpapers();
-        if (!wallpapers.empty()) {
-          size_t idx = rand() % wallpapers.size();
-          // Use the service
-
-          bwp::core::services::AutoTagService::getInstance().scan(
-              wallpapers[idx].id);
-        }
-      }),
-      this);
-  gtk_box_append(GTK_BOX(headerBox), scanBtn);
-
   // Add Wallpaper Button (opens file picker for local images)
   GtkWidget *addBtn = gtk_button_new_from_icon_name("list-add-symbolic");
   gtk_widget_set_tooltip_text(addBtn, "Add Wallpaper from File");
@@ -281,6 +267,31 @@ void LibraryView::setupUi() {
       }
     }
   });
+
+  // Connect library change callback for real-time data propagation
+  auto &lib = bwp::wallpaper::WallpaperLibrary::getInstance();
+  lib.setChangeCallback(
+      [this](const bwp::wallpaper::WallpaperInfo &changedInfo) {
+        // Schedule on the main thread since library changes can come from any
+        // thread
+        auto *info = new bwp::wallpaper::WallpaperInfo(changedInfo);
+        g_idle_add(
+            +[](gpointer data) -> gboolean {
+              auto *pair =
+                  static_cast<std::pair<LibraryView *,
+                                        bwp::wallpaper::WallpaperInfo *> *>(
+                      data);
+              if (pair->first->m_grid) {
+                pair->first->m_grid->updateWallpaperInStore(*pair->second);
+                pair->first->m_grid->notifyDataChanged();
+              }
+              delete pair->second;
+              delete pair;
+              return G_SOURCE_REMOVE;
+            },
+            new std::pair<LibraryView *, bwp::wallpaper::WallpaperInfo *>(this,
+                                                                          info));
+      });
 }
 
 void LibraryView::loadWallpapers() {
@@ -383,6 +394,21 @@ void LibraryView::loadWallpapers() {
         return G_SOURCE_REMOVE;
       },
       this);
+  // Restore scroll position after initial load
+  g_timeout_add(
+      500,
+      +[](gpointer data) -> gboolean {
+        auto *self = static_cast<LibraryView *>(data);
+        if (self->m_grid) {
+          double scroll = bwp::config::ConfigManager::getInstance().get<double>(
+              "ui.library.scroll_y", 0.0);
+          if (scroll > 0) {
+            self->m_grid->setVScroll(scroll);
+          }
+        }
+        return G_SOURCE_REMOVE;
+      },
+      this);
 }
 
 void LibraryView::refresh() {
@@ -394,6 +420,16 @@ void LibraryView::refresh() {
   for (const auto &info : wallpapers) {
     m_grid->addWallpaper(info);
   }
+
+  // Rebuild tag dropdown to pick up new tags from scanner
+  auto tags = lib.getAllTags();
+  GtkStringList *newList = gtk_string_list_new(nullptr);
+  gtk_string_list_append(newList, "All Tags");
+  for (const auto &tag : tags) {
+    gtk_string_list_append(newList, tag.c_str());
+  }
+  gtk_drop_down_set_model(GTK_DROP_DOWN(m_filterCombo), G_LIST_MODEL(newList));
+  m_tagList = newList;
 }
 
 void LibraryView::onAddWallpaper() {

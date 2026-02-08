@@ -68,6 +68,7 @@ if(WIN32)
         utils/Error.cpp
         utils/FileUtils.cpp
         utils/StringUtils.cpp
+        utils/SafeProcess.cpp
         wallpaper/WallpaperManager.cpp
         
         # Windows specifics (or stub)
@@ -96,8 +97,10 @@ else()
         monitor/WaylandMonitor.cpp
         utils/Error.cpp
         utils/FileUtils.cpp
+        utils/ToastManager.cpp
         utils/StringUtils.cpp
         utils/ProcessUtils.cpp
+        utils/SafeProcess.cpp
         wallpaper/WallpaperManager.cpp
         wallpaper/WallpaperWindow.cpp
         wallpaper/renderers/StaticRenderer.cpp
@@ -146,6 +149,9 @@ else()
         power/PowerManager.cpp
         system/AutostartManager.cpp
         utils/SystemUtils.cpp
+
+        # Blurhash progressive loading
+        utils/Blurhash.cpp
     )
 endif()
 

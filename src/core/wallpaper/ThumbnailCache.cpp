@@ -1,4 +1,5 @@
 #include "ThumbnailCache.hpp"
+#include "../utils/Blurhash.hpp"
 #include "../utils/Logger.hpp"
 #include <algorithm>
 #include <chrono>
@@ -444,6 +445,49 @@ void ThumbnailCache::pruneCache() {
   LOG_INFO("Thumbnail cache pruned to " +
            std::to_string(totalSize / (1024 * 1024)) + " MB");
 }
+
+std::string ThumbnailCache::computeBlurhash(const std::string &wallpaperPath,
+                                            Size size) {
+  // Get or generate the thumbnail
+  GdkPixbuf *pixbuf = getSync(wallpaperPath, size);
+  if (!pixbuf) {
+    pixbuf = generateSync(wallpaperPath, size);
+  }
+  if (!pixbuf) {
+    return {};
+  }
+
+  int width = gdk_pixbuf_get_width(pixbuf);
+  int height = gdk_pixbuf_get_height(pixbuf);
+  int channels = gdk_pixbuf_get_n_channels(pixbuf);
+  int rowstride = gdk_pixbuf_get_rowstride(pixbuf);
+  const guchar *pixels = gdk_pixbuf_get_pixels(pixbuf);
+
+  // Blurhash encoder expects tightly-packed RGB (3 bytes per pixel)
+  // GdkPixbuf may have alpha + rowstride padding, so we need to convert
+  std::vector<uint8_t> rgb(width * height * 3);
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      const guchar *src = pixels + y * rowstride + x * channels;
+      uint8_t *dst = rgb.data() + (y * width + x) * 3;
+      dst[0] = src[0];
+      dst[1] = src[1];
+      dst[2] = src[2];
+    }
+  }
+
+  g_object_unref(pixbuf);
+
+  // 4x3 components is a good balance of quality vs string length
+  std::string hash =
+      bwp::utils::blurhash::encode(rgb.data(), width, height, 4, 3);
+
+  if (!hash.empty()) {
+    LOG_DEBUG("Computed blurhash for: " + wallpaperPath + " => " + hash);
+  }
+  return hash;
+}
+
 #else
 // Windows Stubs
 ThumbnailCache::ThumbnailCache() {}
@@ -465,6 +509,7 @@ GdkPixbuf* ThumbnailCache::generateFromImage(const std::string&, Size) { return 
 GdkPixbuf* ThumbnailCache::generateFromVideo(const std::string&, Size) { return nullptr; }
 GdkPixbuf* ThumbnailCache::loadFromCache(const std::filesystem::path&) { return nullptr; }
 bool ThumbnailCache::saveToCache(GdkPixbuf*, const std::filesystem::path&) { return false; }
+std::string ThumbnailCache::computeBlurhash(const std::string&, Size) { return ""; }
 #endif
 
 } // namespace bwp::wallpaper

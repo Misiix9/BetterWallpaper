@@ -25,7 +25,6 @@ add_executable(betterwallpaper
     widgets/MonitorLayout.cpp
     widgets/MonitorConfigPanel.cpp
     widgets/PreviewPanel.cpp
-    widgets/TagEditorDialog.cpp
     widgets/TransitionDialog.cpp
     widgets/ProfileEditDialog.cpp
     widgets/ScheduleDialog.cpp

@@ -150,10 +150,17 @@ void LibraryScanner::notifyCompletion() {
 void LibraryScanner::runScan(std::vector<std::string> paths) {
   LOG_INFO("Starting library scan");
 
-  std::string home = std::getenv("HOME");
-  std::vector<std::string> workshopPaths = {
-      home + "/.local/share/Steam/steamapps/workshop/content/431960",
-      home + "/.steam/steam/steamapps/workshop/content/431960"};
+  const char* homeEnv = std::getenv("HOME");
+  if (!homeEnv) {
+    LOG_ERROR("HOME environment variable is not set — skipping Steam Workshop scan");
+  }
+  std::string home = homeEnv ? homeEnv : "";
+  std::vector<std::string> workshopPaths;
+  if (!home.empty()) {
+    workshopPaths = {
+        home + "/.local/share/Steam/steamapps/workshop/content/431960",
+        home + "/.steam/steam/steamapps/workshop/content/431960"};
+  }
 
   int totalFound = 0;
 
@@ -167,9 +174,29 @@ void LibraryScanner::runScan(std::vector<std::string> paths) {
     std::filesystem::path wsPath(wsPathStr);
     if (!std::filesystem::exists(wsPath) ||
         !std::filesystem::is_directory(wsPath)) {
-      LOG_INFO("Workshop path does not exist: " + wsPathStr);
       continue;
     }
+
+    // De-duplication of workshop roots (e.g. .local vs .steam symlinks)
+    std::string canonicalWsPath;
+    try {
+      canonicalWsPath = std::filesystem::canonical(wsPath).string();
+    } catch (...) {
+      canonicalWsPath = wsPathStr;
+    }
+
+    static std::vector<std::string> scannedRoots;
+    // Check if we already scanned this canonical root
+    bool alreadyScanned = false;
+    for (const auto &root : scannedRoots) {
+      if (root == canonicalWsPath)
+        alreadyScanned = true;
+    }
+    if (alreadyScanned) {
+      LOG_INFO("Skipping duplicate workshop root: " + wsPathStr);
+      continue;
+    }
+    scannedRoots.push_back(canonicalWsPath);
 
     LOG_INFO("Scanning Workshop path: " + wsPath.string());
 
@@ -355,6 +382,14 @@ bool LibraryScanner::scanWorkshopItem(const std::filesystem::path &dir) {
 
         // Parse metadata if available (future proofing)
         // info.settings.fps = j.value("fps", 60); // Example
+
+        // Tags
+        if (j.contains("tags")) {
+          auto tagsJson = j["tags"];
+          if (tagsJson.is_array()) {
+            info.tags = tagsJson.get<std::vector<std::string>>();
+          }
+        }
       }
     } catch (...) {
       // JSON parse failed, use defaults
@@ -371,6 +406,7 @@ bool LibraryScanner::scanWorkshopItem(const std::filesystem::path &dir) {
   }
 
   info.path = foundFile;
+  info.title = title;
 
   // Determine type from extension if not set
   if (info.type == WallpaperType::Unknown) {
@@ -414,12 +450,27 @@ void LibraryScanner::scanFile(const std::filesystem::path &path) {
 
   std::string id = path.string();
 
+  // Check if this path is already in the library under ANY ID
   auto &library = WallpaperLibrary::getInstance();
+
+  // Optimization: Check by path directly if we can, but library is map by ID.
+  // We'll iterate or trust ID = path.
+  // Wait, if it's a workshop item, ID is number. If we scan it here as file, ID
+  // is path. So we MUST check if this path belongs to an existing workshop
+  // item.
+
+  // Fast check: is this path inside a steam workshop directory?
+  if (path.string().find("steamapps/workshop") != std::string::npos ||
+      path.string().find("431960") != std::string::npos) {
+    return; // Skip, handled by workshop scanner
+  }
+
   if (library.getWallpaper(id))
     return;
 
   WallpaperInfo info;
   info.id = id;
+  info.source = "local"; // Explicitly set local
   info.path = path.string();
   try {
     info.size_bytes = std::filesystem::file_size(path);

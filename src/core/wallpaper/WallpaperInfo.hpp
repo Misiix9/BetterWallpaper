@@ -46,6 +46,9 @@ struct WallpaperInfo {
   uint64_t workshop_id = 0;
   uint64_t size_bytes = 0;
 
+  // Progressive loading placeholder
+  std::string blurhash; // Compact blur placeholder (e.g. "LEHV6nWB2yk8pyoJadR*.7kCMdnj")
+
   // Settings Override
   struct Settings {
     int fps = 0; // 0 = default

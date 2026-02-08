@@ -54,7 +54,7 @@ void Scheduler::start() {
 
   // Check every minute
 #ifdef _WIN32
-  // Windows Timer Stub (TODO: Implement using SetTimer or similar)
+  // Windows Timer Stub (Deferred to Phase 10: Windows Port)
   // For now, no scheduling on Windows
 #else
   m_timerId = g_timeout_add_seconds(
@@ -140,10 +140,15 @@ void Scheduler::setProfileActivateCallback(ProfileActivateCallback callback) {
 }
 
 void Scheduler::checkSchedules() {
-  // Get current time
+  // Get current time (thread-safe with localtime_r)
   auto now = std::chrono::system_clock::now();
   std::time_t time = std::chrono::system_clock::to_time_t(now);
-  std::tm *localTime = std::localtime(&time);
+  std::tm localTimeBuf{};
+  std::tm *localTime = localtime_r(&time, &localTimeBuf);
+  if (!localTime) {
+    LOG_ERROR("Scheduler: localtime_r failed");
+    return;
+  }
 
   int currentMinutes = localTime->tm_hour * 60 + localTime->tm_min;
   int currentDay = localTime->tm_wday; // 0 = Sunday

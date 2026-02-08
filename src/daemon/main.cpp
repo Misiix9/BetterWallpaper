@@ -1,7 +1,7 @@
 #include "../core/ipc/IPCServiceFactory.hpp"
 #include "../core/slideshow/SlideshowManager.hpp"
-#include "../core/utils/Logger.hpp"
 #include "../core/utils/Constants.hpp"
+#include "../core/utils/Logger.hpp"
 #include "../core/wallpaper/WallpaperManager.hpp"
 #ifndef _WIN32
 #include <gtk/gtk.h>
@@ -20,7 +20,8 @@ class DaemonApp {
 public:
   DaemonApp(int argc, char **argv) : m_argc(argc), m_argv(argv) {
 #ifndef _WIN32
-    m_app = gtk_application_new(bwp::constants::APP_ID_DAEMON, G_APPLICATION_DEFAULT_FLAGS);
+    m_app = gtk_application_new(bwp::constants::APP_ID_DAEMON,
+                                G_APPLICATION_DEFAULT_FLAGS);
     g_signal_connect(m_app, "activate", G_CALLBACK(onActivate), this);
     g_signal_connect(m_app, "startup", G_CALLBACK(onStartup), this);
 #endif
@@ -28,22 +29,22 @@ public:
 
   ~DaemonApp() {
 #ifndef _WIN32
-      g_object_unref(m_app);
+    g_object_unref(m_app);
 #endif
   }
 
   int run() {
 #ifdef _WIN32
-      // Windows Main Loop
-      LOG_INFO("Daemon starting up (Windows)...");
-      setupServices(this);
-      
-      // Keep running
-      LOG_INFO("Daemon running. Press Ctrl+C to stop.");
-      Sleep(INFINITE); // TODO: Better event loop or service controller
-      return 0;
+    // Windows Main Loop
+    LOG_INFO("Daemon starting up (Windows)...");
+    setupServices(this);
+
+    // Keep running
+    LOG_INFO("Daemon running. Press Ctrl+C to stop.");
+    Sleep(INFINITE); // TODO: Better event loop or service controller
+    return 0;
 #else
-      return g_application_run(G_APPLICATION(m_app), m_argc, m_argv);
+    return g_application_run(G_APPLICATION(m_app), m_argc, m_argv);
 #endif
   }
 
@@ -54,13 +55,13 @@ private:
     LOG_INFO("Daemon activated");
   }
 
-  static void onStartup(GtkApplication *app, gpointer user_data) {
+  static void onStartup(GtkApplication * /*app*/, gpointer user_data) {
     auto *self = static_cast<DaemonApp *>(user_data);
     setupServices(self);
   }
 #endif
 
-  static void setupServices(DaemonApp* self) {
+  static void setupServices(DaemonApp *self) {
     LOG_INFO("Initializing Services...");
 
     // Initialize Core Services
@@ -105,29 +106,32 @@ private:
       LOG_INFO("IPC Command: Stop on " + monitor);
       bwp::wallpaper::WallpaperManager::getInstance().stop(monitor);
     });
-    
-    // Mute/Volume handlers (TODO: Add to manager)
-    self->m_ipcService->setSetMutedHandler([](const std::string &monitor, bool muted) {
-        LOG_INFO("IPC Command: Mute " + std::string(muted ? "ON" : "OFF"));
-        bwp::wallpaper::WallpaperManager::getInstance().setMuted(monitor, muted);
+
+    // Mute/Volume handlers
+    self->m_ipcService->setSetMutedHandler([](const std::string &monitor,
+                                              bool muted) {
+      LOG_INFO("IPC Command: Mute " + std::string(muted ? "ON" : "OFF"));
+      bwp::wallpaper::WallpaperManager::getInstance().setMuted(monitor, muted);
     });
-    
-    self->m_ipcService->setSetVolumeHandler([](const std::string &monitor, int vol) {
-        LOG_INFO("IPC Command: Volume " + std::to_string(vol));
-        bwp::wallpaper::WallpaperManager::getInstance().setVolume(monitor, vol);
+
+    self->m_ipcService->setSetVolumeHandler([](const std::string &monitor,
+                                               int vol) {
+      LOG_INFO("IPC Command: Volume " + std::to_string(vol));
+      bwp::wallpaper::WallpaperManager::getInstance().setVolume(monitor, vol);
     });
 
     if (!self->m_ipcService->initialize()) {
       LOG_ERROR("Failed to initialize IPC Service.");
       // On Windows just log, on Linux quit
 #ifndef _WIN32
-       // g_application_quit(...); // Hard without app pointer here easily.
-       exit(1);
+      // g_application_quit(...); // Hard without app pointer here easily.
+      exit(1);
 #endif
     }
-    
+
     // Set default wallpaper if standard path exists?
-    // bwp::wallpaper::WallpaperManager::getInstance().setWallpaper("primary", "C:\\Users\\Default\\image.jpg");
+    // bwp::wallpaper::WallpaperManager::getInstance().setWallpaper("primary",
+    // "C:\\Users\\Default\\image.jpg");
 
     LOG_INFO("Daemon Service Ready.");
   }
@@ -143,12 +147,12 @@ private:
 int main(int argc, char **argv) {
   // Init logger
 #ifdef _WIN32
-     std::string logDir = std::string(getenv("APPDATA")) + "\\BetterWallpaper";
-     CreateDirectory(logDir.c_str(), NULL);
-     bwp::utils::Logger::init(logDir);
+  std::string logDir = std::string(getenv("APPDATA")) + "\\BetterWallpaper";
+  CreateDirectory(logDir.c_str(), NULL);
+  bwp::utils::Logger::init(logDir);
 #else
-     std::string logDir = std::string(getenv("HOME")) + "/.cache/betterwallpaper";
-     bwp::utils::Logger::init(logDir);
+  std::string logDir = std::string(getenv("HOME")) + "/.cache/betterwallpaper";
+  bwp::utils::Logger::init(logDir);
 #endif
 
   DaemonApp app(argc, argv);

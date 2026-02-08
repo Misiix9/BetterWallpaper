@@ -16,27 +16,23 @@ WallpaperEngineRenderer::~WallpaperEngineRenderer() { terminateProcess(); }
 
 bool WallpaperEngineRenderer::load(const std::string &path) {
   LOG_SCOPE_AUTO();
+
+  if (path.empty()) {
+    LOG_ERROR("Cannot load wallpaper: empty path provided");
+    return false;
+  }
+
   terminateProcess();
   m_pkPath = path;
+  m_crashCount = 0;
 
-  // We launch process in play() or here?
-  // Usually immediate.
   play();
   return true;
 }
 
-void WallpaperEngineRenderer::render(cairo_t *cr, int width, int height) {
-  // Excessive logging in render loop? Maybe debug level only, or skip.
-  // User asked for "Deep Instrumentation". Let's enable it but maybe use a
-  // macro check? Or just trust the Logger level. ScopeTracer uses DEBUG level.
-  // LOG_SCOPE_AUTO(); // This might spam 60fps. Risk.
-  // Let's SKIP render loop scope tracing to avoid 20GB log files in 1 minute.
-  // Or add a static counter to log once per second?
-  // The user asked for "Deep Instrumentation" but surely not spam.
-  // "Last entering line" implies tracking flow. Render loop flow is repetitive.
-  // I will skip render() to be safe, or log once.
-  // Let's skip scope tracer here, but maybe log if size changes?
-  // No, just skip scope tracer for render().
+void WallpaperEngineRenderer::render(cairo_t *cr, int /*width*/,
+                                     int /*height*/) {
+  // Render loop logging skipped to avoid spam.
   cairo_set_source_rgba(cr, 0, 0, 0, 0);
   // Maybe draw transparent?
   cairo_set_source_rgba(cr, 0, 0, 0, 0);
@@ -70,6 +66,12 @@ void WallpaperEngineRenderer::setMonitors(
 
 void WallpaperEngineRenderer::launchProcess() {
   LOG_SCOPE_AUTO();
+
+  if (m_pkPath.empty()) {
+    LOG_ERROR("Cannot launch process: no wallpaper path set");
+    return;
+  }
+
   // Check throttle
   auto now = std::chrono::steady_clock::now();
   auto elapsed =
@@ -118,23 +120,23 @@ void WallpaperEngineRenderer::launchProcess() {
   // --screen-root B --bg ID Single/Default: ./linux-wallpaperengine ID
   // [--screen-root A]
 
+  if (arg.empty()) {
+    LOG_ERROR("Cannot launch: wallpaper arg resolved to empty string");
+    return;
+  }
+
+  // Always put the positional background ID first
+  args.push_back(arg);
+
+  // Add --screen-root for each monitor
   if (!m_monitors.empty()) {
-    // Explicit assignment for each monitor
     for (const auto &mon : m_monitors) {
       args.push_back("--screen-root");
       args.push_back(mon);
-      args.push_back("--bg"); // Explicitly assign the background
-      args.push_back(arg);
-      // TODO: Per-monitor scaling can be added here if we store it
-      // args.push_back("--scaling"); ...
     }
-  } else {
-    // Classic single setup
-    args.push_back(arg); // Positional ID
-    if (!m_monitor.empty()) {
-      args.push_back("--screen-root");
-      args.push_back(m_monitor);
-    }
+  } else if (!m_monitor.empty()) {
+    args.push_back("--screen-root");
+    args.push_back(m_monitor);
   }
 
   if (m_fpsLimit > 0) {
@@ -144,6 +146,23 @@ void WallpaperEngineRenderer::launchProcess() {
 
   if (m_muted) {
     args.push_back("--silent");
+  }
+
+  if (m_noAudioProcessing) {
+    args.push_back("--no-audio-processing");
+  }
+
+  if (m_disableMouse) {
+    args.push_back("--disable-mouse");
+  }
+
+  if (m_noAutomute) {
+    args.push_back("--noautomute");
+  }
+
+  if (!m_muted && m_volumeLevel >= 0 && m_volumeLevel <= 100) {
+    args.push_back("--volume");
+    args.push_back(std::to_string(m_volumeLevel));
   }
 
   std::string cmdLog = "Launching: ";
@@ -211,8 +230,8 @@ void WallpaperEngineRenderer::launchProcess() {
     }
 
     // Create new session to detach from terminal (allows surviving app closure)
-    // This makes the process independent and it will continue running even after
-    // the parent app exits - key for wallpaper persistence
+    // This makes the process independent and it will continue running even
+    // after the parent app exits - key for wallpaper persistence
     setsid();
 
     // Close standard file descriptors to fully daemonize
@@ -244,6 +263,12 @@ void WallpaperEngineRenderer::launchProcess() {
 
 void WallpaperEngineRenderer::play() {
   LOG_SCOPE_AUTO();
+
+  if (m_pkPath.empty()) {
+    LOG_WARN("play() called but no wallpaper path set — ignoring");
+    return;
+  }
+
   if (m_pid != -1) {
     kill(m_pid, SIGCONT);
     m_isPlaying = true;
@@ -296,7 +321,8 @@ void WallpaperEngineRenderer::monitorProcess() {
         m_cv.wait_for(lock, std::chrono::seconds(backoff),
                       [this] { return m_stopWatcher.load(); });
 
-        if (!m_stopWatcher && m_crashCount < MAX_CRASH_COUNT) {
+        if (!m_stopWatcher && m_crashCount < MAX_CRASH_COUNT &&
+            !m_pkPath.empty()) {
           launchProcess();
         }
       } else if (res == 0) {
@@ -366,33 +392,80 @@ void WallpaperEngineRenderer::terminateProcess() {
 }
 
 void WallpaperEngineRenderer::setVolume(float volume) {
-  // If volume is 0, consider it muted
-  if (volume <= 0.01f) {
-    setMuted(true);
-  } else {
-    // linux-wallpaperengine doesn't have a direct volume flag other than silent
-    // We could adjust PulseAudio per app if needed, but for now just unmute
-    setMuted(false);
-  }
+  // Map 0.0-1.0 float to 0-100 integer for WE CLI
+  int vol = static_cast<int>(volume * 100.0f);
+  setVolumeLevel(vol);
 }
 
-void WallpaperEngineRenderer::setPlaybackSpeed(float speed) {
+void WallpaperEngineRenderer::setPlaybackSpeed(float /*speed*/) {
   // Not supported via CLI args easily
 }
 
 void WallpaperEngineRenderer::setFpsLimit(int fps) {
   if (m_fpsLimit != fps) {
     m_fpsLimit = fps;
-    if (m_isPlaying)
-      play(); // Restart
+    if (m_isPlaying && m_pid != -1) {
+      // Must fully restart to apply new args
+      terminateProcess();
+      m_crashCount = 0;
+      play();
+    }
   }
 }
 
 void WallpaperEngineRenderer::setMuted(bool muted) {
   if (m_muted != muted) {
     m_muted = muted;
-    if (m_isPlaying)
-      play(); // Restart
+    if (m_isPlaying && m_pid != -1) {
+      terminateProcess();
+      m_crashCount = 0;
+      play();
+    }
+  }
+}
+
+void WallpaperEngineRenderer::setNoAudioProcessing(bool enabled) {
+  if (m_noAudioProcessing != enabled) {
+    m_noAudioProcessing = enabled;
+    if (m_isPlaying && m_pid != -1) {
+      terminateProcess();
+      m_crashCount = 0;
+      play();
+    }
+  }
+}
+
+void WallpaperEngineRenderer::setDisableMouse(bool enabled) {
+  if (m_disableMouse != enabled) {
+    m_disableMouse = enabled;
+    if (m_isPlaying && m_pid != -1) {
+      terminateProcess();
+      m_crashCount = 0;
+      play();
+    }
+  }
+}
+
+void WallpaperEngineRenderer::setNoAutomute(bool enabled) {
+  if (m_noAutomute != enabled) {
+    m_noAutomute = enabled;
+    if (m_isPlaying && m_pid != -1) {
+      terminateProcess();
+      m_crashCount = 0;
+      play();
+    }
+  }
+}
+
+void WallpaperEngineRenderer::setVolumeLevel(int volume) {
+  volume = std::clamp(volume, 0, 100);
+  if (m_volumeLevel != volume) {
+    m_volumeLevel = volume;
+    if (m_isPlaying && m_pid != -1) {
+      terminateProcess();
+      m_crashCount = 0;
+      play();
+    }
   }
 }
 

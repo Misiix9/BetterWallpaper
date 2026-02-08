@@ -40,6 +40,7 @@ private:
   void setupRating();
   void updateRatingDisplay();
   void setRating(int rating);
+  void saveCurrentSettings();
 
   // Settings Controls
   GtkWidget *m_silentCheck;
@@ -52,6 +53,37 @@ private:
 
   std::vector<std::string> m_monitorNames;
   bwp::wallpaper::WallpaperInfo m_currentInfo;
+  bool m_updatingWidgets = false; // Guard to prevent save-on-load feedback loops
+
+  // Zoom & Pan
+  GtkWidget *m_scrolledWindow;
+  GtkWidget *m_zoomIndicator = nullptr; // Shows current zoom level
+  double m_zoomLevel = 1.0;
+  double m_dragStartX = 0;
+  double m_dragStartY = 0;
+
+  static constexpr double ZOOM_MIN = 1.0;
+  static constexpr double ZOOM_MAX = 5.0;
+  static constexpr double ZOOM_STEP = 0.25;
+
+  void setupGestures(GtkWidget *widget);
+  void applyZoom(double newZoom, double focusX = -1, double focusY = -1);
+  void resetZoom();
+  void updateZoomIndicator();
+  void onPanGesture(GtkGestureDrag *gesture, double offset_x, double offset_y);
+  void onPanBegin(GtkGestureDrag *gesture, double start_x, double start_y);
+
+
+
+  // Mini video controls
+  GtkWidget *m_videoControlsBox = nullptr;
+  GtkWidget *m_playPauseBtn = nullptr;
+  GtkWidget *m_videoVolumeBtn = nullptr;
+  GtkWidget *m_videoVolumeScale = nullptr;
+  GtkWidget *m_videoTimeLabel = nullptr;
+  bool m_isVideoPlaying = false;
+  void setupVideoControls();
+  void updateVideoControlsVisibility();
 };
 
 } // namespace bwp::gui

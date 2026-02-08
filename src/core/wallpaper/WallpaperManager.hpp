@@ -30,7 +30,6 @@ public:
                     const std::string &path);
 
   // Set global pause
-  // Set global pause
   void setPaused(bool paused);
   void setMuted(bool muted);
   void setMuted(const std::string &monitorName,
@@ -40,6 +39,10 @@ public:
   // Settings
   void setScalingMode(const std::string &monitorName, int mode);
   void setFpsLimit(int fps);
+  void setNoAudioProcessing(bool enabled);
+  void setDisableMouse(bool enabled);
+  void setNoAutomute(bool enabled);
+  void setVolumeLevel(int volume);
   void pause(const std::string &monitorName);
   void resume(const std::string &monitorName);
   void stop(const std::string &monitorName);
@@ -92,6 +95,11 @@ private:
   // Settings
   std::map<std::string, int> m_scalingModes;
   int m_fpsLimit = 60;
+  bool m_globalMuted = false;
+  bool m_noAudioProcessing = false;
+  bool m_disableMouse = false;
+  bool m_noAutomute = false;
+  int m_volumeLevel = 50;
 
   // Resource Monitor
   std::thread m_monitorThread;

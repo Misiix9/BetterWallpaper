@@ -55,6 +55,12 @@ public:
   void setFpsLimit(int fps);
   void setMuted(bool muted) override;
 
+  // Extended WE settings
+  void setNoAudioProcessing(bool enabled);
+  void setDisableMouse(bool enabled);
+  void setNoAutomute(bool enabled);
+  void setVolumeLevel(int volume); // 0-100, WE-specific
+
   WallpaperType getType() const override;
 
 private:
@@ -79,8 +85,12 @@ private:
   ScalingMode m_mode = ScalingMode::Fill;
   bool m_isPlaying = false;
 
-  int m_fpsLimit = 60; // Default 60
+  int m_fpsLimit = 60;     // Default 60
   bool m_muted = false;
+  bool m_noAudioProcessing = false;
+  bool m_disableMouse = false;
+  bool m_noAutomute = false;
+  int m_volumeLevel = 50;  // 0-100
 };
 #endif
 

@@ -1,4 +1,5 @@
 #include "MonitorLayout.hpp"
+#include "../../core/config/ConfigManager.hpp"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -126,19 +127,46 @@ void MonitorLayout::onDraw(GtkDrawingArea *area, cairo_t *cr, int width,
     cairo_set_source_rgb(cr, 0.1, 0.1, 0.1); // Black outline
     cairo_stroke(cr);
 
-    // Monitor Name
+    // Monitor Name — prefer custom name, show connector as subtitle
     cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
     cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL,
                            CAIRO_FONT_WEIGHT_BOLD);
     double fontSize = std::min(14.0, rh / 4.0); // Dynamic font size
     cairo_set_font_size(cr, fontSize);
 
-    cairo_text_extents_t extents;
-    cairo_text_extents(cr, mon.name.c_str(), &extents);
+    // Look up custom name from config
+    std::string customKey = "monitors." + mon.name + ".custom_name";
+    auto &config = bwp::config::ConfigManager::getInstance();
+    std::string customName = config.get<std::string>(customKey, "");
 
-    cairo_move_to(cr, rx + (rw - extents.width) / 2.0,
-                  ry + (rh + extents.height) / 2.0);
-    cairo_show_text(cr, mon.name.c_str());
+    std::string displayName =
+        customName.empty() ? mon.name : customName;
+
+    cairo_text_extents_t extents;
+    cairo_text_extents(cr, displayName.c_str(), &extents);
+
+    if (!customName.empty()) {
+      // Draw custom name centered, connector name below in smaller font
+      double nameY = ry + (rh / 2.0) - 2.0;
+      cairo_move_to(cr, rx + (rw - extents.width) / 2.0,
+                    nameY);
+      cairo_show_text(cr, displayName.c_str());
+
+      // Connector subtitle
+      double subFontSize = std::max(8.0, fontSize * 0.65);
+      cairo_set_font_size(cr, subFontSize);
+      cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.6);
+      cairo_text_extents_t subExtents;
+      cairo_text_extents(cr, mon.name.c_str(), &subExtents);
+      cairo_move_to(cr, rx + (rw - subExtents.width) / 2.0,
+                    nameY + subFontSize + 4.0);
+      cairo_show_text(cr, mon.name.c_str());
+    } else {
+      // Just connector name, centered
+      cairo_move_to(cr, rx + (rw - extents.width) / 2.0,
+                    ry + (rh + extents.height) / 2.0);
+      cairo_show_text(cr, displayName.c_str());
+    }
   }
 }
 

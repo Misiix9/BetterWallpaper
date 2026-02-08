@@ -26,6 +26,12 @@ const bwp::wallpaper::WallpaperInfo *
 bwp_wallpaper_object_get_info(BwpWallpaperObject *self);
 
 /**
+ * @brief Update the WallpaperInfo stored in the object
+ */
+void bwp_wallpaper_object_update_info(BwpWallpaperObject *self,
+                                      const bwp::wallpaper::WallpaperInfo &info);
+
+/**
  * @brief Match function for filtering
  */
 gboolean bwp_wallpaper_object_match(gpointer item, gpointer user_data);

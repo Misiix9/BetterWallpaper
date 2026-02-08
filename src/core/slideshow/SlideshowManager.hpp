@@ -73,6 +73,7 @@ private:
   bool m_running = false;
   bool m_paused = false;
   bool m_shuffle = false;
+  bool m_loading = false;  // Prevents save-during-load recursion
 
   guint m_timerId = 0;
   WallpaperChangeCallback m_changeCallback;

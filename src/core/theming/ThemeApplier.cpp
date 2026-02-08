@@ -1,6 +1,7 @@
 #include "ThemeApplier.hpp"
 #include "../config/ConfigManager.hpp"
 #include "../utils/Logger.hpp"
+#include "../utils/SafeProcess.hpp"
 #include <cstdlib>
 #include <fstream>
 #include <thread>
@@ -40,8 +41,7 @@ ThemeTool ThemeApplier::stringToTool(const std::string &str) {
 }
 
 bool ThemeApplier::isToolAvailable(const std::string &toolName) {
-  std::string cmd = "which " + toolName + " > /dev/null 2>&1";
-  return system(cmd.c_str()) == 0;
+  return utils::SafeProcess::commandExists(toolName);
 }
 
 std::vector<ThemeTool> ThemeApplier::detectAvailableTools() {
@@ -123,22 +123,23 @@ void ThemeApplier::applyFromPalette(const ColorPalette &palette, ThemeTool tool,
 }
 
 bool ThemeApplier::applyWithPywal(const std::string &wallpaperPath) {
-  std::string cmd = "wal -i \"" + wallpaperPath + "\" -n -q";
-  LOG_DEBUG("Running: " + cmd);
-  return system(cmd.c_str()) == 0;
+  LOG_DEBUG("Running pywal for: " + wallpaperPath);
+  auto res = utils::SafeProcess::exec({"wal", "-i", wallpaperPath, "-n", "-q"});
+  return res.success();
 }
 
 bool ThemeApplier::applyWithMatugen(const std::string &wallpaperPath) {
-  std::string cmd = "matugen image \"" + wallpaperPath + "\"";
-  LOG_DEBUG("Running: " + cmd);
-  return system(cmd.c_str()) == 0;
+  LOG_DEBUG("Running matugen for: " + wallpaperPath);
+  auto res = utils::SafeProcess::exec({"matugen", "image", wallpaperPath});
+  return res.success();
 }
 
 bool ThemeApplier::applyWithWpgtk(const std::string &wallpaperPath) {
-  std::string cmd =
-      "wpg -a \"" + wallpaperPath + "\" && wpg -s \"" + wallpaperPath + "\"";
-  LOG_DEBUG("Running: " + cmd);
-  return system(cmd.c_str()) == 0;
+  LOG_DEBUG("Running wpgtk for: " + wallpaperPath);
+  auto addRes = utils::SafeProcess::exec({"wpg", "-a", wallpaperPath});
+  if (!addRes.success()) return false;
+  auto setRes = utils::SafeProcess::exec({"wpg", "-s", wallpaperPath});
+  return setRes.success();
 }
 
 bool ThemeApplier::applyWithCustomScript(const std::string &wallpaperPath,
@@ -148,24 +149,25 @@ bool ThemeApplier::applyWithCustomScript(const std::string &wallpaperPath,
     return false;
   }
 
-  // Export colors as environment variables and run script
-  std::string cmd = "export WALLPAPER=\"" + wallpaperPath + "\"; ";
-  cmd += "export COLOR_PRIMARY=\"" + palette.primary.toHex() + "\"; ";
-  cmd += "export COLOR_SECONDARY=\"" + palette.secondary.toHex() + "\"; ";
-  cmd += "export COLOR_ACCENT=\"" + palette.accent.toHex() + "\"; ";
-  cmd += "export COLOR_BACKGROUND=\"" + palette.background.toHex() + "\"; ";
-  cmd += "export COLOR_FOREGROUND=\"" + palette.foreground.toHex() + "\"; ";
+  // Build environment variables for the custom script
+  std::vector<std::string> envVars = {
+    "WALLPAPER=" + wallpaperPath,
+    "COLOR_PRIMARY=" + palette.primary.toHex(),
+    "COLOR_SECONDARY=" + palette.secondary.toHex(),
+    "COLOR_ACCENT=" + palette.accent.toHex(),
+    "COLOR_BACKGROUND=" + palette.background.toHex(),
+    "COLOR_FOREGROUND=" + palette.foreground.toHex()
+  };
 
-  // Export all colors
+  // Export all indexed colors
   for (size_t i = 0; i < palette.allColors.size() && i < 16; ++i) {
-    cmd += "export COLOR" + std::to_string(i) + "=\"" +
-           palette.allColors[i].toHex() + "\"; ";
+    envVars.push_back("COLOR" + std::to_string(i) + "=" +
+                      palette.allColors[i].toHex());
   }
 
-  cmd += "\"" + m_customScript + "\"";
-
   LOG_DEBUG("Running custom script: " + m_customScript);
-  return system(cmd.c_str()) == 0;
+  auto res = utils::SafeProcess::exec({m_customScript}, envVars);
+  return res.success();
 }
 
 void ThemeApplier::loadSettings() {

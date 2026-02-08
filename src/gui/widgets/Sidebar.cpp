@@ -115,9 +115,18 @@ void Sidebar::addRow(const std::string &id, const std::string &iconName,
 
   GtkWidget *icon = gtk_image_new_from_icon_name(iconName.c_str());
   GtkWidget *label = gtk_label_new(title.c_str());
+  gtk_widget_set_hexpand(label, TRUE);
+  gtk_widget_set_halign(label, GTK_ALIGN_START);
+
+  // Badge Label
+  GtkWidget *badge = gtk_label_new("");
+  gtk_widget_add_css_class(badge, "badge"); // Ensure CSS has .badge
+  gtk_widget_set_visible(badge, FALSE);
+  m_badges[id] = badge;
 
   gtk_box_append(GTK_BOX(box), icon);
   gtk_box_append(GTK_BOX(box), label);
+  gtk_box_append(GTK_BOX(box), badge);
 
   gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(row), box);
   gtk_list_box_append(GTK_LIST_BOX(m_listBox), row);
@@ -126,6 +135,7 @@ void Sidebar::addRow(const std::string &id, const std::string &iconName,
 
   // Context Menu
   if (id.rfind("folder.", 0) == 0 && id != "folder.new") {
+    // ... (existing context menu logic)
     GtkGesture *rightClick = gtk_gesture_click_new();
     gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(rightClick), 3);
 
@@ -204,6 +214,18 @@ void Sidebar::addRow(const std::string &id, const std::string &iconName,
                      nullptr);
 
     gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(rightClick));
+  }
+}
+
+void Sidebar::updateBadge(const std::string &id, int count) {
+  if (m_badges.count(id)) {
+    GtkWidget *badge = m_badges[id];
+    if (count > 0) {
+      gtk_label_set_text(GTK_LABEL(badge), std::to_string(count).c_str());
+      gtk_widget_set_visible(badge, TRUE);
+    } else {
+      gtk_widget_set_visible(badge, FALSE);
+    }
   }
 }
 

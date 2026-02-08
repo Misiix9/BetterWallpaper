@@ -4,15 +4,36 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ─────────────────────────────────────────────────────────────────────────────
+   GLOBAL RESET — Remove default focus outlines from ALL interactive elements.
+   Focus is indicated by box-shadow glow effects defined per-component.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+button, dropdown, spinbutton, entry, scale, checkbutton, switch,
+menubutton, popover, notebook > header > tabs > tab,
+button:focus, dropdown:focus, spinbutton:focus, entry:focus,
+scale:focus, checkbutton:focus, switch:focus, menubutton:focus,
+button:focus-visible, dropdown:focus-visible, spinbutton:focus-visible,
+entry:focus-visible, scale:focus-visible, checkbutton:focus-visible,
+switch:focus-visible, menubutton:focus-visible {
+    outline: none;
+    outline-width: 0;
+    outline-style: none;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
    SECTION 1: CSS VARIABLES — THE DNA
    ───────────────────────────────────────────────────────────────────────────── */
 
 :root {
     /* ═══ SURFACE PALETTE ═══ */
-    --void: #0A0A0A;              /* The abyss. The deepest layer. */
-    --carbon: #121212;            /* Panels, sidebars. Slightly elevated. */
-    --carbon-elevated: #1A1A1A;   /* Hover states, subtle lift. */
-    --obsidian: #1E1E1E;          /* Cards at rest. */
+    --void: #0A0A0A;
+    /* The abyss. The deepest layer. */
+    --carbon: #121212;
+    /* Panels, sidebars. Slightly elevated. */
+    --carbon-elevated: #1A1A1A;
+    /* Hover states, subtle lift. */
+    --obsidian: #1E1E1E;
+    /* Cards at rest. */
 
     /* ═══ GLASS MATERIALS ═══ */
     --glass-dark: rgba(10, 10, 10, 0.85);
@@ -37,10 +58,14 @@
     --border-selection: #E5E5E5;
 
     /* ═══ TYPOGRAPHY ═══ */
-    --text-primary: #F0F0F0;      /* Headers, emphasis. Bright but not pure white. */
-    --text-secondary: #A8A8B3;    /* Body text. Easy on the eyes. */
-    --text-tertiary: #6B6B76;     /* Disabled, hints, metadata. */
-    --text-ghost: #3A3A42;        /* Placeholder, ultra-subtle. */
+    --text-primary: #F0F0F0;
+    /* Headers, emphasis. Bright but not pure white. */
+    --text-secondary: #A8A8B3;
+    /* Body text. Easy on the eyes. */
+    --text-tertiary: #6B6B76;
+    /* Disabled, hints, metadata. */
+    --text-ghost: #3A3A42;
+    /* Placeholder, ultra-subtle. */
 
     /* ═══ ACCENT & GLOW ═══ */
     --accent-white: #E8E8E8;
@@ -66,10 +91,14 @@
 
     /* ═══ ANIMATION PHYSICS ═══ */
     /* Spring Physics - Bouncy, fluid, alive */
-    --spring-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);      /* Overshoot bounce */
-    --spring-smooth: cubic-bezier(0.22, 1, 0.36, 1);         /* Smooth spring */
-    --spring-snappy: cubic-bezier(0.16, 1, 0.3, 1);          /* Quick spring */
-    --spring-gentle: cubic-bezier(0.33, 1, 0.68, 1);         /* Gentle ease */
+    --spring-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+    /* Overshoot bounce */
+    --spring-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+    /* Smooth spring */
+    --spring-snappy: cubic-bezier(0.16, 1, 0.3, 1);
+    /* Quick spring */
+    --spring-gentle: cubic-bezier(0.33, 1, 0.68, 1);
+    /* Gentle ease */
 
     /* Standard Motion */
     --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
@@ -237,7 +266,7 @@ listbox.sidebar {
     border-radius: var(--radius-md);
     margin: var(--space-1) var(--space-2);
     padding: var(--space-1);
-    transition: 
+    transition:
         background-color var(--transition-fast),
         transform var(--transition-bounce),
         box-shadow var(--transition-normal);
@@ -258,7 +287,7 @@ listbox.sidebar {
 .sidebar row:selected {
     background-color: rgba(255, 255, 255, 0.08);
     border-color: var(--border-visible);
-    box-shadow: 
+    box-shadow:
         inset 0 0 0 1px var(--border-highlight),
         var(--glow-subtle);
 }
@@ -302,7 +331,7 @@ listbox.sidebar {
     border: 2px solid transparent;
     overflow: hidden;
     /* Faster transitions for snappier hover response */
-    transition: 
+    transition:
         box-shadow 100ms ease-out,
         border-color 100ms ease-out,
         transform 80ms ease-out;
@@ -316,7 +345,7 @@ listbox.sidebar {
 .wallpaper-card:hover {
     background-color: transparent;
     border-color: rgba(255, 255, 255, 0.2);
-    box-shadow: 
+    box-shadow:
         0 0 12px rgba(255, 255, 255, 0.08),
         0 0 24px rgba(255, 255, 255, 0.04);
 }
@@ -334,14 +363,14 @@ listbox.sidebar {
 /* Override any GTK default selection styles */
 flowboxchild:selected .wallpaper-card,
 flowboxchild:focus .wallpaper-card,
-gridview > child:selected .wallpaper-card {
+gridview>child:selected .wallpaper-card {
     background-color: transparent;
     border-color: rgba(255, 255, 255, 0.6);
 }
 
 flowboxchild:selected,
 flowboxchild:focus,
-gridview > child:selected {
+gridview>child:selected {
     background-color: transparent;
     background: transparent;
     outline: none;
@@ -350,8 +379,8 @@ gridview > child:selected {
 /* Override hover states - NO background change on hover */
 flowboxchild:hover,
 flowboxchild:hover .wallpaper-card,
-gridview > child:hover,
-gridview > child:hover .wallpaper-card {
+gridview>child:hover,
+gridview>child:hover .wallpaper-card {
     background-color: transparent;
     background: transparent;
 }
@@ -372,7 +401,7 @@ flowboxchild:hover {
 /* Selected: Luminous border, strong glow */
 .wallpaper-card.selected {
     border: 2px solid var(--border-selection);
-    box-shadow: 
+    box-shadow:
         var(--shadow-lg),
         var(--glow-selection);
 }
@@ -389,12 +418,10 @@ flowboxchild:hover {
 
 /* Title overlay - Flush with card edges */
 .card-title-overlay {
-    background: linear-gradient(
-        to top,
-        rgba(0, 0, 0, 0.85) 0%,
-        rgba(0, 0, 0, 0.4) 60%,
-        transparent 100%
-    );
+    background: linear-gradient(to top,
+            rgba(0, 0, 0, 0.85) 0%,
+            rgba(0, 0, 0, 0.4) 60%,
+            transparent 100%);
     padding: var(--space-3) var(--space-3) var(--space-2) var(--space-3);
     margin: 0;
     opacity: 0;
@@ -418,29 +445,26 @@ flowboxchild:hover {
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
 }
 
-/* Favorite button - Floating action */
+/* Favorite button - Inline with title */
 .card-fav-btn {
-    background-color: rgba(0, 0, 0, 0.4);
-    border: 1px solid var(--border-void);
+    background-color: transparent;
+    border: none;
     color: var(--text-secondary);
-    opacity: 0;
-    transform: scale(0.8);
-    transition: 
-        opacity var(--transition-fast),
-        transform var(--transition-bounce),
-        background-color var(--transition-fast),
-        color var(--transition-fast);
+    min-width: 20px;
+    min-height: 20px;
+    padding: 2px;
+    transition:
+        color var(--transition-fast),
+        transform var(--transition-bounce);
 }
 
 .wallpaper-card:hover .card-fav-btn {
     opacity: 1;
-    transform: scale(1);
 }
 
 .card-fav-btn:hover {
-    background-color: rgba(0, 0, 0, 0.6);
     color: var(--text-primary);
-    transform: scale(1.1);
+    transform: scale(1.15);
 }
 
 .card-fav-btn:active {
@@ -449,8 +473,8 @@ flowboxchild:hover {
 
 .card-fav-btn.favorited {
     color: #FFD700;
-    background-color: rgba(255, 215, 0, 0.15);
-    border-color: rgba(255, 215, 0, 0.2);
+    background-color: transparent;
+    border: none;
 }
 
 /* Card badges */
@@ -470,21 +494,53 @@ flowboxchild:hover {
     border-color: rgba(255, 215, 0, 0.2);
 }
 
+/* Type Badges */
+.type-video {
+    color: #60A5FA;
+    /* Blue-400 */
+    background-color: rgba(37, 99, 235, 0.15);
+    border-color: rgba(59, 130, 246, 0.2);
+}
+
+.type-scene {
+    color: #F87171;
+    /* Red-400 */
+    background-color: rgba(220, 38, 38, 0.15);
+    border-color: rgba(239, 68, 68, 0.2);
+}
+
+.type-web {
+    color: #34D399;
+    /* Emerald-400 */
+    background-color: rgba(5, 150, 105, 0.15);
+    border-color: rgba(16, 185, 129, 0.2);
+}
+
+.type-gif {
+    color: #A78BFA;
+    /* Violet-400 */
+    background-color: rgba(124, 58, 237, 0.15);
+    border-color: rgba(139, 92, 246, 0.2);
+}
+
 /* Skeleton loading animation */
 .skeleton {
-    background: linear-gradient(
-        90deg,
-        var(--carbon) 0%,
-        var(--carbon-elevated) 50%,
-        var(--carbon) 100%
-    );
+    background: linear-gradient(90deg,
+            var(--carbon) 0%,
+            var(--carbon-elevated) 50%,
+            var(--carbon) 100%);
     background-size: 200% 100%;
     animation: skeleton-shimmer 1.5s ease-in-out infinite;
 }
 
 @keyframes skeleton-shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
+    0% {
+        background-position: 200% 0;
+    }
+
+    100% {
+        background-position: -200% 0;
+    }
 }
 
 
@@ -499,7 +555,7 @@ button {
     color: var(--text-primary);
     padding: var(--space-2) var(--space-4);
     font-weight: 500;
-    transition: 
+    transition:
         transform var(--transition-bounce),
         background-color var(--transition-fast),
         border-color var(--transition-fast),
@@ -540,6 +596,11 @@ button.suggested-action:active {
 
 button.suggested-action label {
     color: var(--void) !important;
+}
+
+button.suggested-action image {
+    color: var(--void) !important;
+    -gtk-icon-style: symbolic;
 }
 
 /* Destructive button */
@@ -594,7 +655,7 @@ button.pill {
     background-color: var(--glass-dark);
     border-radius: var(--radius-xl);
     border: 1px solid var(--border-visible);
-    box-shadow: 
+    box-shadow:
         var(--shadow-xl),
         var(--glow-subtle),
         inset 0 1px 0 rgba(255, 255, 255, 0.05);
@@ -604,7 +665,7 @@ button.pill {
 .glass-panel-elevated {
     background-color: var(--glass-medium);
     border-color: var(--border-highlight);
-    box-shadow: 
+    box-shadow:
         var(--shadow-xl),
         var(--glow-medium);
 }
@@ -620,7 +681,7 @@ entry {
     border-radius: var(--radius-md);
     color: var(--text-primary);
     padding: var(--space-2) var(--space-3);
-    transition: 
+    transition:
         border-color var(--transition-fast),
         box-shadow var(--transition-normal),
         background-color var(--transition-fast);
@@ -629,7 +690,7 @@ entry {
 entry:focus {
     border-color: var(--border-highlight);
     background-color: var(--carbon-elevated);
-    box-shadow: 
+    box-shadow:
         0 0 0 3px rgba(255, 255, 255, 0.05),
         var(--glow-subtle);
     outline: none;
@@ -675,7 +736,7 @@ entry placeholder {
 .navigation-sidebar row {
     border-radius: var(--radius-md);
     margin: var(--space-1) var(--space-2);
-    transition: 
+    transition:
         background-color var(--transition-fast),
         transform var(--transition-bounce);
 }
@@ -703,7 +764,7 @@ entry placeholder {
     border-radius: var(--radius-lg);
     border: 1px solid var(--border-subtle);
     padding: var(--space-4);
-    transition: 
+    transition:
         border-color var(--transition-fast),
         box-shadow var(--transition-normal);
 }
@@ -740,7 +801,7 @@ entry placeholder {
     border: 1px solid var(--border-subtle);
     overflow: hidden;
     box-shadow: var(--shadow-md);
-    transition: 
+    transition:
         box-shadow var(--transition-normal),
         border-color var(--transition-fast);
 }
@@ -748,6 +809,34 @@ entry placeholder {
 .preview-frame:hover {
     border-color: var(--border-visible);
     box-shadow: var(--shadow-lg), var(--glow-subtle);
+}
+
+/* Zoom level indicator badge */
+.zoom-indicator {
+    background-color: var(--glass-heavy);
+    color: var(--text-primary);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    opacity: 0.9;
+    transition: opacity var(--transition-fast);
+}
+
+/* Mini video controls bar */
+.video-controls {
+    background-color: var(--glass-medium);
+    border-radius: var(--radius-sm);
+    padding: 4px 8px;
+    border: 1px solid var(--border-subtle);
+}
+
+/* History tab thumbnails */
+.history-thumb {
+    border-radius: var(--radius-xs, 4px);
+    background-color: var(--obsidian);
+    min-width: 48px;
+    min-height: 36px;
 }
 
 
@@ -812,8 +901,8 @@ popover,
 popover.background {
     background-color: var(--glass-dark);
     border-radius: var(--radius-lg);
-    border: 1px solid var(--border-visible);
-    box-shadow: 
+    border: none;
+    box-shadow:
         var(--shadow-xl),
         var(--glow-subtle);
     padding: var(--space-2);
@@ -821,7 +910,17 @@ popover.background {
 
 popover arrow {
     background-color: var(--glass-dark);
-    border-color: var(--border-visible);
+    border-color: transparent;
+}
+
+/* Fix GTK4 inner contents node that leaks default background/border */
+popover > contents {
+    background-color: var(--glass-dark);
+    border: none;
+    border-radius: var(--radius-lg);
+    padding: var(--space-2);
+    margin: 0;
+    box-shadow: none;
 }
 
 popover modelbutton {
@@ -844,7 +943,7 @@ window.dialog {
     background-color: var(--glass-dark);
     border-radius: var(--radius-xl);
     border: 1px solid var(--border-visible);
-    box-shadow: 
+    box-shadow:
         0 25px 50px rgba(0, 0, 0, 0.5),
         var(--glow-medium);
 }
@@ -937,7 +1036,7 @@ scale slider {
     min-width: 16px;
     min-height: 16px;
     box-shadow: var(--shadow-md);
-    transition: 
+    transition:
         transform var(--transition-bounce),
         box-shadow var(--transition-fast);
 }
@@ -975,7 +1074,7 @@ switch slider {
     min-height: 20px;
     margin: 2px;
     box-shadow: var(--shadow-sm);
-    transition: 
+    transition:
         margin var(--transition-bounce),
         background-color var(--transition-fast);
 }
@@ -988,7 +1087,7 @@ checkbutton check {
     background-color: var(--carbon);
     border: 1px solid var(--border-visible);
     border-radius: var(--radius-sm);
-    transition: 
+    transition:
         background-color var(--transition-fast),
         border-color var(--transition-fast);
 }
@@ -1011,7 +1110,7 @@ toast {
     background-color: var(--glass-dark);
     border-radius: var(--radius-lg);
     border: 1px solid var(--border-visible);
-    box-shadow: 
+    box-shadow:
         var(--shadow-xl),
         var(--glow-subtle);
     padding: var(--space-3) var(--space-4);
@@ -1032,6 +1131,7 @@ toast label {
         opacity: 0;
         transform: translateY(10px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -1044,9 +1144,12 @@ toast label {
 
 /* Pulse glow for active states */
 @keyframes pulse-glow {
-    0%, 100% {
+
+    0%,
+    100% {
         box-shadow: var(--glow-subtle);
     }
+
     50% {
         box-shadow: var(--glow-strong);
     }
@@ -1058,8 +1161,13 @@ toast label {
 
 /* Fade in */
 @keyframes fade-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
 }
 
 .fade-in {
@@ -1072,9 +1180,11 @@ toast label {
         opacity: 0;
         transform: scale(0.8);
     }
+
     70% {
         transform: scale(1.02);
     }
+
     100% {
         opacity: 1;
         transform: scale(1);
@@ -1098,7 +1208,7 @@ searchentry {
     padding: var(--space-1) var(--space-2);
     min-height: 28px;
     font-size: 12px;
-    transition: 
+    transition:
         border-color var(--transition-fast),
         box-shadow var(--transition-normal),
         background-color var(--transition-fast);
@@ -1108,7 +1218,7 @@ searchentry {
 searchentry:focus-within {
     border-color: var(--border-highlight);
     background-color: var(--carbon-elevated);
-    box-shadow: 
+    box-shadow:
         0 0 0 3px rgba(255, 255, 255, 0.03),
         var(--glow-subtle);
 }
@@ -1142,7 +1252,7 @@ dropdown button {
     background-color: var(--carbon);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
-    transition: 
+    transition:
         border-color var(--transition-fast),
         background-color var(--transition-fast);
 }
@@ -1155,7 +1265,7 @@ dropdown button:hover {
 
 dropdown popover {
     background-color: var(--glass-dark);
-    border: 1px solid var(--border-visible);
+    border: none;
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-xl), var(--glow-subtle);
 }
@@ -1179,7 +1289,7 @@ dropdown listview row:selected {
    SECTION 24: REVEALER TRANSITIONS — SMOOTH REVEALS
    ───────────────────────────────────────────────────────────────────────────── */
 
-revealer > * {
+revealer>* {
     transition: opacity var(--transition-slow);
 }
 
@@ -1233,7 +1343,7 @@ headerbar.flat {
     font-size: 12px;
 }
 
-.library-toolbar dropdown > button {
+.library-toolbar dropdown>button {
     padding: var(--space-1) var(--space-2);
     min-height: 26px;
 }
@@ -1250,13 +1360,13 @@ headerbar.flat {
    SECTION 26: PANED SEPARATORS — SUBTLE DIVIDERS
    ───────────────────────────────────────────────────────────────────────────── */
 
-paned > separator {
+paned>separator {
     background-color: var(--border-subtle);
     min-width: 1px;
     min-height: 1px;
 }
 
-paned > separator:hover {
+paned>separator:hover {
     background-color: var(--border-visible);
 }
 
@@ -1271,7 +1381,7 @@ gridview {
 }
 
 flowbox flowboxchild,
-gridview > child {
+gridview>child {
     transition: transform var(--transition-bounce);
 }
 
@@ -1280,23 +1390,23 @@ gridview > child {
    SECTION 28: NOTEBOOK & TABS — TAB NAVIGATION
    ───────────────────────────────────────────────────────────────────────────── */
 
-notebook > header {
+notebook>header {
     background-color: var(--carbon);
     border-bottom: 1px solid var(--border-subtle);
 }
 
-notebook > header tab {
+notebook>header tab {
     background-color: transparent;
     border-radius: var(--radius-md) var(--radius-md) 0 0;
     padding: var(--space-2) var(--space-4);
     transition: background-color var(--transition-fast);
 }
 
-notebook > header tab:hover {
+notebook>header tab:hover {
     background-color: var(--carbon-elevated);
 }
 
-notebook > header tab:checked {
+notebook>header tab:checked {
     background-color: var(--void);
     border-bottom: 2px solid var(--accent-white);
 }
@@ -1387,11 +1497,9 @@ spinner {
 
 /* Primary Button - Liquid morphing */
 .fluid-primary-btn {
-    background: linear-gradient(
-        135deg,
-        rgba(255, 255, 255, 0.95) 0%,
-        rgba(230, 230, 230, 0.95) 100%
-    );
+    background: linear-gradient(135deg,
+            rgba(255, 255, 255, 0.95) 0%,
+            rgba(230, 230, 230, 0.95) 100%);
     border: none;
     border-radius: var(--radius-full);
     color: var(--void);
@@ -1399,24 +1507,22 @@ spinner {
     font-weight: 600;
     letter-spacing: 0.02em;
     padding: var(--space-4) var(--space-8);
-    box-shadow: 
+    box-shadow:
         0 4px 20px rgba(255, 255, 255, 0.2),
         0 8px 40px rgba(0, 0, 0, 0.3),
         inset 0 1px 0 rgba(255, 255, 255, 0.5);
-    transition: 
+    transition:
         transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1),
         box-shadow 300ms cubic-bezier(0.22, 1, 0.36, 1),
         background 200ms ease;
 }
 
 .fluid-primary-btn:hover {
-    background: linear-gradient(
-        135deg,
-        rgba(255, 255, 255, 1.0) 0%,
-        rgba(240, 240, 240, 1.0) 100%
-    );
+    background: linear-gradient(135deg,
+            rgba(255, 255, 255, 1.0) 0%,
+            rgba(240, 240, 240, 1.0) 100%);
     transform: scale(1.05) translateY(-2px);
-    box-shadow: 
+    box-shadow:
         0 8px 30px rgba(255, 255, 255, 0.3),
         0 12px 60px rgba(0, 0, 0, 0.4),
         inset 0 1px 0 rgba(255, 255, 255, 0.8);
@@ -1424,7 +1530,7 @@ spinner {
 
 .fluid-primary-btn:active {
     transform: scale(0.98);
-    box-shadow: 
+    box-shadow:
         0 2px 10px rgba(255, 255, 255, 0.1),
         0 4px 20px rgba(0, 0, 0, 0.3);
     transition: transform 100ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -1448,7 +1554,7 @@ spinner {
     font-size: 14px;
     font-weight: 500;
     padding: var(--space-2) var(--space-5);
-    transition: 
+    transition:
         border-color 200ms ease,
         color 200ms ease,
         transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -1471,10 +1577,10 @@ spinner {
     color: var(--text-primary);
     font-size: 14px;
     padding: var(--space-3) var(--space-4);
-    box-shadow: 
+    box-shadow:
         inset 0 2px 4px rgba(0, 0, 0, 0.2),
         0 0 0 0 rgba(255, 255, 255, 0);
-    transition: 
+    transition:
         border-color 200ms ease,
         box-shadow 300ms cubic-bezier(0.22, 1, 0.36, 1),
         background-color 200ms ease;
@@ -1483,7 +1589,7 @@ spinner {
 .fluid-path-entry:focus {
     background-color: rgba(255, 255, 255, 0.08);
     border-color: rgba(255, 255, 255, 0.3);
-    box-shadow: 
+    box-shadow:
         inset 0 2px 4px rgba(0, 0, 0, 0.2),
         0 0 0 4px rgba(255, 255, 255, 0.1),
         0 0 30px rgba(255, 255, 255, 0.1);
@@ -1499,7 +1605,7 @@ spinner {
     background-color: rgba(30, 30, 30, 0.9);
     border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: var(--radius-lg);
-    transition: 
+    transition:
         border-color 200ms ease,
         background-color 200ms ease;
 }
@@ -1509,7 +1615,7 @@ spinner {
     border-color: rgba(255, 255, 255, 0.25);
 }
 
-.fluid-dropdown > button {
+.fluid-dropdown>button {
     background-color: transparent;
     border: none;
     color: var(--text-primary);
@@ -1531,7 +1637,7 @@ spinner {
     padding: 0;
 }
 
-.fluid-dropdown popover > contents > * {
+.fluid-dropdown popover>contents>* {
     border: none;
     background: transparent;
 }

@@ -33,6 +33,12 @@ bwp_wallpaper_object_get_info(BwpWallpaperObject *self) {
   return &self->info;
 }
 
+void bwp_wallpaper_object_update_info(BwpWallpaperObject *self,
+                                      const bwp::wallpaper::WallpaperInfo &info) {
+  g_return_if_fail(BWP_IS_WALLPAPER_OBJECT(self));
+  self->info = info;
+}
+
 gboolean bwp_wallpaper_object_match(gpointer item, gpointer user_data) {
   auto *obj = BWP_WALLPAPER_OBJECT(item);
   const char *query = (const char *)user_data;

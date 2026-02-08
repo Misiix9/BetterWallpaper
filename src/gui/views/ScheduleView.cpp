@@ -89,8 +89,18 @@ void ScheduleView::setupUi() {
 }
 
 void ScheduleView::loadSchedules() {
-  // Clear existing rows
-  // For AdwPreferencesGroup we need to be careful about removal
+  // Clear existing rows from the preferences group
+  {
+    GtkWidget *child = gtk_widget_get_first_child(m_scheduleGroup);
+    while (child) {
+      GtkWidget *next = gtk_widget_get_next_sibling(child);
+      // Only remove AdwActionRow children (skip group header/internal widgets)
+      if (ADW_IS_ACTION_ROW(child)) {
+        adw_preferences_group_remove(ADW_PREFERENCES_GROUP(m_scheduleGroup), child);
+      }
+      child = next;
+    }
+  }
 
   auto &scheduler = bwp::core::Scheduler::getInstance();
   auto schedules = scheduler.getSchedules();
