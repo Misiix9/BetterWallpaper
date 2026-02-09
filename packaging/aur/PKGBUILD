@@ -15,17 +15,12 @@ depends=(
     'wayland'
     'libayatana-appindicator'
     'glew'
-    linux-wallpaperengine'
+    'linux-wallpaperengine'
     'swaybg'
     'swww'
     'hyprpaper'
 )
-optdepends=(
-    'linux-wallpaperengine: for Wallpaper Engine scene support'
-    'swaybg: alternative wallpaper backend'
-    'swww: alternative wallpaper backend with animations'
-    'hyprpaper: Hyprland native wallpaper support'
-)
+
 makedepends=('git' 'cmake' 'base-devel' 'wayland-protocols' 'nlohmann-json')
 provides=('betterwallpaper')
 conflicts=('betterwallpaper')
