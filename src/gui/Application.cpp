@@ -228,8 +228,13 @@ void Application::loadStylesheet() {
   bwp::utils::Logger::log(bwp::utils::LogLevel::INFO,
                           "Successfully loaded stylesheet from: " + cssPath);
 
-  // Initialize WallpaperManager (syncs with MonitorManager)
-  bwp::wallpaper::WallpaperManager::getInstance().initialize();
+  // NOTE: WallpaperManager::initialize() is NOT called from the GUI.
+  // The daemon owns wallpaper rendering (creates WallpaperWindow layer-shell
+  // surfaces and restores state). If the GUI called initialize(), it would
+  // create a second set of blank layer-shell surfaces that cover the daemon's
+  // wallpaper, making it disappear. The GUI uses WallpaperManager::setWallpaper()
+  // on-demand (which creates windows via Blind Mode fallback) when the user
+  // clicks Apply.
 
   // Setup Wayland event polling via GLib main loop
   auto *mmDisplay = bwp::monitor::MonitorManager::getInstance().getDisplay();
