@@ -2,6 +2,7 @@
 #include "WallpaperInfo.hpp"
 #include <filesystem>
 #include <mutex>
+#include <atomic>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <unordered_map>
@@ -33,7 +34,8 @@ public:
 
   // Signals
   using ChangeCallback = std::function<void(const WallpaperInfo &info)>;
-  void setChangeCallback(ChangeCallback cb);
+  void setChangeCallback(ChangeCallback cb); // Deprecated: use addChangeCallback
+  void addChangeCallback(ChangeCallback cb);
 
   // Data directory access
   std::filesystem::path getDataDirectory() const;
@@ -49,10 +51,12 @@ private:
 
   std::unordered_map<std::string, WallpaperInfo> m_wallpapers;
   std::unordered_map<std::string, std::string> m_pathToId;
-  mutable std::mutex m_mutex;
+  mutable std::recursive_mutex m_mutex;
   std::filesystem::path m_dbPath;
   bool m_dirty = false;
+  std::atomic<bool> m_initialized{false};
   ChangeCallback m_changeCallback;
+  std::vector<ChangeCallback> m_changeCallbacks;
 };
 
 } // namespace bwp::wallpaper

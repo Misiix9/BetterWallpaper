@@ -41,7 +41,7 @@ private:
   std::string m_activeMonitorName; // Last active monitor
   int m_activeWorkspaceId = 1;
 
-  mutable std::mutex m_mutex;
+  mutable std::recursive_mutex m_mutex;
 };
 
 } // namespace bwp::hyprland

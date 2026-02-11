@@ -2,8 +2,8 @@
 Type=Application
 Name=BetterWallpaper
 Comment=Manage and set animated wallpapers
-Exec=betterwallpaper
-Icon=betterwallpaper
+Exec=/root/.local/bin/betterwallpaper
+Icon=/root/.local/share/icons/hicolor/512x512/apps/betterwallpaper.png
 Terminal=false
 Categories=Utility;GTK;
 Keywords=wallpaper;background;animated;live;

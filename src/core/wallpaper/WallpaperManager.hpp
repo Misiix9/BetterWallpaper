@@ -82,11 +82,6 @@ private:
 
   std::unordered_map<std::string, MonitorState> m_monitors;
 
-  // Forward declare to avoid include cycles or undefined types
-  // Note: WallpaperWindow is already included via "WallpaperWindow.hpp",
-  // so a forward declaration here is not strictly necessary for compilation.
-  // If it were needed, it would typically be at the namespace scope.
-  // class WallpaperWindow; // Removed to avoid shadowing/conflict
 
   mutable std::recursive_mutex m_mutex; // Recursive to allow nested calls
                                         // (e.g., setWallpaper -> saveState)

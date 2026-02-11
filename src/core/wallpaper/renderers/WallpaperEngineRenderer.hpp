@@ -23,6 +23,7 @@ public:
   void play() override {}
   void pause() override {}
   void stop() override {}
+  bool isPlaying() const override { return false; }
   void setVolume(float volume) override {}
   void setPlaybackSpeed(float speed) override {}
   void setAudioData(const std::vector<float> &audioBands) override {}
@@ -46,6 +47,7 @@ public:
   void play() override;
   void pause() override;
   void stop() override;
+  bool isPlaying() const override;
   void detach(); // New: Detach process on exit
 
   void setVolume(float volume) override;

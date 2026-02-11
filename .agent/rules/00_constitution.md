@@ -1,7 +1,7 @@
 # AGENT CONSTITUTION (IMMUTABLE)
 
 ## 1. The Immutable Plan
-- You must ALWAYS check `plans/01_master_plan.md` before starting work.
+- You must ALWAYS check `CLAUDE.md` before starting work.
 - Do not deviate from the sequence of phases defined in the Master Plan.
 
 ## 2. Visual Law (Monochrome Glass)

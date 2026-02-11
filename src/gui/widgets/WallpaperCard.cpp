@@ -171,6 +171,19 @@ void WallpaperCard::setFavorite(bool favorite) {
   }
 }
 
+void WallpaperCard::updateMetadata(const bwp::wallpaper::WallpaperInfo &info) {
+  // Only update metadata fields — no thumbnail reload, no title change
+  bool favChanged = (m_info.favorite != info.favorite);
+  m_info.favorite = info.favorite;
+  m_info.rating = info.rating;
+  m_info.tags = info.tags;
+  m_info.isAutoTagged = info.isAutoTagged;
+  if (favChanged) {
+    setFavorite(info.favorite);
+  }
+  gtk_widget_set_visible(m_autoTagBadge, info.isAutoTagged);
+}
+
 void WallpaperCard::setInfo(const bwp::wallpaper::WallpaperInfo &info) {
   m_info = info;
 

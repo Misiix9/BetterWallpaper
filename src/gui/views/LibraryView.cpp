@@ -19,34 +19,12 @@ LibraryView::LibraryView() {
         auto *self = static_cast<LibraryView *>(data);
         self->loadWallpapers();
 
-        // Listen for updates
-        auto &lib = bwp::wallpaper::WallpaperLibrary::getInstance();
-        lib.setChangeCallback(
-            [self](const bwp::wallpaper::WallpaperInfo &info) {
-              g_idle_add(
-                  +[](gpointer /*d*/) -> gboolean {
-                    // Info logic would go here if needed, or trigger refresh
-                    return G_SOURCE_REMOVE;
-                  },
-                  nullptr);
-
-              // For now, assuming main thread (GTK generic)
-              if (self->m_grid) {
-                self->m_grid->addWallpaper(info); // Update or add
-              }
-            });
-
         return G_SOURCE_REMOVE;
       },
       this);
 }
 
 LibraryView::~LibraryView() {
-  if (m_grid) {
-    double scroll = m_grid->getVScroll();
-    bwp::config::ConfigManager::getInstance().set("ui.library.scroll_y",
-                                                  scroll);
-  }
 }
 
 void LibraryView::setupUi() {
@@ -205,10 +183,16 @@ void LibraryView::setupUi() {
   gtk_box_append(GTK_BOX(headerBox), sortCombo);
 
   // Add Wallpaper Button (opens file picker for local images)
-  GtkWidget *addBtn = gtk_button_new_from_icon_name("list-add-symbolic");
+  GtkWidget *addBtn = gtk_button_new();
+  GtkWidget *addLabel = gtk_label_new(nullptr);
+  // Using markup to enforce black color on the plus sign, matching the Apply button fix
+  gtk_label_set_markup(GTK_LABEL(addLabel), "<span color='black' weight='bold' size='large'>+</span>");
+  gtk_button_set_child(GTK_BUTTON(addBtn), addLabel);
+  
   gtk_widget_set_tooltip_text(addBtn, "Add Wallpaper from File");
   gtk_widget_set_margin_start(addBtn, 8);
   gtk_widget_add_css_class(addBtn, "suggested-action");
+  // gtk_widget_add_css_class(addBtn, "force-black-icon"); // Not needed with markup label fix
   g_signal_connect(addBtn, "clicked",
                    G_CALLBACK(+[](GtkButton *, gpointer data) {
                      auto *self = static_cast<LibraryView *>(data);
@@ -282,8 +266,9 @@ void LibraryView::setupUi() {
                                         bwp::wallpaper::WallpaperInfo *> *>(
                       data);
               if (pair->first->m_grid) {
+                // In-place update: updates GObject data + visible card directly
+                // No splice, no items-changed, no scroll reset
                 pair->first->m_grid->updateWallpaperInStore(*pair->second);
-                pair->first->m_grid->notifyDataChanged();
               }
               delete pair->second;
               delete pair;
@@ -304,6 +289,19 @@ void LibraryView::loadWallpapers() {
     for (const auto &info : wallpapers) {
       m_grid->addWallpaper(info);
     }
+    // Always sort alphabetically A-Z for consistent ordering
+    m_grid->setSortOrder(WallpaperGrid::SortOrder::NameAsc);
+
+    // Fix: Schedule scroll reset and unselect to run AFTER layout
+    // This ensures no random wallpaper is pre-selected and view starts at top
+    g_idle_add(+[](gpointer data) -> gboolean {
+        auto* grid = static_cast<WallpaperGrid*>(data);
+        if (grid) {
+            grid->setVScroll(0.0);
+            grid->clearSelection();
+        }
+        return FALSE;
+    }, m_grid.get());
   }
 
   // Optimize: Rebuild tag list
@@ -390,21 +388,6 @@ void LibraryView::loadWallpapers() {
 
         if (scanner.isScanning()) {
           return G_SOURCE_CONTINUE;
-        }
-        return G_SOURCE_REMOVE;
-      },
-      this);
-  // Restore scroll position after initial load
-  g_timeout_add(
-      500,
-      +[](gpointer data) -> gboolean {
-        auto *self = static_cast<LibraryView *>(data);
-        if (self->m_grid) {
-          double scroll = bwp::config::ConfigManager::getInstance().get<double>(
-              "ui.library.scroll_y", 0.0);
-          if (scroll > 0) {
-            self->m_grid->setVScroll(scroll);
-          }
         }
         return G_SOURCE_REMOVE;
       },

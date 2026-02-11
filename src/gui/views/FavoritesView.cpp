@@ -13,6 +13,41 @@ FavoritesView::FavoritesView() {
         return G_SOURCE_REMOVE;
       },
       this);
+
+  // Register for library changes so favorites refresh instantly
+  auto &lib = bwp::wallpaper::WallpaperLibrary::getInstance();
+  lib.addChangeCallback(
+      [this](const bwp::wallpaper::WallpaperInfo &changedInfo) {
+        // Schedule refresh on the GTK main thread
+        auto *info = new bwp::wallpaper::WallpaperInfo(changedInfo);
+        g_idle_add(
+            +[](gpointer data) -> gboolean {
+              auto *pair =
+                  static_cast<std::pair<FavoritesView *,
+                                        bwp::wallpaper::WallpaperInfo *> *>(
+                      data);
+              auto *self = pair->first;
+              auto *changed = pair->second;
+
+              if (self->m_grid) {
+                if (changed->favorite) {
+                  // Wallpaper was favorited — add or update in grid
+                  self->m_grid->updateWallpaperInStore(*changed);
+                  self->m_grid->addWallpaper(*changed);
+                  self->m_grid->notifyDataChanged();
+                } else {
+                  // Wallpaper was unfavorited — full reload to remove it
+                  self->loadFavorites();
+                }
+              }
+
+              delete changed;
+              delete pair;
+              return G_SOURCE_REMOVE;
+            },
+            new std::pair<FavoritesView *, bwp::wallpaper::WallpaperInfo *>(
+                this, info));
+      });
 }
 
 FavoritesView::~FavoritesView() {}

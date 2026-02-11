@@ -15,6 +15,15 @@ mkdir -p "$PIXMAP_DIR"
 
 echo "Installing BetterWallpaper..."
 
+# Install CSS Style (Critical)
+mkdir -p "$HOME/.local/share/betterwallpaper/ui"
+if [ -f "data/ui/style.css" ]; then
+    echo "Installing style.css..."
+    cp data/ui/style.css "$HOME/.local/share/betterwallpaper/ui/style.css"
+else
+    echo "Warning: data/ui/style.css not found!"
+fi
+
 # Build project if needed
 if [ ! -f "build/src/gui/betterwallpaper" ]; then
     echo "Building project..."
@@ -26,6 +35,22 @@ fi
 echo "Installing binary..."
 cp build/src/gui/betterwallpaper "$BIN_DIR/betterwallpaper"
 chmod +x "$BIN_DIR/betterwallpaper"
+
+# Install Daemon Binary
+if [ -f "build/src/daemon/betterwallpaper-daemon" ]; then
+    echo "Installing daemon binary..."
+    cp build/src/daemon/betterwallpaper-daemon "$BIN_DIR/betterwallpaper-daemon"
+    chmod +x "$BIN_DIR/betterwallpaper-daemon"
+
+    # Also install to /usr/bin for systemd service compatibility
+    if [ -w /usr/bin ] || command -v sudo &>/dev/null; then
+        echo "Installing daemon to /usr/bin (requires sudo)..."
+        sudo cp build/src/daemon/betterwallpaper-daemon /usr/bin/betterwallpaper-daemon
+        sudo chmod +x /usr/bin/betterwallpaper-daemon
+    fi
+else
+    echo "Warning: Daemon binary not found. Build with: cmake --build build"
+fi
 
 # Install Icon (to multiple locations to be safe)
 if [ -f "betterwallpaper_icon.png" ]; then

@@ -58,11 +58,9 @@ WallpaperManager &WallpaperManager::getInstance() {
 }
 
 WallpaperManager::WallpaperManager() {
-  // Connect to monitor manager callback
-  monitor::MonitorManager::getInstance().setCallback(
-      [this](const monitor::MonitorInfo &info, bool connected) {
-        this->handleMonitorUpdate(info, connected);
-      });
+  // NOTE: MonitorManager callback is registered in initialize(), NOT here.
+  // The GUI process must NOT create WallpaperWindows — only the daemon
+  // calls initialize(), so only the daemon gets the callback.
 }
 
 WallpaperManager::~WallpaperManager() {
@@ -70,6 +68,14 @@ WallpaperManager::~WallpaperManager() {
 }
 
 void WallpaperManager::initialize() {
+  // Register monitor callback HERE (not in constructor) so only the daemon
+  // creates WallpaperWindows via handleMonitorUpdate. The GUI never calls
+  // initialize(), so it never gets this callback.
+  monitor::MonitorManager::getInstance().setCallback(
+      [this](const monitor::MonitorInfo &info, bool connected) {
+        this->handleMonitorUpdate(info, connected);
+      });
+
   monitor::MonitorManager::getInstance().initialize();
   auto monitors = monitor::MonitorManager::getInstance().getMonitors();
   for (const auto &m : monitors) {
@@ -155,6 +161,23 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
 
   LOG_INFO("Currently have " + std::to_string(m_monitors.size()) + " monitors");
 
+  // === SAME-WALLPAPER GUARD ===
+  // If this monitor already has this exact wallpaper, skip re-application.
+  // This prevents needless process/window recreation on workspace switches
+  // or repeated events.
+  {
+    auto existing = m_monitors.find(monitorName);
+    if (existing != m_monitors.end() &&
+        existing->second.currentPath == path &&
+        existing->second.renderer &&
+        existing->second.renderer->isPlaying() &&
+        !path.empty()) {
+      LOG_INFO("Wallpaper already set to " + path + " on " + monitorName +
+               " — skipping re-application");
+      return true;
+    }
+  }
+
   // Find monitor state
   auto it = m_monitors.find(monitorName);
   if (it == m_monitors.end()) {
@@ -180,6 +203,19 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
   LOG_INFO("Found monitor " + monitorName);
 
   // #endregion
+
+  // Refresh renderer settings from config so that values saved by the GUI
+  // (via ConfigManager) are picked up when the daemon creates a new renderer.
+  {
+    auto &conf = bwp::config::ConfigManager::getInstance();
+    m_fpsLimit = conf.get<int>("performance.fps_limit", m_fpsLimit);
+    m_volumeLevel = conf.get<int>("defaults.audio_volume", m_volumeLevel);
+    bool audioEnabled = conf.get<bool>("defaults.audio_enabled", !m_globalMuted);
+    m_globalMuted = !audioEnabled;
+    m_noAudioProcessing = conf.get<bool>("defaults.no_audio_processing", m_noAudioProcessing);
+    m_disableMouse = conf.get<bool>("defaults.disable_mouse", m_disableMouse);
+    m_noAutomute = conf.get<bool>("defaults.no_automute", m_noAutomute);
+  }
 
   // Check if wallpaper is already preloaded for instant setting
   std::shared_ptr<WallpaperRenderer> renderer;
@@ -312,14 +348,18 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
   // Start transition: new window fades in over old window
   transitionManager.startTransition(
       monitorName, oldWindow, newWindow,
-      [this, monitorName, path, oldPath](bool success) {
+      [this, monitorName, path, oldPath, oldRenderer](bool success) {
         if (success) {
           LOG_INFO("Seamless transition completed for monitor: " + monitorName);
         } else {
           LOG_WARN("Transition failed for monitor: " + monitorName);
         }
-        // Old window and renderer will be automatically cleaned up
-        // when their shared_ptrs go out of scope
+        // Old renderer is kept alive through the transition via this capture.
+        // Its destructor runs here, stopping the old WE process AFTER the
+        // new one has had time to start rendering.
+        if (oldRenderer) {
+          LOG_INFO("Stopping old renderer after transition");
+        }
       });
 
   // Return true immediately, effectively "set" from user perspective

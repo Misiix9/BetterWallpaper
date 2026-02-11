@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <signal.h>
 #include <sys/wait.h>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 
@@ -229,6 +230,38 @@ void WallpaperEngineRenderer::launchProcess() {
       setenv("DISPLAY", ":0", 1);
     }
 
+    // Ensure XDG_SESSION_TYPE is set — linux-wallpaperengine uses it to
+    // detect the window server. Under systemd user services these variables
+    // may not be inherited from the graphical session.
+    const char *sessionType = getenv("XDG_SESSION_TYPE");
+    if (!sessionType || sessionType[0] == '\0') {
+      // If WAYLAND_DISPLAY is set, we're on Wayland
+      const char *waylandDisplay = getenv("WAYLAND_DISPLAY");
+      if (waylandDisplay && waylandDisplay[0] != '\0') {
+        setenv("XDG_SESSION_TYPE", "wayland", 1);
+      } else {
+        setenv("XDG_SESSION_TYPE", "x11", 1);
+      }
+    }
+
+    // Ensure WAYLAND_DISPLAY is set for Wayland compositors
+    const char *waylandDisp = getenv("WAYLAND_DISPLAY");
+    if (!waylandDisp || waylandDisp[0] == '\0') {
+      // Try common Wayland display socket names
+      const char *xdgRuntime = getenv("XDG_RUNTIME_DIR");
+      if (xdgRuntime) {
+        std::string socketPath = std::string(xdgRuntime) + "/wayland-1";
+        if (std::filesystem::exists(socketPath)) {
+          setenv("WAYLAND_DISPLAY", "wayland-1", 1);
+        } else {
+          socketPath = std::string(xdgRuntime) + "/wayland-0";
+          if (std::filesystem::exists(socketPath)) {
+            setenv("WAYLAND_DISPLAY", "wayland-0", 1);
+          }
+        }
+      }
+    }
+
     // Create new session to detach from terminal (allows surviving app closure)
     // This makes the process independent and it will continue running even
     // after the parent app exits - key for wallpaper persistence
@@ -371,22 +404,47 @@ void WallpaperEngineRenderer::stop() {
   terminateProcess();
 }
 
+bool WallpaperEngineRenderer::isPlaying() const {
+  return m_isPlaying && m_pid != -1;
+}
+
 void WallpaperEngineRenderer::terminateProcess() {
   LOG_SCOPE_AUTO();
   m_stopWatcher = true;
   m_cv.notify_all();
 
-  if (m_pid != -1 && !m_detached) {
-    kill(m_pid, SIGTERM);
-    // waitpid handled by thread?
-    // If we kill, watcher wakes up.
-    // Better signal watcher to stop, then kill.
-    // We rely on watcher to wake up on waitpid return.
+  pid_t pidToReap = m_pid; // Save before we clear it
+
+  if (pidToReap != -1 && !m_detached) {
+    kill(pidToReap, SIGTERM);
   }
 
   if (m_watcherThread.joinable()) {
     m_watcherThread.join();
   }
+
+  // Explicitly reap the child process to prevent zombies.
+  // The watcher thread may have already reaped it, but we do a final check.
+  if (pidToReap != -1 && !m_detached) {
+    int status = 0;
+    // Give the process a moment to die after SIGTERM
+    for (int i = 0; i < 20; ++i) { // Up to 2 seconds
+      pid_t res = waitpid(pidToReap, &status, WNOHANG);
+      if (res == pidToReap || res == -1) {
+        // Reaped successfully, or already gone (ECHILD)
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    // If still alive after 2s, force kill and reap
+    if (waitpid(pidToReap, &status, WNOHANG) == 0) {
+      LOG_WARN("Process " + std::to_string(pidToReap) +
+               " did not exit after SIGTERM, sending SIGKILL");
+      kill(pidToReap, SIGKILL);
+      waitpid(pidToReap, &status, 0); // Block until reaped
+    }
+  }
+
   m_pid = -1;
   m_isPlaying = false;
 }
@@ -414,59 +472,34 @@ void WallpaperEngineRenderer::setFpsLimit(int fps) {
 }
 
 void WallpaperEngineRenderer::setMuted(bool muted) {
-  if (m_muted != muted) {
-    m_muted = muted;
-    if (m_isPlaying && m_pid != -1) {
-      terminateProcess();
-      m_crashCount = 0;
-      play();
-    }
-  }
+  // Just store the flag — do NOT restart the process.
+  // The --silent arg is a launch-time setting. Restarting the entire
+  // wallpaper process on every mute toggle (e.g. on every Hyprland
+  // activewindow event) causes visible flicker. The new value will
+  // take effect the next time the process is naturally (re)launched.
+  m_muted = muted;
 }
 
 void WallpaperEngineRenderer::setNoAudioProcessing(bool enabled) {
-  if (m_noAudioProcessing != enabled) {
-    m_noAudioProcessing = enabled;
-    if (m_isPlaying && m_pid != -1) {
-      terminateProcess();
-      m_crashCount = 0;
-      play();
-    }
-  }
+  // Store for next launch — don't restart the process mid-playback.
+  m_noAudioProcessing = enabled;
 }
 
 void WallpaperEngineRenderer::setDisableMouse(bool enabled) {
-  if (m_disableMouse != enabled) {
-    m_disableMouse = enabled;
-    if (m_isPlaying && m_pid != -1) {
-      terminateProcess();
-      m_crashCount = 0;
-      play();
-    }
-  }
+  // Store for next launch — don't restart the process mid-playback.
+  m_disableMouse = enabled;
 }
 
 void WallpaperEngineRenderer::setNoAutomute(bool enabled) {
-  if (m_noAutomute != enabled) {
-    m_noAutomute = enabled;
-    if (m_isPlaying && m_pid != -1) {
-      terminateProcess();
-      m_crashCount = 0;
-      play();
-    }
-  }
+  // Store for next launch — don't restart the process mid-playback.
+  m_noAutomute = enabled;
 }
 
 void WallpaperEngineRenderer::setVolumeLevel(int volume) {
   volume = std::clamp(volume, 0, 100);
-  if (m_volumeLevel != volume) {
-    m_volumeLevel = volume;
-    if (m_isPlaying && m_pid != -1) {
-      terminateProcess();
-      m_crashCount = 0;
-      play();
-    }
-  }
+  // Store for next launch — don't restart the process mid-playback.
+  // Volume is a launch-time CLI arg for linux-wallpaperengine.
+  m_volumeLevel = volume;
 }
 
 void WallpaperEngineRenderer::setAudioData(

@@ -297,6 +297,8 @@ void LibraryScanner::runScan(std::vector<std::string> paths) {
   m_scanning = false;
 
   auto &library = WallpaperLibrary::getInstance();
+  // Save library to persist any scanner metadata merges and new wallpaper entries
+  library.save();
   auto allItems = library.getAllWallpapers();
   LOG_INFO("Scan finished. Library has " + std::to_string(allItems.size()) +
            " wallpapers");

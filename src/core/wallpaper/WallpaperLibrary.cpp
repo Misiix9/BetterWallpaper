@@ -28,6 +28,9 @@ WallpaperLibrary::~WallpaperLibrary() {
 
 void WallpaperLibrary::initialize() {
   LOG_SCOPE_AUTO();
+  if (m_initialized.exchange(true)) {
+    return; // Already initialized, don't re-load and wipe in-memory state
+  }
   load();
 }
 
@@ -50,7 +53,7 @@ std::filesystem::path WallpaperLibrary::getDatabasePath() const {
 
 void WallpaperLibrary::load() {
   LOG_SCOPE_AUTO();
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   if (!std::filesystem::exists(m_dbPath))
     return;
 
@@ -199,20 +202,16 @@ void WallpaperLibrary::load() {
     LOG_ERROR(std::string("Failed to load library: ") + e.what());
   }
 
-  // Clean up dirty state by saving provided we are no longer locked?
-  // load() holds lock until return.
+  // Save dirty state (from backfilling titles/timestamps, deduplication, etc.)
+  // Safe to call now because we use a recursive_mutex
   if (m_dirty) {
-    // We can't call save() because it locks.
-    // We need to implement save logic here or rely on destructor.
-    // Since m_dirty is true, destructor will save.
-    // BUT we want it persisted now.
-    // I'll leave m_dirty = true.
+    save();
   }
 }
 
 void WallpaperLibrary::save() {
   LOG_SCOPE_AUTO();
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   try {
     nlohmann::json j;
     j["wallpapers"] = nlohmann::json::array();
@@ -261,7 +260,7 @@ void WallpaperLibrary::save() {
 void WallpaperLibrary::addWallpaper(const WallpaperInfo &info) {
   LOG_SCOPE_AUTO();
   {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     // Check for duplicates
     std::string normPath = info.path;
@@ -308,10 +307,8 @@ void WallpaperLibrary::addWallpaper(const WallpaperInfo &info) {
     m_pathToId[normPath] = newInfo.id;
     m_dirty = true;
   }
-  // Auto-save for local wallpapers to ensure persistence
-  if (info.source == "local") {
-    save();
-  }
+  // Always save to ensure favorites/ratings and new wallpapers persist
+  save();
 
   if (m_changeCallback) {
     m_changeCallback(info);
@@ -322,20 +319,27 @@ void WallpaperLibrary::updateWallpaper(const WallpaperInfo &info) {
   LOG_SCOPE_AUTO();
   bool needsSave = false;
   ChangeCallback cb;
+  std::vector<ChangeCallback> cbs;
   {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     if (m_wallpapers.count(info.id)) {
       m_wallpapers[info.id] = info;
       m_dirty = true;
       needsSave = true;
       cb = m_changeCallback;
+      cbs = m_changeCallbacks;
     }
   }
-  // Call save and callback outside the lock to avoid deadlock
+  // Call save and callbacks outside the lock to avoid deadlock
   if (needsSave) {
     save();
     if (cb) {
       cb(info);
+    }
+    for (const auto &callback : cbs) {
+      if (callback) {
+        callback(info);
+      }
     }
   }
 }
@@ -345,7 +349,7 @@ void WallpaperLibrary::updateBlurhash(const std::string &id,
   LOG_SCOPE_AUTO();
   bool needsSave = false;
   {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     auto it = m_wallpapers.find(id);
     if (it != m_wallpapers.end()) {
       it->second.blurhash = hash;
@@ -362,7 +366,7 @@ void WallpaperLibrary::removeWallpaper(const std::string &id) {
   LOG_SCOPE_AUTO();
   bool needsSave = false;
   {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     if (m_wallpapers.count(id)) {
       std::string path = m_wallpapers[id].path;
       m_wallpapers.erase(id);
@@ -401,14 +405,14 @@ void WallpaperLibrary::removeWallpaper(const std::string &id) {
 void WallpaperLibrary::removeDuplicates() {
   // Public wrapper if needed, but logic is primarily in load()
   // Re-run logic
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   // Copy-paste of dedupe logic if we want it callable at runtime
   // For now, load match is sufficient.
 }
 
 std::optional<WallpaperInfo>
 WallpaperLibrary::getWallpaper(const std::string &id) const {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   auto it = m_wallpapers.find(id);
   if (it != m_wallpapers.end()) {
     return it->second;
@@ -418,7 +422,7 @@ WallpaperLibrary::getWallpaper(const std::string &id) const {
 
 std::vector<WallpaperInfo> WallpaperLibrary::getAllWallpapers() const {
   LOG_SCOPE_AUTO();
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   std::vector<WallpaperInfo> result;
   result.reserve(m_wallpapers.size());
   for (const auto &pair : m_wallpapers) {
@@ -430,7 +434,7 @@ std::vector<WallpaperInfo> WallpaperLibrary::getAllWallpapers() const {
 std::vector<WallpaperInfo>
 WallpaperLibrary::search(const std::string &query) const {
   LOG_SCOPE_AUTO();
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   std::vector<WallpaperInfo> result;
   std::string q = utils::StringUtils::toLower(utils::StringUtils::trim(query));
 
@@ -455,7 +459,7 @@ WallpaperLibrary::search(const std::string &query) const {
 
 std::vector<WallpaperInfo> WallpaperLibrary::filter(
     const std::function<bool(const WallpaperInfo &)> &predicate) const {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   std::vector<WallpaperInfo> result;
   for (const auto &pair : m_wallpapers) {
     if (predicate(pair.second)) {
@@ -466,12 +470,17 @@ std::vector<WallpaperInfo> WallpaperLibrary::filter(
 }
 
 void WallpaperLibrary::setChangeCallback(ChangeCallback cb) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   m_changeCallback = cb;
 }
 
+void WallpaperLibrary::addChangeCallback(ChangeCallback cb) {
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
+  m_changeCallbacks.push_back(std::move(cb));
+}
+
 std::vector<std::string> WallpaperLibrary::getAllTags() const {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   std::vector<std::string> tags;
   for (const auto &pair : m_wallpapers) {
     for (const auto &tag : pair.second.tags) {

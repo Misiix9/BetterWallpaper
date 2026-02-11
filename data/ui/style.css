@@ -576,34 +576,66 @@ button:active {
 }
 
 /* Primary action button */
-button.suggested-action {
+button.suggested-action,
+button.suggested-action:checked,
+button.suggested-action:disabled {
     background-color: var(--accent-white);
+    background-image: none;
     border-color: var(--accent-white);
-    color: var(--void) !important;
+    color: #0A0A0A !important;
     font-weight: 600;
     box-shadow: var(--glow-subtle);
 }
 
 button.suggested-action:hover {
     background-color: #FFFFFF;
+    background-image: none;
+    color: #0A0A0A !important;
     box-shadow: var(--glow-medium);
 }
 
 button.suggested-action:active {
     background-color: #D4D4D4;
+    background-image: none;
+    color: #0A0A0A !important;
     box-shadow: none;
 }
 
-button.suggested-action label {
-    color: var(--void) !important;
+button.suggested-action label,
+button.suggested-action:hover label,
+button.suggested-action:active label,
+button.suggested-action:checked label {
+    color: #0A0A0A !important;
 }
 
-button.suggested-action image {
-    color: var(--void) !important;
+button.suggested-action image,
+button.suggested-action:hover image,
+button.suggested-action:active image,
+button.suggested-action:checked image {
+    color: #0A0A0A !important;
     -gtk-icon-style: symbolic;
 }
 
-/* Destructive button */
+button.suggested-action.force-black-icon,
+button.suggested-action.force-black-icon image {
+    color: #0A0A0A !important;
+    -gtk-icon-transform: none;
+    -gtk-icon-filter: none;
+}
+
+/* Rated Star (Gold) - Enhanced Specificity */
+button.flat.rated-star,
+button.rated-star,
+button.rated-star image {
+    color: #FFD700 !important;
+    background-color: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    -gtk-icon-shadow: 0 0 2px rgba(255, 215, 0, 0.5);
+    opacity: 1 !important;
+}
+
+/* Destructive action button */
 button.destructive-action {
     background-color: var(--status-error-bg);
     border-color: var(--status-error-border);
@@ -1118,6 +1150,31 @@ toast {
 
 toast label {
     color: var(--text-primary);
+}
+
+/* Type-specific toast colors */
+toast.toast-success {
+    background-color: var(--status-success-bg);
+    border-color: var(--status-success-border);
+}
+toast.toast-success label {
+    color: var(--status-success-text);
+}
+
+toast.toast-error {
+    background-color: var(--status-error-bg);
+    border-color: var(--status-error-border);
+}
+toast.toast-error label {
+    color: var(--status-error-text);
+}
+
+toast.toast-warning {
+    background-color: var(--status-warning-bg);
+    border-color: var(--status-warning-border);
+}
+toast.toast-warning label {
+    color: var(--status-warning-text);
 }
 
 

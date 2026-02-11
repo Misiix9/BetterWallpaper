@@ -620,7 +620,7 @@ GtkWidget *SettingsView::createGeneralPage() {
                    G_CALLBACK(+[](AdwSwitchRow *row, GParamSpec *, gpointer) {
                      bwp::config::ConfigManager::getInstance().set(
                          "general.start_minimized",
-                         adw_switch_row_get_active(row));
+                         static_cast<bool>(adw_switch_row_get_active(row)));
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(appGroup), trayRow);
@@ -667,7 +667,7 @@ GtkWidget *SettingsView::createGeneralPage() {
   g_signal_connect(extractRow, "notify::active",
                    G_CALLBACK(+[](AdwSwitchRow *row, GParamSpec *, gpointer) {
                      bwp::config::ConfigManager::getInstance().set(
-                         "theming.enabled", adw_switch_row_get_active(row));
+                         "theming.enabled", static_cast<bool>(adw_switch_row_get_active(row)));
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(themeGroup), extractRow);
@@ -901,7 +901,7 @@ GtkWidget *SettingsView::createGraphicsPage() {
   g_signal_connect(nsfwRow, "notify::active",
                    G_CALLBACK(+[](AdwSwitchRow *r, GParamSpec *, gpointer) {
                      bwp::config::ConfigManager::getInstance().set(
-                         "content.show_nsfw", adw_switch_row_get_active(r));
+                         "content.show_nsfw", static_cast<bool>(adw_switch_row_get_active(r)));
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(contentGroup), nsfwRow);
@@ -933,7 +933,7 @@ GtkWidget *SettingsView::createGraphicsPage() {
   g_signal_connect(shuffleRow, "notify::active",
                    G_CALLBACK(+[](AdwSwitchRow *r, GParamSpec *, gpointer) {
                      bwp::config::ConfigManager::getInstance().set(
-                         "slideshow.shuffle", adw_switch_row_get_active(r));
+                         "slideshow.shuffle", static_cast<bool>(adw_switch_row_get_active(r)));
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(slideGroup), shuffleRow);
@@ -978,7 +978,7 @@ GtkWidget *SettingsView::createAudioPage() {
                    G_CALLBACK(+[](AdwSwitchRow *r, GParamSpec *, gpointer) {
                      bwp::config::ConfigManager::getInstance().set(
                          "defaults.audio_enabled",
-                         adw_switch_row_get_active(r));
+                         static_cast<bool>(adw_switch_row_get_active(r)));
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), muteRow);
@@ -1007,7 +1007,7 @@ GtkWidget *SettingsView::createPlaybackPage() {
                    G_CALLBACK(+[](AdwSwitchRow *r, GParamSpec *, gpointer) {
                      bwp::config::ConfigManager::getInstance().set(
                          "playback.pause_on_battery",
-                         adw_switch_row_get_active(r));
+                         static_cast<bool>(adw_switch_row_get_active(r)));
                    }),
                    nullptr);
 
@@ -1040,7 +1040,7 @@ GtkWidget *SettingsView::createTransitionsPage() {
   g_signal_connect(m_transitionEnabledSwitch, "notify::active",
                    G_CALLBACK(+[](AdwSwitchRow *row, GParamSpec *, gpointer) {
                      bwp::config::ConfigManager::getInstance().set(
-                         "transitions.enabled", adw_switch_row_get_active(row));
+                         "transitions.enabled", static_cast<bool>(adw_switch_row_get_active(row)));
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(transGroup),
@@ -1390,20 +1390,46 @@ GtkWidget *SettingsView::createAboutPage() {
   gtk_widget_add_css_class(title, "title-2");
   gtk_box_append(GTK_BOX(box), title);
 
-  GtkWidget *version = gtk_label_new("Version 0.4.1");
+  GtkWidget *version = gtk_label_new("Version 0.5.0 Beta");
   gtk_widget_add_css_class(version, "dim-label");
   gtk_box_append(GTK_BOX(box), version);
 
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), box);
 
-  GtkWidget *linkRow = adw_action_row_new();
-  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(linkRow),
+  // GitHub Repository
+  GtkWidget *ghRow = adw_action_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(ghRow),
                                 "GitHub Repository");
-  GtkWidget *linkBtn = gtk_button_new_from_icon_name("external-link-symbolic");
-  gtk_widget_set_valign(linkBtn, GTK_ALIGN_CENTER);
-  adw_action_row_add_suffix(ADW_ACTION_ROW(linkRow), linkBtn);
+  GtkWidget *ghBtn = gtk_button_new_from_icon_name("external-link-symbolic");
+  gtk_widget_set_valign(ghBtn, GTK_ALIGN_CENTER);
+  gtk_widget_add_css_class(ghBtn, "flat");
+  
+  g_signal_connect(ghBtn, "clicked", G_CALLBACK(+[](GtkButton *btn, gpointer) {
+      GtkUriLauncher *launcher = gtk_uri_launcher_new("https://github.com/Misiix9/BetterWallpaper");
+      gtk_uri_launcher_launch(launcher, GTK_WINDOW(gtk_widget_get_root(GTK_WIDGET(btn))), NULL, NULL, NULL);
+      g_object_unref(launcher);
+  }), nullptr);
+  
+  adw_action_row_add_suffix(ADW_ACTION_ROW(ghRow), ghBtn);
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), ghRow);
 
-  adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), linkRow);
+  // AUR Package
+  GtkWidget *aurRow = adw_action_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(aurRow),
+                                "AUR Package");
+  GtkWidget *aurBtn = gtk_button_new_from_icon_name("external-link-symbolic");
+  gtk_widget_set_valign(aurBtn, GTK_ALIGN_CENTER);
+  gtk_widget_add_css_class(aurBtn, "flat");
+
+  g_signal_connect(aurBtn, "clicked", G_CALLBACK(+[](GtkButton *btn, gpointer) {
+      GtkUriLauncher *launcher = gtk_uri_launcher_new("https://aur.archlinux.org/packages/betterwallpaper-git");
+      gtk_uri_launcher_launch(launcher, GTK_WINDOW(gtk_widget_get_root(GTK_WIDGET(btn))), NULL, NULL, NULL);
+      g_object_unref(launcher);
+  }), nullptr);
+
+  adw_action_row_add_suffix(ADW_ACTION_ROW(aurRow), aurBtn);
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), aurRow);
+
   return page;
 }
 

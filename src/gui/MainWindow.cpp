@@ -1,6 +1,8 @@
 #include "MainWindow.hpp"
 #include "../core/config/ConfigManager.hpp"
 #include "../core/input/InputManager.hpp"
+#include "../core/ipc/LinuxIPCClient.hpp"
+#include "../core/monitor/MonitorManager.hpp"
 #include "../core/power/PowerManager.hpp"
 #include "../core/slideshow/SlideshowManager.hpp"
 #include "../core/utils/Constants.hpp"
@@ -70,17 +72,32 @@ MainWindow::MainWindow(AdwApplication *app) {
           GtkWidget *content = adw_application_window_get_content(ADW_APPLICATION_WINDOW(win));
           if (!content || !ADW_IS_TOAST_OVERLAY(content)) { delete r; return FALSE; }
 
-          // Create toast with type-specific prefix
+          // Create toast with type-specific prefix and CSS class
           std::string prefix;
+          std::string textColor;
           switch (r->type) {
-            case bwp::core::utils::ToastType::Success: prefix = "\u2713 "; break;
-            case bwp::core::utils::ToastType::Error:   prefix = "\u2717 "; break;
-            case bwp::core::utils::ToastType::Warning: prefix = "\u26A0 "; break;
+            case bwp::core::utils::ToastType::Success: prefix = "✓ "; textColor = "#86EFAC"; break;
+            case bwp::core::utils::ToastType::Error:   prefix = "✗ "; textColor = "#FCA5A5"; break;
+            case bwp::core::utils::ToastType::Warning: prefix = "⚠ "; textColor = "#FCD34D"; break;
             default: break;
           }
 
-          AdwToast *toast = adw_toast_new((prefix + r->message).c_str());
+          AdwToast *toast = adw_toast_new(" "); // Fix: Must provide non-null text to avoid assertion failure
           adw_toast_set_timeout(toast, r->durationMs > 0 ? (r->durationMs / 1000) : 0);
+
+          // Use a custom title label with colored Pango markup
+          GtkWidget *toastLabel = gtk_label_new(nullptr);
+          std::string fullMsg = prefix + r->message;
+          if (!textColor.empty()) {
+            char *escaped = g_markup_escape_text(fullMsg.c_str(), -1);
+            std::string markup = "<span color='" + textColor + "'>" + escaped + "</span>";
+            gtk_label_set_markup(GTK_LABEL(toastLabel), markup.c_str());
+            g_free(escaped);
+          } else {
+            gtk_label_set_text(GTK_LABEL(toastLabel), fullMsg.c_str());
+          }
+          gtk_label_set_ellipsize(GTK_LABEL(toastLabel), PANGO_ELLIPSIZE_END);
+          adw_toast_set_custom_title(toast, toastLabel);
 
           // Add first action button if present
           if (!r->actions.empty()) {
@@ -131,32 +148,25 @@ MainWindow::MainWindow(AdwApplication *app) {
 
   // #endregion
 
-  // Slideshow Logic
+  // Slideshow Logic — use IPC to tell daemon to set the wallpaper.
+  // The GUI must NOT spawn its own wallpaper processes.
   auto &sm = bwp::core::SlideshowManager::getInstance();
   sm.setChangeCallback([this](const std::string &id) {
     auto &lib = bwp::wallpaper::WallpaperLibrary::getInstance();
     auto wp = lib.getWallpaper(id);
     if (wp) {
-      bool isWe = (wp->type == bwp::wallpaper::WallpaperType::WEScene ||
-                   wp->type == bwp::wallpaper::WallpaperType::WEVideo);
+      // Route through IPC to daemon — it owns the renderers
+      auto &monMgr = bwp::monitor::MonitorManager::getInstance();
+      auto monitors = monMgr.getMonitors();
+      std::string targetMonitor =
+          monitors.empty() ? "HDMI-A-1" : monitors[0].name;
 
-      if (isWe) {
-        auto &conf = bwp::config::ConfigManager::getInstance();
-        int fps = wp->settings.fps > 0 ? wp->settings.fps
-                                       : conf.get<int>("performance.fps_limit");
-        bool mute = wp->settings.muted;
-        if (!mute && !conf.get<bool>("defaults.audio_enabled"))
-          if (!mute && !conf.get<bool>("defaults.audio_enabled"))
-            mute = true;
-
-        m_weRenderer->setFpsLimit(fps);
-        m_weRenderer->setMuted(mute);
-        // Set monitor if needed
-        m_weRenderer->load(wp->path);
+      bwp::ipc::LinuxIPCClient ipcClient;
+      if (ipcClient.connect()) {
+        LOG_INFO("Slideshow: sending IPC SetWallpaper for " + wp->path);
+        ipcClient.setWallpaper(wp->path, targetMonitor);
       } else {
-        m_weRenderer->stop();
-        bwp::wallpaper::NativeWallpaperSetter::getInstance().setWallpaper(
-            wp->path);
+        LOG_ERROR("Slideshow: failed to connect to daemon via IPC");
       }
     }
 

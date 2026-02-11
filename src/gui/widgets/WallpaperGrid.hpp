@@ -3,9 +3,12 @@
 #include <functional>
 #include <gtk/gtk.h>
 #include <memory>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace bwp::gui {
+
+class WallpaperCard;
 
 class WallpaperGrid {
 public:
@@ -46,6 +49,7 @@ public:
   // Scroll Persistence
   double getVScroll() const;
   void setVScroll(double value);
+  void clearSelection();
 
 private:
   GtkWidget *m_scrolledWindow;
@@ -70,6 +74,9 @@ private:
 
   // Duplicate tracking (faster than iterating store)
   std::unordered_set<std::string> m_existingPaths;
+
+  // Card registry for direct metadata updates (no splice needed)
+  std::unordered_map<std::string, WallpaperCard*> m_boundCards;
 
   // Signal handlers for factory
   void updateFilter();

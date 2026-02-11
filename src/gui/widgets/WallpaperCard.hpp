@@ -17,6 +17,7 @@ public:
 
   void setFavorite(bool favorite);
   void setInfo(const bwp::wallpaper::WallpaperInfo &info);
+  void updateMetadata(const bwp::wallpaper::WallpaperInfo &info);
   const bwp::wallpaper::WallpaperInfo &getInfo() const { return m_info; }
 
   // Skeleton loading support

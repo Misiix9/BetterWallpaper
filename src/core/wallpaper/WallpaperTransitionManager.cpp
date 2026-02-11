@@ -198,7 +198,7 @@ gboolean WallpaperTransitionManager::onAnimationTick(gpointer data) {
   WallpaperTransitionManager *manager = cbData->manager;
   const std::string &monitorName = cbData->monitorName;
 
-  std::lock_guard<std::mutex> lock(manager->m_mutex);
+  std::unique_lock<std::mutex> lock(manager->m_mutex);
 
   auto it = manager->m_transitions.find(monitorName);
   if (it == manager->m_transitions.end() || !it->second.active) {
@@ -236,10 +236,11 @@ gboolean WallpaperTransitionManager::onAnimationTick(gpointer data) {
 
   // Check if transition complete
   if (rawProgress >= 1.0) {
-    // Transition complete - cleanup without holding lock
-    manager->m_mutex.unlock();
-    manager->finishTransition(monitorName, true);
-    manager->m_mutex.lock();
+    // Transition complete - unlock before calling finishTransition (which
+    // acquires its own lock). Using unique_lock so .unlock() is safe.
+    std::string monName = monitorName; // copy — cbData may outlive lock
+    lock.unlock();
+    manager->finishTransition(monName, true);
     return G_SOURCE_REMOVE;
   }
 

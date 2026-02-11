@@ -1,8 +1,10 @@
 #include "WallpaperGrid.hpp"
+#include "../../core/ipc/LinuxIPCClient.hpp"
 #include "../../core/monitor/MonitorManager.hpp"
 #include "../../core/utils/Logger.hpp"
 #include "../../core/utils/SafeProcess.hpp"
 #include "../../core/utils/StringUtils.hpp"
+#include "../../core/utils/ToastManager.hpp"
 #include "../../core/wallpaper/FolderManager.hpp"
 #include "../../core/wallpaper/WallpaperLibrary.hpp"
 #include "../models/WallpaperObject.hpp"
@@ -26,6 +28,12 @@ void WallpaperGrid::setVScroll(double value) {
   GtkAdjustment *adj = gtk_scrolled_window_get_vadjustment(
       GTK_SCROLLED_WINDOW(m_scrolledWindow));
   gtk_adjustment_set_value(adj, value);
+}
+
+void WallpaperGrid::clearSelection() {
+    if (m_selectionModel) {
+        gtk_selection_model_unselect_all(GTK_SELECTION_MODEL(m_selectionModel));
+    }
 }
 
 WallpaperGrid::WallpaperGrid() {
@@ -54,11 +62,9 @@ WallpaperGrid::WallpaperGrid() {
   // 4. Selection Model
   m_selectionModel = gtk_single_selection_new(G_LIST_MODEL(m_sortModel));
 
-  // Note: autoselect is true by default, which selects the first item.
-  // We might want to disable that if we want "no selection" initially,
-  // but GtkSingleSelection implies one item is selected if not empty.
-  // For no selection, GtkNoSelection usually used, but we want selection
-  // capability. We can stick with SingleSelection for now.
+  // Disable autoselect so no wallpaper is pre-selected on load
+  gtk_single_selection_set_autoselect(m_selectionModel, FALSE);
+  gtk_single_selection_set_can_unselect(m_selectionModel, TRUE);
 
   g_signal_connect(m_selectionModel, "selection-changed",
                    G_CALLBACK(onSelectionChanged), this);
@@ -120,6 +126,7 @@ void WallpaperGrid::addWallpaper(const bwp::wallpaper::WallpaperInfo &info) {
 
 void WallpaperGrid::updateWallpaperInStore(
     const bwp::wallpaper::WallpaperInfo &info) {
+  // Update the GObject data in-place (no splice = no items-changed = no scroll reset)
   guint n = g_list_model_get_n_items(G_LIST_MODEL(m_store));
   for (guint i = 0; i < n; ++i) {
     BwpWallpaperObject *obj =
@@ -133,6 +140,12 @@ void WallpaperGrid::updateWallpaperInStore(
       }
       g_object_unref(obj);
     }
+  }
+
+  // Directly update the visible card if it's currently bound
+  auto it = m_boundCards.find(info.id);
+  if (it != m_boundCards.end() && it->second) {
+    it->second->updateMetadata(info);
   }
 }
 
@@ -400,13 +413,6 @@ void WallpaperGrid::setSortOrder(SortOrder order) {
     // Explicitly notify the sorter changed to force re-sort propagation
     gtk_sorter_changed(sorter, GTK_SORTER_CHANGE_DIFFERENT);
     g_object_unref(sorter);
-
-    // Scroll to top so user sees the re-sorted results
-    if (m_scrolledWindow) {
-      GtkAdjustment *adj = gtk_scrolled_window_get_vadjustment(
-          GTK_SCROLLED_WINDOW(m_scrolledWindow));
-      gtk_adjustment_set_value(adj, 0);
-    }
   }
 }
 
@@ -562,11 +568,37 @@ void WallpaperGrid::onSetup(GtkSignalListItemFactory * /*factory*/,
               auto *g = static_cast<WallpaperGrid *>(d);
               std::string *id = static_cast<std::string *>(
                   g_object_get_data(G_OBJECT(b), "wp_id"));
-              if (id && g->m_callback) {
+              if (id) {
                 auto &lib = bwp::wallpaper::WallpaperLibrary::getInstance();
                 auto wp = lib.getWallpaper(*id);
                 if (wp) {
-                  g->m_callback(*wp);
+                  // Also select/preview the wallpaper if callback exists
+                  if (g->m_callback) {
+                    g->m_callback(*wp);
+                  }
+
+                  // Send IPC to daemon to actually set the wallpaper
+                  auto &monMgr = bwp::monitor::MonitorManager::getInstance();
+                  auto monitors = monMgr.getMonitors();
+
+                  bwp::ipc::LinuxIPCClient ipcClient;
+                  if (ipcClient.connect()) {
+                    if (monitors.empty()) {
+                      LOG_INFO("Context menu: setting wallpaper on default monitor: " + wp->path);
+                      ipcClient.setWallpaper(wp->path, "eDP-1");
+                    } else {
+                      for (const auto &mon : monitors) {
+                        LOG_INFO("Context menu: setting wallpaper on " + mon.name + ": " + wp->path);
+                        ipcClient.setWallpaper(wp->path, mon.name);
+                      }
+                    }
+                    bwp::core::utils::ToastManager::getInstance().showSuccess(
+                        "Wallpaper applied successfully");
+                  } else {
+                    LOG_ERROR("Context menu: failed to connect to daemon via IPC");
+                    bwp::core::utils::ToastManager::getInstance().showError(
+                        "Failed to set wallpaper: daemon not running");
+                  }
                 }
               }
               GtkWidget *pop = gtk_widget_get_ancestor(GTK_WIDGET(b), GTK_TYPE_POPOVER);
@@ -734,9 +766,10 @@ void WallpaperGrid::onBind(GtkSignalListItemFactory * /*factory*/,
       card->setInfo(*info);
     }
 
-    // Apply Highlight
+    // Register in bound cards map for direct metadata updates
     WallpaperGrid *self = static_cast<WallpaperGrid *>(user_data);
     if (self) {
+      self->m_boundCards[info->id] = card;
       card->setHighlight(self->m_filterQuery);
     }
   } else {
@@ -745,7 +778,7 @@ void WallpaperGrid::onBind(GtkSignalListItemFactory * /*factory*/,
 }
 
 void WallpaperGrid::onUnbind(GtkSignalListItemFactory * /*factory*/,
-                             GtkListItem *item, gpointer /*user_data*/) {
+                             GtkListItem *item, gpointer user_data) {
   // Lazy loading: cancel pending thumbnail loads and release texture memory
   // when the card scrolls out of the visible viewport
   GtkWidget *widget = gtk_list_item_get_child(item);
@@ -755,6 +788,11 @@ void WallpaperGrid::onUnbind(GtkSignalListItemFactory * /*factory*/,
   WallpaperCard *card = static_cast<WallpaperCard *>(
       g_object_get_data(G_OBJECT(widget), "card-ptr"));
   if (card) {
+    // Unregister from bound cards map
+    WallpaperGrid *self = static_cast<WallpaperGrid *>(user_data);
+    if (self) {
+      self->m_boundCards.erase(card->getInfo().id);
+    }
     card->releaseResources();
   }
 }

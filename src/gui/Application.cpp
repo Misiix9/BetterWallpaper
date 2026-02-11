@@ -223,7 +223,7 @@ void Application::loadStylesheet() {
 
   gtk_style_context_add_provider_for_display(
       display, GTK_STYLE_PROVIDER(s_cssProvider),
-      GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+      GTK_STYLE_PROVIDER_PRIORITY_USER);
 
   bwp::utils::Logger::log(bwp::utils::LogLevel::INFO,
                           "Successfully loaded stylesheet from: " + cssPath);

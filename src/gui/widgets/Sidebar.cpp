@@ -4,6 +4,8 @@
 #include "../../core/wallpaper/FolderManager.hpp"
 #include <adwaita.h>
 #include <iostream>
+#include <cstdlib>
+#include <string>
 
 namespace bwp::gui {
 
@@ -91,7 +93,15 @@ void Sidebar::refresh() {
   gtk_list_box_append(GTK_LIST_BOX(m_listBox), monHeaderRow);
 
   addRow("monitors", "video-display-symbolic", "Monitors");
-  addRow("hyprland", "preferences-desktop-remote-desktop-symbolic", "Hyprland");
+
+  // Only show Hyprland settings if we are in a Hyprland session
+  const char *currentDesktop = std::getenv("XDG_CURRENT_DESKTOP");
+  std::string session = currentDesktop ? currentDesktop : "";
+  if (session.find("Hyprland") != std::string::npos) {
+    addRow("hyprland", "preferences-desktop-remote-desktop-symbolic",
+           "Hyprland");
+  }
+
   addRow("profiles", "document-properties-symbolic", "Profiles");
   addRow("schedule", "alarm-symbolic", "Schedule");
   addRow("settings", "emblem-system-symbolic", "Settings");

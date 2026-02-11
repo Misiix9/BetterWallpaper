@@ -54,7 +54,7 @@ void HyprlandManager::saveConfig() {
   auto &conf = bwp::config::ConfigManager::getInstance();
   nlohmann::json j;
   {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     for (const auto &[id, path] : m_workspaceWallpapers) {
       j[std::to_string(id)] = path;
     }
@@ -69,7 +69,7 @@ bool HyprlandManager::isActive() const {
 void HyprlandManager::setWorkspaceWallpaper(int workspaceId,
                                             const std::string &wallpaperPath) {
   {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     m_workspaceWallpapers[workspaceId] = wallpaperPath;
   }
   // saveConfig acquires its own lock, so call outside our lock
@@ -77,7 +77,7 @@ void HyprlandManager::setWorkspaceWallpaper(int workspaceId,
 }
 
 std::string HyprlandManager::getWorkspaceWallpaper(int workspaceId) const {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   auto it = m_workspaceWallpapers.find(workspaceId);
   if (it != m_workspaceWallpapers.end()) {
     return it->second;
@@ -99,7 +99,7 @@ void HyprlandManager::onEvent(const std::string &event,
       std::string monName = data.substr(0, comma);
       std::string wsName = data.substr(comma + 1);
 
-      std::lock_guard<std::mutex> lock(m_mutex);
+      std::lock_guard<std::recursive_mutex> lock(m_mutex);
       m_activeMonitorName = monName;
 
       // Try to parse ID from name if it's a number
@@ -116,9 +116,15 @@ void HyprlandManager::onEvent(const std::string &event,
     }
   } else if (event == "activewindow") {
     // data is WINDOWCLASS,WINDOWTITLE
-    // Simple heuristic: if data has meaningful content, a window is focused.
-    bool hasWindow = (data.length() > 1);
-    bwp::wallpaper::WallpaperManager::getInstance().setMuted(hasWindow);
+    // Auto-mute on window focus: disabled by default because it used to
+    // restart the wallpaper process on every window focus change, causing
+    // visible flicker. Enable with config: hyprland.auto_mute_on_focus
+    auto &conf = bwp::config::ConfigManager::getInstance();
+    bool autoMute = conf.get<bool>("hyprland.auto_mute_on_focus", false);
+    if (autoMute) {
+      bool hasWindow = (data.length() > 1);
+      bwp::wallpaper::WallpaperManager::getInstance().setMuted(hasWindow);
+    }
   }
 }
 
@@ -126,7 +132,7 @@ void HyprlandManager::handleWorkspaceChange(const std::string &data) {
   try {
     int workspaceId = std::stoi(data);
 
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     m_activeWorkspaceId = workspaceId;
 
     // Apply wallpaper for this workspace to the active monitor

@@ -1,6 +1,7 @@
 #include "PreviewPanel.hpp"
 
 #include "../../core/config/ConfigManager.hpp"
+#include "../../core/ipc/LinuxIPCClient.hpp"
 #include "../../core/monitor/MonitorManager.hpp"
 #include "../../core/slideshow/SlideshowManager.hpp"
 #include "../../core/utils/Logger.hpp"
@@ -247,7 +248,10 @@ void PreviewPanel::setupUi() {
   gtk_box_append(GTK_BOX(settingsBox), scalingBox);
 
   // Apply Button
-  m_applyButton = gtk_button_new_with_label("Set as Wallpaper");
+  m_applyButton = gtk_button_new();
+  GtkWidget *applyLabel = gtk_label_new(nullptr);
+  gtk_label_set_markup(GTK_LABEL(applyLabel), "<span color='black' weight='bold'>Apply Wallpaper</span>");
+  gtk_button_set_child(GTK_BUTTON(m_applyButton), applyLabel);
   gtk_widget_add_css_class(m_applyButton, "suggested-action");
   gtk_widget_set_sensitive(m_applyButton, FALSE);
   gtk_widget_set_margin_top(m_applyButton, 12);
@@ -373,7 +377,6 @@ void PreviewPanel::setWallpaper(const bwp::wallpaper::WallpaperInfo &info) {
 
   gtk_label_set_text(GTK_LABEL(m_detailsLabel), details.c_str());
 
-  loadThumbnail(info.path);
   loadThumbnail(info.path);
   updateRatingDisplay();
   gtk_widget_set_sensitive(m_applyButton, TRUE);
@@ -531,32 +534,33 @@ void PreviewPanel::onApplyClicked() {
 
   if (m_currentInfo.path.empty()) {
     LOG_ERROR("Cannot set wallpaper: path is empty");
-    gtk_label_set_text(GTK_LABEL(m_statusLabel), "✗ No wallpaper selected");
     return;
   }
 
-  auto &wm = bwp::wallpaper::WallpaperManager::getInstance();
+  // 1. Save ALL settings to ConfigManager so the daemon picks them up
+  //    when it creates a new renderer (daemon reads config in setWallpaper).
+  auto &conf = bwp::config::ConfigManager::getInstance();
 
-  // 1. Configure ALL settings on WallpaperManager BEFORE setWallpaper
-  // These get applied to the new renderer before load() is called
   bool muted = gtk_check_button_get_active(GTK_CHECK_BUTTON(m_silentCheck));
-  wm.setMuted(muted);
+  conf.set("defaults.audio_enabled", !muted);
 
   bool noAudioProc = gtk_check_button_get_active(GTK_CHECK_BUTTON(m_noAudioProcCheck));
-  wm.setNoAudioProcessing(noAudioProc);
+  conf.set("defaults.no_audio_processing", noAudioProc);
 
   bool disableMouse = gtk_check_button_get_active(GTK_CHECK_BUTTON(m_disableMouseCheck));
-  wm.setDisableMouse(disableMouse);
+  conf.set("defaults.disable_mouse", disableMouse);
 
   bool noAutomute = gtk_check_button_get_active(GTK_CHECK_BUTTON(m_noAutomuteCheck));
-  wm.setNoAutomute(noAutomute);
+  conf.set("defaults.no_automute", noAutomute);
 
   int fps = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(m_fpsSpin));
   if (fps > 0)
-    wm.setFpsLimit(fps);
+    conf.set("performance.fps_limit", fps);
 
   int volume = static_cast<int>(gtk_range_get_value(GTK_RANGE(m_volumeScale)));
-  wm.setVolumeLevel(volume);
+  conf.set("defaults.audio_volume", volume);
+
+  conf.save(); // Persist to disk so the daemon can read it
 
   // Refresh monitor list to ensure we have latest
   updateMonitorList();
@@ -580,28 +584,9 @@ void PreviewPanel::onApplyClicked() {
     }
   }
 
-  // Scaling
-  guint scalingIdx =
-      gtk_drop_down_get_selected(GTK_DROP_DOWN(m_scalingDropdown));
-
-  int scalingMode = 2; // Default Fill
-  switch (scalingIdx) {
-  case 1:
-    scalingMode = 0;
-    break; // Stretch
-  case 2:
-    scalingMode = 1;
-    break; // Fit
-  case 3:
-    scalingMode = 2;
-    break; // Fill
-  }
-
-  // Set visual status immediately
-  gtk_label_set_text(GTK_LABEL(m_statusLabel), "Setting wallpaper...");
-
-  // Removed manual main context iteration loop to prevent potential conflicts
-  // or spinning
+  // Set visual status immediately - REMOVED per user request
+  // Only using toasts now
+  gtk_label_set_text(GTK_LABEL(m_statusLabel), "");
 
   std::vector<std::string> targets;
   if (applyAll) {
@@ -618,69 +603,46 @@ void PreviewPanel::onApplyClicked() {
     LOG_INFO("Target Monitor: " + t);
   }
 
-  // WallpaperManager uses GTK functions internally, so it MUST run on main
-  // thread Use g_idle_add to run it asynchronously but on the GTK main loop
+  // 2. Send wallpaper command via IPC to the daemon.
+  //    The daemon's WallpaperManager owns the renderers and layer-shell
+  //    windows. The GUI must NOT create its own — that causes zombie
+  //    processes and competing wallpaper surfaces.
   struct ApplyData {
     PreviewPanel *panel;
     std::vector<std::string> targets;
     std::string path;
-    int scalingMode;
   };
-  ApplyData *data =
-      new ApplyData{this, targets, m_currentInfo.path, scalingMode};
+  ApplyData *data = new ApplyData{this, targets, m_currentInfo.path};
 
-  // #endregion
-
-  // Schedule on main thread (async but thread-safe for GTK)
+  // Schedule on main thread
   g_idle_add(
       +[](gpointer user_data) -> gboolean {
-        // #endregion
-
         ApplyData *d = static_cast<ApplyData *>(user_data);
-        auto &wm = bwp::wallpaper::WallpaperManager::getInstance();
 
+        // Create IPC client and connect to daemon
+        bwp::ipc::LinuxIPCClient ipcClient;
         bool success = true;
 
-        // #endregion
-
-        // Update scaling modes
-        for (const auto &mon : d->targets) {
-          wm.setScalingMode(mon, d->scalingMode);
-        }
-
-        // #endregion
-
-        // #endregion
-
-        if (d->targets.size() > 1) {
-          LOG_INFO("Calling bulk setWallpaper for " +
-                   std::to_string(d->targets.size()) + " monitors");
-          // #endregion
-          if (!wm.setWallpaper(d->targets, d->path)) {
-            success = false;
-          }
-        } else if (!d->targets.empty()) {
-          LOG_INFO("Calling single setWallpaper for " + d->targets[0]);
-          // #endregion
-          if (!wm.setWallpaper(d->targets[0], d->path)) {
-            success = false;
-          }
-        } else {
+        if (!ipcClient.connect()) {
+          LOG_ERROR("Failed to connect to daemon via IPC");
           success = false;
+        } else {
+          // Send SetWallpaper for each target monitor via IPC
+          for (const auto &mon : d->targets) {
+            LOG_INFO("Sending IPC SetWallpaper for " + mon + ": " + d->path);
+            if (!ipcClient.setWallpaper(d->path, mon)) {
+              LOG_ERROR("IPC SetWallpaper failed for monitor: " + mon);
+              success = false;
+            }
+          }
         }
-
-        // #endregion
 
         // Update UI (we're already on main thread)
         if (success) {
-          gtk_label_set_text(GTK_LABEL(d->panel->m_statusLabel),
-                             "✓ Wallpaper set!");
           // Show success toast
           bwp::core::utils::ToastManager::getInstance().showSuccess(
               "Wallpaper applied successfully");
         } else {
-          gtk_label_set_text(GTK_LABEL(d->panel->m_statusLabel),
-                             "✗ Failed to set wallpaper");
           // Show error toast
           bwp::core::utils::ToastManager::getInstance().showError(
               "Failed to set wallpaper: " + d->path);
@@ -692,8 +654,6 @@ void PreviewPanel::onApplyClicked() {
                               "Could not apply " + d->path);
           }
         }
-
-        // #endregion
 
         delete d;
         return FALSE; // Run once
@@ -750,9 +710,11 @@ void PreviewPanel::updateRatingDisplay() {
     GtkWidget *btn = m_ratingButtons[i];
     if (m_currentInfo.rating >= starValue) {
       gtk_button_set_icon_name(GTK_BUTTON(btn), "starred-symbolic");
-      gtk_widget_add_css_class(btn, "suggested-action");
+      gtk_widget_add_css_class(btn, "rated-star");
+      gtk_widget_remove_css_class(btn, "suggested-action"); // Ensure standard class is gone
     } else {
       gtk_button_set_icon_name(GTK_BUTTON(btn), "non-starred-symbolic");
+      gtk_widget_remove_css_class(btn, "rated-star");
       gtk_widget_remove_css_class(btn, "suggested-action");
     }
   }
