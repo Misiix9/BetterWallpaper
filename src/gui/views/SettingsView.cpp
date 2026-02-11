@@ -1390,7 +1390,7 @@ GtkWidget *SettingsView::createAboutPage() {
   gtk_widget_add_css_class(title, "title-2");
   gtk_box_append(GTK_BOX(box), title);
 
-  GtkWidget *version = gtk_label_new("Version 0.5.0 Beta");
+  GtkWidget *version = gtk_label_new("Version 0.5.1 Beta");
   gtk_widget_add_css_class(version, "dim-label");
   gtk_box_append(GTK_BOX(box), version);
 
