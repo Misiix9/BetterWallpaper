@@ -30,7 +30,28 @@ static const char *introspection_xml = R"(
     <method name="Stop">
       <arg name="monitor" type="s" direction="in"/>
     </method>
+    <method name="SetVolume">
+      <arg name="monitor" type="s" direction="in"/>
+      <arg name="volume" type="i" direction="in"/>
+    </method>
+    <method name="SetMuted">
+      <arg name="monitor" type="s" direction="in"/>
+      <arg name="muted" type="b" direction="in"/>
+    </method>
+    <method name="GetStatus">
+      <arg name="status" type="s" direction="out"/>
+    </method>
+    <method name="GetMonitors">
+      <arg name="monitors" type="s" direction="out"/>
+    </method>
     <property name="DaemonVersion" type="s" access="read"/>
+    <signal name="WallpaperChanged">
+      <arg name="monitor" type="s"/>
+      <arg name="path" type="s"/>
+    </signal>
+    <signal name="ProfileChanged">
+      <arg name="name" type="s"/>
+    </signal>
   </interface>
 </node>
 )";  
@@ -63,9 +84,18 @@ void DBusService::onBusAcquired(GDBusConnection *connection, const char *,
                                                         {0}};
   auto *self = static_cast<DBusService *>(user_data);
   self->m_connection = connection;
-  g_dbus_connection_register_object(connection, "/com/github/BetterWallpaper",
-                                    self->m_introspectionData->interfaces[0],
-                                    &interface_vtable, self, nullptr, nullptr);
+
+  GError *regError = nullptr;
+  guint regId = g_dbus_connection_register_object(
+      connection, "/com/github/BetterWallpaper",
+      self->m_introspectionData->interfaces[0], &interface_vtable, self,
+      nullptr, &regError);
+  if (regId == 0) {
+    LOG_ERROR(std::string("Failed to register D-Bus object: ") +
+              (regError ? regError->message : "unknown error"));
+    if (regError)
+      g_error_free(regError);
+  }
 }
 void DBusService::onNameAcquired(GDBusConnection *, const char *name, void *) {
   LOG_INFO(std::string("Acquired D-Bus name: ") + name);
@@ -115,6 +145,36 @@ void DBusService::handle_method_call(GDBusConnection *  ,
     else if (method == "Stop" && self->m_stopHandler)
       self->m_stopHandler(mon);
     g_dbus_method_invocation_return_value(invocation, nullptr);
+  } else if (method == "SetVolume") {
+    const char *monitor;
+    int volume;
+    g_variant_get(parameters, "(&si)", &monitor, &volume);
+    if (self->m_volumeHandler) {
+      self->m_volumeHandler(monitor, volume);
+    }
+    g_dbus_method_invocation_return_value(invocation, nullptr);
+  } else if (method == "SetMuted") {
+    const char *monitor;
+    gboolean muted;
+    g_variant_get(parameters, "(&sb)", &monitor, &muted);
+    if (self->m_muteHandler) {
+      self->m_muteHandler(monitor, static_cast<bool>(muted));
+    }
+    g_dbus_method_invocation_return_value(invocation, nullptr);
+  } else if (method == "GetStatus") {
+    std::string status;
+    if (self->m_getStatusHandler) {
+      status = self->m_getStatusHandler();
+    }
+    g_dbus_method_invocation_return_value(invocation,
+                                          g_variant_new("(s)", status.c_str()));
+  } else if (method == "GetMonitors") {
+    std::string monitors;
+    if (self->m_getMonitorsHandler) {
+      monitors = self->m_getMonitorsHandler();
+    }
+    g_dbus_method_invocation_return_value(invocation,
+                                          g_variant_new("(s)", monitors.c_str()));
   } else {
     g_dbus_method_invocation_return_error(invocation, G_DBUS_ERROR,
                                           G_DBUS_ERROR_UNKNOWN_METHOD,
@@ -127,7 +187,7 @@ GVariant *DBusService::handle_get_property(GDBusConnection *, const char *,
                                            void *) {
   std::string prop = property_name;
   if (prop == "DaemonVersion") {
-    return g_variant_new_string("1.0.0");
+    return g_variant_new_string(BWP_VERSION);
   }
   return nullptr;
 }
@@ -153,8 +213,53 @@ void DBusService::setResumeHandler(IIPCService::VoidHandler handler) {
 void DBusService::setStopHandler(IIPCService::VoidHandler handler) {
   m_stopHandler = handler;
 }
-void DBusService::setSetVolumeHandler(IIPCService::VolumeHandler) {
+void DBusService::setSetVolumeHandler(IIPCService::VolumeHandler handler) {
+  m_volumeHandler = handler;
 }  
-void DBusService::setSetMutedHandler(IIPCService::MuteHandler) {
+void DBusService::setSetMutedHandler(IIPCService::MuteHandler handler) {
+  m_muteHandler = handler;
 }  
-}  
+void DBusService::setGetStatusHandler(IIPCService::NoArgStringHandler handler) {
+  m_getStatusHandler = handler;
+}
+void DBusService::setGetMonitorsHandler(IIPCService::NoArgStringHandler handler) {
+  m_getMonitorsHandler = handler;
+}
+
+void DBusService::stop() {
+  if (m_ownerId > 0) {
+    g_bus_unown_name(m_ownerId);
+    m_ownerId = 0;
+  }
+  m_connection = nullptr;
+  LOG_INFO("D-Bus service stopped");
+}
+
+void DBusService::emitWallpaperChanged(const std::string &monitor,
+                                       const std::string &path) {
+  if (!m_connection) return;
+  GError *error = nullptr;
+  g_dbus_connection_emit_signal(
+      m_connection, nullptr, "/com/github/BetterWallpaper",
+      "com.github.BetterWallpaper", "WallpaperChanged",
+      g_variant_new("(ss)", monitor.c_str(), path.c_str()), &error);
+  if (error) {
+    LOG_ERROR(std::string("Failed to emit WallpaperChanged: ") + error->message);
+    g_error_free(error);
+  }
+}
+
+void DBusService::emitProfileChanged(const std::string &name) {
+  if (!m_connection) return;
+  GError *error = nullptr;
+  g_dbus_connection_emit_signal(
+      m_connection, nullptr, "/com/github/BetterWallpaper",
+      "com.github.BetterWallpaper", "ProfileChanged",
+      g_variant_new("(s)", name.c_str()), &error);
+  if (error) {
+    LOG_ERROR(std::string("Failed to emit ProfileChanged: ") + error->message);
+    g_error_free(error);
+  }
+}
+
+} // namespace bwp::ipc

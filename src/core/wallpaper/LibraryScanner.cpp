@@ -127,6 +127,7 @@ void LibraryScanner::runScan(std::vector<std::string> paths) {
         home + "/.steam/steam/steamapps/workshop/content/431960"};
   }
   int totalFound = 0;
+  std::vector<std::string> scannedRoots;
   for (const auto &wsPathStr : workshopPaths) {
     if (m_cancelRequested) {
       LOG_INFO("Scan cancelled by user");
@@ -140,10 +141,10 @@ void LibraryScanner::runScan(std::vector<std::string> paths) {
     std::string canonicalWsPath;
     try {
       canonicalWsPath = std::filesystem::canonical(wsPath).string();
-    } catch (...) {
+    } catch (const std::exception& e) {
+      LOG_DEBUG("Failed to canonicalize path: " + wsPathStr + " - " + e.what());
       canonicalWsPath = wsPathStr;
     }
-    static std::vector<std::string> scannedRoots;
     bool alreadyScanned = false;
     for (const auto &root : scannedRoots) {
       if (root == canonicalWsPath)
@@ -246,7 +247,8 @@ bool LibraryScanner::scanWorkshopItem(const std::filesystem::path &dir) {
   info.source = "workshop";
   try {
     info.workshop_id = std::stoull(folderId);
-  } catch (...) {
+  } catch (const std::exception& e) {
+    LOG_DEBUG("Failed to parse workshop ID from folder: " + folderId + " - " + e.what());
     info.workshop_id = 0;
   }
   std::string foundFile;
@@ -302,7 +304,8 @@ bool LibraryScanner::scanWorkshopItem(const std::filesystem::path &dir) {
           }
         }
       }
-    } catch (...) {
+    } catch (const std::exception& e) {
+      LOG_DEBUG("Failed to parse project.json metadata: " + std::string(e.what()));
     }
   }
   if (foundFile.empty()) {
@@ -360,7 +363,8 @@ void LibraryScanner::scanFile(const std::filesystem::path &path) {
   info.path = path.string();
   try {
     info.size_bytes = std::filesystem::file_size(path);
-  } catch (...) {
+  } catch (const std::exception& e) {
+    LOG_DEBUG("Failed to get file size: " + path.string() + " - " + e.what());
     info.size_bytes = 0;
   }
   if (isScene)

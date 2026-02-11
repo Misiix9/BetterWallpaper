@@ -73,6 +73,14 @@ void ConfigManager::resetToDefaults() {
   m_config = SettingsSchema::getDefaults();
 }
 void ConfigManager::startWatching(Callback callback) { m_callback = callback; }
+int ConfigManager::addListener(Callback callback) {
+  int id = m_nextListenerId++;
+  m_listeners[id] = std::move(callback);
+  return id;
+}
+void ConfigManager::removeListener(int id) {
+  m_listeners.erase(id);
+}
 void ConfigManager::scheduleSave(int delayMs) {
 #ifndef _WIN32
   m_dirty = true;

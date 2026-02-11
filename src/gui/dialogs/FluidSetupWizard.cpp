@@ -377,7 +377,7 @@ void FluidSetupWizard::detectMonitors() {
     }
     if (monitors.empty()) {
         gtk_string_list_append(list, "Default Display");
-        m_detectedMonitors.push_back("eDP-1");
+        m_detectedMonitors.push_back("Unknown");
     }
     gtk_drop_down_set_model(GTK_DROP_DOWN(m_monitorDropdown), G_LIST_MODEL(list));
     g_object_unref(list);

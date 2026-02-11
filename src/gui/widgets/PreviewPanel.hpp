@@ -57,13 +57,5 @@ private:
   void updateZoomIndicator();
   void onPanGesture(GtkGestureDrag *gesture, double offset_x, double offset_y);
   void onPanBegin(GtkGestureDrag *gesture, double start_x, double start_y);
-  GtkWidget *m_videoControlsBox = nullptr;
-  GtkWidget *m_playPauseBtn = nullptr;
-  GtkWidget *m_videoVolumeBtn = nullptr;
-  GtkWidget *m_videoVolumeScale = nullptr;
-  GtkWidget *m_videoTimeLabel = nullptr;
-  bool m_isVideoPlaying = false;
-  void setupVideoControls();
-  void updateVideoControlsVisibility();
 };
 }  

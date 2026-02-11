@@ -73,7 +73,6 @@ void PreviewPanel::setupUi() {
   gtk_widget_set_visible(m_zoomIndicator, FALSE);
   gtk_overlay_add_overlay(GTK_OVERLAY(previewOverlay), m_zoomIndicator);
   gtk_box_append(GTK_BOX(m_box), previewOverlay);
-  setupVideoControls();
   GtkWidget *notebook = gtk_notebook_new();
   gtk_widget_set_vexpand(notebook, TRUE);
   gtk_box_append(GTK_BOX(m_box), notebook);
@@ -112,7 +111,11 @@ void PreviewPanel::setupUi() {
   gtk_widget_set_margin_bottom(settingsBox, 8);
   gtk_expander_set_child(GTK_EXPANDER(expander), settingsBox);
   m_silentCheck = gtk_check_button_new_with_label("Silent (Mute)");
-  gtk_check_button_set_active(GTK_CHECK_BUTTON(m_silentCheck), TRUE);
+  {
+    auto &conf = bwp::config::ConfigManager::getInstance();
+    bool audioEnabled = conf.get<bool>("defaults.audio_enabled", false);
+    gtk_check_button_set_active(GTK_CHECK_BUTTON(m_silentCheck), !audioEnabled);
+  }
   g_signal_connect(m_silentCheck, "toggled",
                    G_CALLBACK(+[](GtkCheckButton *btn, gpointer data) {
                      auto *self = static_cast<PreviewPanel *>(data);
@@ -126,18 +129,36 @@ void PreviewPanel::setupUi() {
   gtk_box_append(GTK_BOX(settingsBox), m_silentCheck);
   m_noAudioProcCheck =
       gtk_check_button_new_with_label("Disable Audio Processing");
-  gtk_check_button_set_active(GTK_CHECK_BUTTON(m_noAudioProcCheck), TRUE);
+  {
+    auto &conf = bwp::config::ConfigManager::getInstance();
+    gtk_check_button_set_active(GTK_CHECK_BUTTON(m_noAudioProcCheck),
+        conf.get<bool>("defaults.no_audio_processing", true));
+  }
   gtk_box_append(GTK_BOX(settingsBox), m_noAudioProcCheck);
   m_disableMouseCheck =
       gtk_check_button_new_with_label("Disable Mouse Interaction");
-  gtk_check_button_set_active(GTK_CHECK_BUTTON(m_disableMouseCheck), TRUE);
+  {
+    auto &conf = bwp::config::ConfigManager::getInstance();
+    gtk_check_button_set_active(GTK_CHECK_BUTTON(m_disableMouseCheck),
+        conf.get<bool>("defaults.disable_mouse", true));
+  }
   gtk_box_append(GTK_BOX(settingsBox), m_disableMouseCheck);
   m_noAutomuteCheck = gtk_check_button_new_with_label("No Auto-Mute");
+  {
+    auto &conf = bwp::config::ConfigManager::getInstance();
+    gtk_check_button_set_active(GTK_CHECK_BUTTON(m_noAutomuteCheck),
+        conf.get<bool>("defaults.no_automute", false));
+  }
   gtk_box_append(GTK_BOX(settingsBox), m_noAutomuteCheck);
   GtkWidget *fpsBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
   gtk_box_append(GTK_BOX(fpsBox), gtk_label_new("FPS Limit:"));
   m_fpsSpin = gtk_spin_button_new_with_range(1, 144, 1);
-  gtk_spin_button_set_value(GTK_SPIN_BUTTON(m_fpsSpin), 30);
+  {
+    auto &conf = bwp::config::ConfigManager::getInstance();
+    int defaultFps = conf.get<int>("performance.fps_limit", 60);
+    if (defaultFps <= 0) defaultFps = 60; // 0 means unlimited, default to 60 for UI
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(m_fpsSpin), defaultFps);
+  }
   g_signal_connect(m_fpsSpin, "value-changed",
                    G_CALLBACK(+[](GtkSpinButton *btn, gpointer data) {
                      auto *self = static_cast<PreviewPanel *>(data);
@@ -155,7 +176,11 @@ void PreviewPanel::setupUi() {
   gtk_box_append(GTK_BOX(settingsBox), volLabel);
   m_volumeScale =
       gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0, 100, 5);
-  gtk_range_set_value(GTK_RANGE(m_volumeScale), 50);
+  {
+    auto &conf = bwp::config::ConfigManager::getInstance();
+    gtk_range_set_value(GTK_RANGE(m_volumeScale),
+        conf.get<int>("defaults.audio_volume", 50));
+  }
   gtk_widget_set_size_request(m_volumeScale, 100, -1);
   g_signal_connect(m_volumeScale, "value-changed",
                    G_CALLBACK(+[](GtkRange *range, gpointer data) {
@@ -270,7 +295,8 @@ void PreviewPanel::setWallpaper(const bwp::wallpaper::WallpaperInfo &info) {
         snprintf(buf, 64, "%.1f KB", fsize / 1024.0);
       details += "\nSize: " + std::string(buf);
     }
-  } catch (...) {
+  } catch (const std::exception& e) {
+    LOG_DEBUG("Failed to get file size for preview: " + std::string(e.what()));
   }
   if (info.type == bwp::wallpaper::WallpaperType::StaticImage) {
     int w, h;
@@ -294,9 +320,12 @@ void PreviewPanel::setWallpaper(const bwp::wallpaper::WallpaperInfo &info) {
     muted = !audioEnabled;
   }
   gtk_check_button_set_active(GTK_CHECK_BUTTON(m_silentCheck), muted);
-  gtk_check_button_set_active(GTK_CHECK_BUTTON(m_noAudioProcCheck), muted);
-  gtk_check_button_set_active(GTK_CHECK_BUTTON(m_disableMouseCheck), TRUE);
-  gtk_check_button_set_active(GTK_CHECK_BUTTON(m_noAutomuteCheck), FALSE);
+  gtk_check_button_set_active(GTK_CHECK_BUTTON(m_noAudioProcCheck),
+      conf.get<bool>("defaults.no_audio_processing", true));
+  gtk_check_button_set_active(GTK_CHECK_BUTTON(m_disableMouseCheck),
+      conf.get<bool>("defaults.disable_mouse", true));
+  gtk_check_button_set_active(GTK_CHECK_BUTTON(m_noAutomuteCheck),
+      conf.get<bool>("defaults.no_automute", false));
   int volume = info.settings.volume;
   if (volume <= 0)
     volume = conf.get<int>("defaults.audio_volume", 50);
@@ -319,7 +348,6 @@ void PreviewPanel::setWallpaper(const bwp::wallpaper::WallpaperInfo &info) {
           LOG_WARN("Wallpaper preload failed: " + path);
         }
       });
-  updateVideoControlsVisibility();
 }
 void PreviewPanel::loadThumbnail(const std::string &path) {
   if (!std::filesystem::exists(path))
@@ -418,7 +446,7 @@ void PreviewPanel::onApplyClicked() {
   updateMonitorList();
   guint selected = gtk_drop_down_get_selected(GTK_DROP_DOWN(m_monitorDropdown));
   bool applyAll = (selected == 0);
-  std::string selectedMonitor = "eDP-1";
+  std::string selectedMonitor = m_monitorNames.empty() ? "" : m_monitorNames[0];
   if (!applyAll && !m_monitorNames.empty()) {
     size_t monitorIdx = selected - 1;
     if (monitorIdx < m_monitorNames.size()) {
@@ -430,9 +458,9 @@ void PreviewPanel::onApplyClicked() {
   gtk_label_set_text(GTK_LABEL(m_statusLabel), "");
   std::vector<std::string> targets;
   if (applyAll) {
-    if (m_monitorNames.empty())
-      targets.push_back("eDP-1");  
-    else
+    if (m_monitorNames.empty()) {
+      LOG_WARN("No monitors detected, cannot apply wallpaper");
+    } else
       targets = m_monitorNames;
   } else {
     targets.push_back(selectedMonitor);
@@ -655,96 +683,5 @@ void PreviewPanel::onPanGesture(GtkGestureDrag *, double offset_x,
       GTK_SCROLLED_WINDOW(m_scrolledWindow));
   gtk_adjustment_set_value(hadj, m_dragStartX - offset_x);
   gtk_adjustment_set_value(vadj, m_dragStartY - offset_y);
-}
-void PreviewPanel::setupVideoControls() {
-  m_videoControlsBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
-  gtk_widget_add_css_class(m_videoControlsBox, "video-controls");
-  gtk_widget_set_margin_start(m_videoControlsBox, 4);
-  gtk_widget_set_margin_end(m_videoControlsBox, 4);
-  gtk_widget_set_margin_top(m_videoControlsBox, 6);
-  gtk_widget_set_margin_bottom(m_videoControlsBox, 2);
-  gtk_widget_set_visible(m_videoControlsBox, FALSE);
-  m_playPauseBtn = gtk_button_new_from_icon_name("media-playback-start-symbolic");
-  gtk_widget_add_css_class(m_playPauseBtn, "flat");
-  gtk_widget_add_css_class(m_playPauseBtn, "circular");
-  gtk_widget_set_tooltip_text(m_playPauseBtn, "Play / Pause");
-  g_signal_connect(
-      m_playPauseBtn, "clicked",
-      G_CALLBACK(+[](GtkButton *, gpointer data) {
-        auto *self = static_cast<PreviewPanel *>(data);
-        self->m_isVideoPlaying = !self->m_isVideoPlaying;
-        gtk_button_set_icon_name(
-            GTK_BUTTON(self->m_playPauseBtn),
-            self->m_isVideoPlaying ? "media-playback-pause-symbolic"
-                                   : "media-playback-start-symbolic");
-      }),
-      this);
-  gtk_box_append(GTK_BOX(m_videoControlsBox), m_playPauseBtn);
-  m_videoTimeLabel = gtk_label_new("Video");
-  gtk_widget_add_css_class(m_videoTimeLabel, "dim-label");
-  gtk_widget_add_css_class(m_videoTimeLabel, "caption");
-  gtk_widget_set_hexpand(m_videoTimeLabel, TRUE);
-  gtk_widget_set_halign(m_videoTimeLabel, GTK_ALIGN_START);
-  gtk_box_append(GTK_BOX(m_videoControlsBox), m_videoTimeLabel);
-  m_videoVolumeBtn =
-      gtk_button_new_from_icon_name("audio-volume-medium-symbolic");
-  gtk_widget_add_css_class(m_videoVolumeBtn, "flat");
-  gtk_widget_add_css_class(m_videoVolumeBtn, "circular");
-  gtk_widget_set_tooltip_text(m_videoVolumeBtn, "Toggle Mute");
-  g_signal_connect(
-      m_videoVolumeBtn, "clicked",
-      G_CALLBACK(+[](GtkButton *, gpointer data) {
-        auto *self = static_cast<PreviewPanel *>(data);
-        double vol = gtk_range_get_value(GTK_RANGE(self->m_videoVolumeScale));
-        if (vol > 0) {
-          gtk_range_set_value(GTK_RANGE(self->m_videoVolumeScale), 0);
-          gtk_button_set_icon_name(GTK_BUTTON(self->m_videoVolumeBtn),
-                                   "audio-volume-muted-symbolic");
-        } else {
-          gtk_range_set_value(GTK_RANGE(self->m_videoVolumeScale), 50);
-          gtk_button_set_icon_name(GTK_BUTTON(self->m_videoVolumeBtn),
-                                   "audio-volume-medium-symbolic");
-        }
-      }),
-      this);
-  gtk_box_append(GTK_BOX(m_videoControlsBox), m_videoVolumeBtn);
-  m_videoVolumeScale =
-      gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0, 100, 5);
-  gtk_range_set_value(GTK_RANGE(m_videoVolumeScale), 50);
-  gtk_widget_set_size_request(m_videoVolumeScale, 60, -1);
-  gtk_scale_set_draw_value(GTK_SCALE(m_videoVolumeScale), FALSE);
-  g_signal_connect(
-      m_videoVolumeScale, "value-changed",
-      G_CALLBACK(+[](GtkRange *range, gpointer data) {
-        auto *self = static_cast<PreviewPanel *>(data);
-        double val = gtk_range_get_value(range);
-        const char *icon = val <= 0    ? "audio-volume-muted-symbolic"
-                           : val < 50  ? "audio-volume-low-symbolic"
-                                       : "audio-volume-medium-symbolic";
-        gtk_button_set_icon_name(GTK_BUTTON(self->m_videoVolumeBtn), icon);
-      }),
-      this);
-  gtk_box_append(GTK_BOX(m_videoControlsBox), m_videoVolumeScale);
-  gtk_box_append(GTK_BOX(m_box), m_videoControlsBox);
-}
-void PreviewPanel::updateVideoControlsVisibility() {
-  if (!m_videoControlsBox)
-    return;
-  bool isVideo =
-      (m_currentInfo.type == bwp::wallpaper::WallpaperType::Video ||
-       m_currentInfo.type == bwp::wallpaper::WallpaperType::WEVideo ||
-       m_currentInfo.type == bwp::wallpaper::WallpaperType::WEScene);
-  gtk_widget_set_visible(m_videoControlsBox, isVideo);
-  if (isVideo) {
-    m_isVideoPlaying = false;
-    gtk_button_set_icon_name(GTK_BUTTON(m_playPauseBtn),
-                             "media-playback-start-symbolic");
-    const char *typeStr = "Video";
-    if (m_currentInfo.type == bwp::wallpaper::WallpaperType::WEScene)
-      typeStr = "WE Scene";
-    else if (m_currentInfo.type == bwp::wallpaper::WallpaperType::WEVideo)
-      typeStr = "WE Video";
-    gtk_label_set_text(GTK_LABEL(m_videoTimeLabel), typeStr);
-  }
 }
 }  

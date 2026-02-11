@@ -4,6 +4,7 @@
 #include "../../core/utils/Logger.hpp"
 #include "../../core/utils/ToastManager.hpp"
 #include "../../core/wallpaper/LibraryScanner.hpp"
+#include "../../core/wallpaper/WallpaperManager.hpp"
 #include <algorithm>
 #include <iostream>
 namespace bwp::gui {
@@ -640,6 +641,8 @@ GtkWidget *SettingsView::createGraphicsPage() {
                      }
                      bwp::config::ConfigManager::getInstance().set(
                          "performance.fps_limit", fps);
+                     // Apply live to active wallpapers
+                     bwp::wallpaper::WallpaperManager::getInstance().setFpsLimit(fps);
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(perfGroup), fpsRow);
@@ -657,15 +660,25 @@ GtkWidget *SettingsView::createGraphicsPage() {
     s_idx = 1;
   else if (s_mode == "stretch")
     s_idx = 2;
+  else if (s_mode == "center")
+    s_idx = 3;
+  else if (s_mode == "tile")
+    s_idx = 4;
+  else if (s_mode == "zoom")
+    s_idx = 5;
   adw_combo_row_set_selected(ADW_COMBO_ROW(scalingRow), s_idx);
   g_signal_connect(scalingRow, "notify::selected",
                    G_CALLBACK(+[](AdwComboRow *row, GParamSpec *, gpointer) {
                      int idx = adw_combo_row_get_selected(row);
                      const char *v = "fill";
-                     if (idx == 1)
-                       v = "fit";
-                     else if (idx == 2)
-                       v = "stretch";
+                     switch (idx) {
+                     case 1: v = "fit"; break;
+                     case 2: v = "stretch"; break;
+                     case 3: v = "center"; break;
+                     case 4: v = "tile"; break;
+                     case 5: v = "zoom"; break;
+                     default: v = "fill"; break;
+                     }
                      bwp::config::ConfigManager::getInstance().set(
                          "defaults.scaling_mode", std::string(v));
                    }),
@@ -792,9 +805,11 @@ GtkWidget *SettingsView::createAudioPage() {
                          conf.get<int>("defaults.audio_volume"));
   g_signal_connect(volRow, "notify::value",
                    G_CALLBACK(+[](AdwSpinRow *r, GParamSpec *, gpointer) {
+                     int vol = (int)adw_spin_row_get_value(r);
                      bwp::config::ConfigManager::getInstance().set(
-                         "defaults.audio_volume",
-                         (int)adw_spin_row_get_value(r));
+                         "defaults.audio_volume", vol);
+                     // Apply live to active wallpapers
+                     bwp::wallpaper::WallpaperManager::getInstance().setVolumeLevel(vol);
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), volRow);
@@ -806,9 +821,11 @@ GtkWidget *SettingsView::createAudioPage() {
                             conf.get<bool>("defaults.audio_enabled"));
   g_signal_connect(muteRow, "notify::active",
                    G_CALLBACK(+[](AdwSwitchRow *r, GParamSpec *, gpointer) {
+                     bool enabled = static_cast<bool>(adw_switch_row_get_active(r));
                      bwp::config::ConfigManager::getInstance().set(
-                         "defaults.audio_enabled",
-                         static_cast<bool>(adw_switch_row_get_active(r)));
+                         "defaults.audio_enabled", enabled);
+                     // Apply live to active wallpapers — muted is the inverse of audio_enabled
+                     bwp::wallpaper::WallpaperManager::getInstance().setMuted(!enabled);
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), muteRow);
@@ -827,15 +844,93 @@ GtkWidget *SettingsView::createPlaybackPage() {
   adw_action_row_set_subtitle(ADW_ACTION_ROW(batRow),
                               "Pause wallpaper when discharging");
   adw_switch_row_set_active(ADW_SWITCH_ROW(batRow),
-                            conf.get<bool>("playback.pause_on_battery"));
+                            conf.get<bool>("performance.pause_on_battery"));
   g_signal_connect(batRow, "notify::active",
                    G_CALLBACK(+[](AdwSwitchRow *r, GParamSpec *, gpointer) {
                      bwp::config::ConfigManager::getInstance().set(
-                         "playback.pause_on_battery",
+                         "performance.pause_on_battery",
                          static_cast<bool>(adw_switch_row_get_active(r)));
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), batRow);
+
+  // --- Wallpaper Engine Defaults ---
+  GtkWidget *weGroup = adw_preferences_group_new();
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(weGroup),
+                                  "Wallpaper Engine Defaults");
+  adw_preferences_group_set_description(
+      ADW_PREFERENCES_GROUP(weGroup),
+      "Default behavior for Wallpaper Engine scenes");
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
+                           ADW_PREFERENCES_GROUP(weGroup));
+
+  GtkWidget *mouseRow = adw_switch_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(mouseRow),
+                                "Disable Mouse Interaction");
+  adw_action_row_set_subtitle(ADW_ACTION_ROW(mouseRow),
+                              "Prevent mouse events from reaching wallpaper");
+  adw_switch_row_set_active(ADW_SWITCH_ROW(mouseRow),
+                            conf.get<bool>("defaults.disable_mouse", true));
+  g_signal_connect(mouseRow, "notify::active",
+                   G_CALLBACK(+[](AdwSwitchRow *r, GParamSpec *, gpointer) {
+                     bool val = static_cast<bool>(adw_switch_row_get_active(r));
+                     bwp::config::ConfigManager::getInstance().set(
+                         "defaults.disable_mouse", val);
+                     bwp::wallpaper::WallpaperManager::getInstance().setDisableMouse(val);
+                   }),
+                   nullptr);
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(weGroup), mouseRow);
+
+  GtkWidget *noAudioProcRow = adw_switch_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(noAudioProcRow),
+                                "Disable Audio Processing");
+  adw_action_row_set_subtitle(ADW_ACTION_ROW(noAudioProcRow),
+                              "Skip audio processing for wallpaper engine scenes");
+  adw_switch_row_set_active(ADW_SWITCH_ROW(noAudioProcRow),
+                            conf.get<bool>("defaults.no_audio_processing", true));
+  g_signal_connect(noAudioProcRow, "notify::active",
+                   G_CALLBACK(+[](AdwSwitchRow *r, GParamSpec *, gpointer) {
+                     bool val = static_cast<bool>(adw_switch_row_get_active(r));
+                     bwp::config::ConfigManager::getInstance().set(
+                         "defaults.no_audio_processing", val);
+                     bwp::wallpaper::WallpaperManager::getInstance().setNoAudioProcessing(val);
+                   }),
+                   nullptr);
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(weGroup), noAudioProcRow);
+
+  GtkWidget *noAutomuteRow = adw_switch_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(noAutomuteRow),
+                                "No Auto-Mute");
+  adw_action_row_set_subtitle(ADW_ACTION_ROW(noAutomuteRow),
+                              "Prevent wallpaper from auto-muting when other audio plays");
+  adw_switch_row_set_active(ADW_SWITCH_ROW(noAutomuteRow),
+                            conf.get<bool>("defaults.no_automute", false));
+  g_signal_connect(noAutomuteRow, "notify::active",
+                   G_CALLBACK(+[](AdwSwitchRow *r, GParamSpec *, gpointer) {
+                     bool val = static_cast<bool>(adw_switch_row_get_active(r));
+                     bwp::config::ConfigManager::getInstance().set(
+                         "defaults.no_automute", val);
+                     bwp::wallpaper::WallpaperManager::getInstance().setNoAutomute(val);
+                   }),
+                   nullptr);
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(weGroup), noAutomuteRow);
+
+  GtkWidget *fullscreenRow = adw_switch_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(fullscreenRow),
+                                "Pause on Fullscreen App");
+  adw_action_row_set_subtitle(ADW_ACTION_ROW(fullscreenRow),
+                              "Pause wallpaper when a fullscreen application is running");
+  adw_switch_row_set_active(ADW_SWITCH_ROW(fullscreenRow),
+                            conf.get<bool>("performance.pause_on_fullscreen", true));
+  g_signal_connect(fullscreenRow, "notify::active",
+                   G_CALLBACK(+[](AdwSwitchRow *r, GParamSpec *, gpointer) {
+                     bwp::config::ConfigManager::getInstance().set(
+                         "performance.pause_on_fullscreen",
+                         static_cast<bool>(adw_switch_row_get_active(r)));
+                   }),
+                   nullptr);
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(weGroup), fullscreenRow);
+
   return page;
 }
 GtkWidget *SettingsView::createTransitionsPage() {

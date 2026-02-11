@@ -13,9 +13,15 @@ public:
     ~SteamCMDWorker();
 
     // Login: callback(success, message), twoFactorNeeded()
+    // If twoFactorCode is non-empty, it is piped into steamcmd directly.
     void login(const std::string& user, const std::string& pass, 
                std::function<void(bool success, const std::string& msg)> callback,
-               std::function<void()> twoFactorNeededCallback);
+               std::function<void()> twoFactorNeededCallback,
+               const std::string& twoFactorCode = "");
+    
+    // Auto-login: try using steamcmd's cached session (no password)
+    void tryAutoLogin(const std::string& user,
+                      std::function<void(bool success, const std::string& msg)> callback);
                
     // Submit 2FA code with its own result callback
     void submitTwoFactorCode(const std::string& code,

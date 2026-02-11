@@ -4,6 +4,7 @@
 #include <iostream>
 #include <format>
 #include <regex>
+#include <algorithm>
 
 namespace bwp::steam {
 
@@ -76,9 +77,23 @@ WorkshopItem SteamAPIClient::parseItem(const nlohmann::json& j) {
         if (j.contains("tags")) {
             for (const auto& tag : j["tags"]) {
                 if (tag.contains("tag")) {
-                    item.tags.push_back(tag["tag"].get<std::string>());
+                    std::string tagStr = tag["tag"].get<std::string>();
+                    item.tags.push_back(tagStr);
+                    // Detect NSFW from tags
+                    std::string lower = tagStr;
+                    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                    if (lower == "mature" || lower == "gore" || lower == "nudity" ||
+                        lower == "adult only" || lower == "sexual content" || lower == "nsfw" ||
+                        lower == "hentai" || lower == "erotic" || lower == "explicit") {
+                        item.isNsfw = true;
+                    }
                 }
             }
+        }
+        // Also check Steam API content flags
+        if (j.value("maybe_inappropriate_sex", 0) != 0 ||
+            j.value("maybe_inappropriate_violence", 0) != 0) {
+            item.isNsfw = true;
         }
     } catch (...) {
         LOG_WARN("Failed to parse partial workshop item");

@@ -35,6 +35,9 @@ public:
   void resume(const std::string &monitorName);
   void stop(const std::string &monitorName);
   std::string getCurrentWallpaper(const std::string &monitorName) const;
+  bool isPaused() const;
+  bool isMuted() const;
+  int getVolume() const;
   void handleMonitorUpdate(const monitor::MonitorInfo &info, bool connected);
   void saveState();
   void loadState();

@@ -13,6 +13,7 @@ public:
     using VolumeHandler = std::function<void(const std::string&, int)>;
     using MuteHandler = std::function<void(const std::string&, bool)>;
     using GetStringHandler = std::function<std::string(const std::string&)>;
+    using NoArgStringHandler = std::function<std::string()>;
     virtual void setSetWallpaperHandler(BoolHandler handler) = 0;
     virtual void setGetWallpaperHandler(GetStringHandler handler) = 0;
     virtual void setNextHandler(VoidHandler handler) = 0;
@@ -22,5 +23,7 @@ public:
     virtual void setStopHandler(VoidHandler handler) = 0;
     virtual void setSetVolumeHandler(VolumeHandler handler) = 0;
     virtual void setSetMutedHandler(MuteHandler handler) = 0;
+    virtual void setGetStatusHandler(NoArgStringHandler handler) = 0;
+    virtual void setGetMonitorsHandler(NoArgStringHandler handler) = 0;
 };
 }  

@@ -1,4 +1,5 @@
 #include "WallpaperGrid.hpp"
+#include "../../core/config/ConfigManager.hpp"
 #include "../../core/ipc/LinuxIPCClient.hpp"
 #include "../../core/monitor/MonitorManager.hpp"
 #include "../../core/utils/Logger.hpp"
@@ -10,6 +11,7 @@
 #include "../models/WallpaperObject.hpp"
 #include "WallpaperCard.hpp"
 #include <adwaita.h>
+#include <algorithm>
 #include <filesystem>
 namespace bwp::gui {
 double WallpaperGrid::getVScroll() const {
@@ -61,8 +63,23 @@ WallpaperGrid::WallpaperGrid() {
   gtk_widget_add_css_class(m_gridView, "wallpaper-grid");
   gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(m_scrolledWindow),
                                 m_gridView);
+
+  // Listen for NSFW setting changes to refresh the filter
+  m_configListenerId = bwp::config::ConfigManager::getInstance().addListener(
+      [this](const std::string &key, const nlohmann::json &) {
+        if (key == "content.show_nsfw") {
+          g_idle_add(+[](gpointer data) -> gboolean {
+            auto *self = static_cast<WallpaperGrid *>(data);
+            self->notifyDataChanged();
+            return G_SOURCE_REMOVE;
+          }, this);
+        }
+      });
 }
 WallpaperGrid::~WallpaperGrid() {
+  if (m_configListenerId > 0) {
+    bwp::config::ConfigManager::getInstance().removeListener(m_configListenerId);
+  }
   g_object_unref(m_selectionModel);
   g_object_unref(m_sortModel);
   g_object_unref(m_filterModel);
@@ -100,9 +117,10 @@ void WallpaperGrid::removeWallpaperById(const std::string &id) {
     }
   }
 }
-void WallpaperGrid::updateWallpaperInStore(
+bool WallpaperGrid::updateWallpaperInStore(
     const bwp::wallpaper::WallpaperInfo &info) {
   guint n = g_list_model_get_n_items(G_LIST_MODEL(m_store));
+  bool found = false;
   for (guint i = 0; i < n; ++i) {
     BwpWallpaperObject *obj =
         BWP_WALLPAPER_OBJECT(g_list_model_get_item(G_LIST_MODEL(m_store), i));
@@ -111,6 +129,7 @@ void WallpaperGrid::updateWallpaperInStore(
       if (stored && stored->id == info.id) {
         bwp_wallpaper_object_update_info(obj, info);
         g_object_unref(obj);
+        found = true;
         break;
       }
       g_object_unref(obj);
@@ -120,6 +139,7 @@ void WallpaperGrid::updateWallpaperInStore(
   if (it != m_boundCards.end() && it->second) {
     it->second->updateMetadata(info);
   }
+  return found;
 }
 void WallpaperGrid::notifyDataChanged() {
   if (m_filter) {
@@ -161,6 +181,26 @@ void WallpaperGrid::updateFilter() {
     const auto *info = bwp_wallpaper_object_get_info(obj);
     if (!info)
       return FALSE;
+    // NSFW filter: hide wallpapers with NSFW tags when show_nsfw is disabled
+    // Read directly from config so changes are picked up without re-calling updateFilter()
+    {
+      bool showNsfw = bwp::config::ConfigManager::getInstance().get<bool>("content.show_nsfw", false);
+      if (!showNsfw) {
+        static const std::vector<std::string> nsfwTags = {
+          "mature", "gore", "nudity", "adult only", "sexual content",
+          "nsfw", "hentai", "erotic", "explicit"
+        };
+        for (const auto &t : info->tags) {
+          std::string lower = t;
+          std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+          for (const auto &nsfwTag : nsfwTags) {
+            if (lower == nsfwTag) {
+              return FALSE;
+            }
+          }
+        }
+      }
+    }
     if (s->source != "all") {
       if (s->source == "local") {
         if (info->source == "steam" || info->source == "workshop" ||
@@ -443,8 +483,7 @@ void WallpaperGrid::onSetup(GtkSignalListItemFactory *  ,
                   bwp::ipc::LinuxIPCClient ipcClient;
                   if (ipcClient.connect()) {
                     if (monitors.empty()) {
-                      LOG_INFO("Context menu: setting wallpaper on default monitor: " + wp->path);
-                      ipcClient.setWallpaper(wp->path, "eDP-1");
+                      LOG_WARN("Context menu: no monitors detected, cannot set wallpaper");
                     } else {
                       for (const auto &mon : monitors) {
                         LOG_INFO("Context menu: setting wallpaper on " + mon.name + ": " + wp->path);

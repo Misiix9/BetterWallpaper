@@ -7,20 +7,15 @@ class ErrorDialog {
 public:
   static void show(GtkWindow *parent, const std::string &message,
                    const std::string &details = "") {
-    AdwMessageDialog *dialog = ADW_MESSAGE_DIALOG(
-        adw_message_dialog_new(parent, "Error", message.c_str()));
+    AdwAlertDialog *dialog = ADW_ALERT_DIALOG(
+        adw_alert_dialog_new("Error", message.c_str()));
     if (!details.empty()) {
-      adw_message_dialog_set_body(dialog, details.c_str());
+      adw_alert_dialog_set_body(dialog, details.c_str());
     }
-    adw_message_dialog_add_response(dialog, "ok", "OK");
-    adw_message_dialog_set_default_response(dialog, "ok");
-    adw_message_dialog_set_close_response(dialog, "ok");
-    g_signal_connect(dialog, "response", G_CALLBACK(onResponse), nullptr);
-    gtk_window_present(GTK_WINDOW(dialog));
-  }
-private:
-  static void onResponse(AdwMessageDialog *dialog, char *response,
-                         gpointer user_data) {
+    adw_alert_dialog_add_response(dialog, "ok", "OK");
+    adw_alert_dialog_set_default_response(dialog, "ok");
+    adw_alert_dialog_set_close_response(dialog, "ok");
+    adw_dialog_present(ADW_DIALOG(dialog), GTK_WIDGET(parent));
   }
 };
 }  

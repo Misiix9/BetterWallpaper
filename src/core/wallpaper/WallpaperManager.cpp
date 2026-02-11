@@ -5,6 +5,7 @@
 #include "../notification/NotificationManager.hpp"
 #include "../utils/FileUtils.hpp"
 #include "../utils/Logger.hpp"
+#include "../utils/SafeProcess.hpp"
 #include "../utils/SystemUtils.hpp"
 #include "NativeWallpaperSetter.hpp"
 #include "WallpaperPreloader.hpp"
@@ -17,6 +18,7 @@
 #endif
 #include <cstdlib>
 #include <fstream>
+#include <glib.h>
 #include <vector>
 namespace bwp::wallpaper {
 namespace {
@@ -343,14 +345,15 @@ bool WallpaperManager::setWallpaper(const std::vector<std::string> &monitors,
       renderer->setScalingMode(static_cast<ScalingMode>(m_scalingModes[name]));
     }
     if (oldRenderer) {
-      std::thread([oldRenderer]() {
-#ifdef _WIN32
-        Sleep(800);  
-#else
-        std::this_thread::sleep_for(std::chrono::milliseconds(800));
-#endif
-        oldRenderer->stop();
-      }).detach();
+      // Stop old renderer after transition delay via main-loop timer
+      // (avoids unjoined detached threads)
+      auto *captured = new std::shared_ptr<WallpaperRenderer>(oldRenderer);
+      g_timeout_add(800, +[](gpointer data) -> gboolean {
+        auto *r = static_cast<std::shared_ptr<WallpaperRenderer>*>(data);
+        (*r)->stop();
+        delete r;
+        return G_SOURCE_REMOVE;
+      }, captured);
     }
   }
   if (m_paused) {
@@ -451,6 +454,22 @@ WallpaperManager::getCurrentWallpaper(const std::string &monitorName) const {
   }
   return "";
 }
+
+bool WallpaperManager::isPaused() const {
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
+  return m_paused;
+}
+
+bool WallpaperManager::isMuted() const {
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
+  return m_globalMuted;
+}
+
+int WallpaperManager::getVolume() const {
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
+  return m_volumeLevel;
+}
+
 void WallpaperManager::killConflictingWallpapers() {
   const std::vector<std::string> conflicts = {
       "hyprpaper",  "swaybg",   "swww-daemon", "mpvpaper",    "wpaperd",
@@ -458,8 +477,7 @@ void WallpaperManager::killConflictingWallpapers() {
       "xwallpaper", "hsetroot", "habak",       "displayball", "eww-daemon",
       "ags",        "swww",     "mpv"};
   for (const auto &proc : conflicts) {
-    std::string cmd = "pkill -9 -x " + proc + " 2>/dev/null";
-    system(cmd.c_str());
+    bwp::utils::SafeProcess::exec({"pkill", "-9", "-x", proc});
   }
 }
 void WallpaperManager::saveState() {

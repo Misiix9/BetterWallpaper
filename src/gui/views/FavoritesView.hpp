@@ -20,5 +20,6 @@ private:
   GtkWidget *m_goToLibraryButton = nullptr;
   std::unique_ptr<WallpaperGrid> m_grid;
   std::function<void()> m_goToLibraryCallback;
+  int m_changeCallbackId = 0;
 };
 }  

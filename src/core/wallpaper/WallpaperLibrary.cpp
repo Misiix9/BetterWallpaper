@@ -247,6 +247,7 @@ void WallpaperLibrary::updateWallpaper(const WallpaperInfo &info) {
   bool needsSave = false;
   ChangeCallback cb;
   std::vector<ChangeCallback> cbs;
+  std::vector<ChangeCallback> idCbs;
   {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
     if (m_wallpapers.count(info.id)) {
@@ -255,6 +256,9 @@ void WallpaperLibrary::updateWallpaper(const WallpaperInfo &info) {
       needsSave = true;
       cb = m_changeCallback;
       cbs = m_changeCallbacks;
+      for (const auto &[id, icb] : m_idCallbacks) {
+        idCbs.push_back(icb);
+      }
     }
   }
   if (needsSave) {
@@ -263,6 +267,11 @@ void WallpaperLibrary::updateWallpaper(const WallpaperInfo &info) {
       cb(info);
     }
     for (const auto &callback : cbs) {
+      if (callback) {
+        callback(info);
+      }
+    }
+    for (const auto &callback : idCbs) {
       if (callback) {
         callback(info);
       }
@@ -379,6 +388,16 @@ void WallpaperLibrary::setChangeCallback(ChangeCallback cb) {
 void WallpaperLibrary::addChangeCallback(ChangeCallback cb) {
   std::lock_guard<std::recursive_mutex> lock(m_mutex);
   m_changeCallbacks.push_back(std::move(cb));
+}
+int WallpaperLibrary::addChangeCallbackWithId(ChangeCallback cb) {
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
+  int id = m_nextCallbackId++;
+  m_idCallbacks[id] = std::move(cb);
+  return id;
+}
+void WallpaperLibrary::removeChangeCallback(int id) {
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
+  m_idCallbacks.erase(id);
 }
 std::vector<std::string> WallpaperLibrary::getAllTags() const {
   std::lock_guard<std::recursive_mutex> lock(m_mutex);

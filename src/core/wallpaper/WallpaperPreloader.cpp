@@ -16,14 +16,24 @@ WallpaperPreloader::WallpaperPreloader() {
   LOG_INFO("WallpaperPreloader initialized");
 }
 WallpaperPreloader::~WallpaperPreloader() {
-  std::lock_guard<std::mutex> lock(m_mutex);
-  for (auto &[path, entry] : m_preloads) {
-    entry->cancelled = true;
-    if (entry->preloadThread.joinable()) {
-      entry->preloadThread.detach();
+  std::vector<std::shared_ptr<PreloadEntry>> entries;
+  {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    for (auto &[path, entry] : m_preloads) {
+      entry->cancelled = true;
+      entries.push_back(entry);
     }
   }
-  m_preloads.clear();
+  // Join outside lock to avoid deadlock (doPreload acquires m_mutex)
+  for (auto &entry : entries) {
+    if (entry->preloadThread.joinable()) {
+      entry->preloadThread.join();
+    }
+  }
+  {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_preloads.clear();
+  }
 }
 void WallpaperPreloader::preload(const std::string &path,
                                  PreloadCallback callback) {
@@ -62,7 +72,6 @@ void WallpaperPreloader::preload(const std::string &path,
   m_preloads[path] = entry;
   LOG_INFO("Starting preload for: " + path);
   entry->preloadThread = std::thread([this, path]() { doPreload(path); });
-  entry->preloadThread.detach();
 }
 void WallpaperPreloader::doPreload(const std::string &path) {
   std::shared_ptr<PreloadEntry> entry;

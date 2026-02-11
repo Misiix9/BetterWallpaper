@@ -47,5 +47,7 @@ public:
     }
     std::string getWallpaper(const std::string &) override { return ""; }  
     std::string getDaemonVersion() override { return "0.2.0-win"; }
+    std::string getStatus() override { return "{}"; }
+    std::string getMonitors() override { return "[]"; }
 };
 }  

@@ -6,9 +6,22 @@
 #include <regex>
 #include <thread>
 #include <cstdio>
+#include <cstring>
 #include <sys/wait.h>
 
 namespace bwp::steam {
+
+// Securely zero a string's contents before clearing, preventing
+// password data from lingering in freed heap memory.
+static void secureWipe(std::string &s) {
+    if (!s.empty()) {
+        // Use volatile to prevent the compiler from optimizing away the memset
+        volatile char *p = const_cast<volatile char *>(s.data());
+        std::memset(const_cast<char *>(s.data()), 0, s.size());
+        (void)p;  // prevent unused-variable warning
+    }
+    s.clear();
+}
 
 SteamCMDWorker::SteamCMDWorker() {}
 
@@ -41,7 +54,8 @@ std::string SteamCMDWorker::shellEscape(const std::string& s) {
 // ---------------------------------------------------------------------------
 void SteamCMDWorker::login(const std::string& user, const std::string& pass,
                            std::function<void(bool, const std::string&)> callback,
-                           std::function<void()> twoFactorNeededCallback) {
+                           std::function<void()> twoFactorNeededCallback,
+                           const std::string& twoFactorCode) {
     if (m_loggingIn.load()) {
         LOG_WARN("[SteamCMD] login() called but already logging in");
         if (callback) callback(false, "Login already in progress");
@@ -54,15 +68,23 @@ void SteamCMDWorker::login(const std::string& user, const std::string& pass,
 
     LOG_INFO("[SteamCMD] Starting login for user: " + user);
 
-    std::string cmd = "steamcmd +login '" + shellEscape(user) + "' '"
-                    + shellEscape(pass) + "' +quit < /dev/null 2>&1";
+    std::string cmd;
+    if (!twoFactorCode.empty()) {
+        // Pipe the 2FA code directly into steamcmd
+        cmd = "printf '" + shellEscape(twoFactorCode) + "\\n' | steamcmd +login '"
+            + shellEscape(user) + "' '" + shellEscape(pass) + "' +quit 2>&1";
+        LOG_INFO("[SteamCMD] Login with 2FA code provided upfront");
+    } else {
+        cmd = "steamcmd +login '" + shellEscape(user) + "' '"
+            + shellEscape(pass) + "' +quit < /dev/null 2>&1";
+    }
 
     std::thread([this, cmd, callback, twoFactorNeededCallback]() {
         FILE* pipe = popen(cmd.c_str(), "r");
         if (!pipe) {
             LOG_ERROR("[SteamCMD] Failed to start login process");
             m_loggingIn = false;
-            m_currentPass.clear();
+            secureWipe(m_currentPass);
             if (callback) callback(false, "Failed to start steamcmd");
             return;
         }
@@ -130,7 +152,7 @@ void SteamCMDWorker::login(const std::string& user, const std::string& pass,
                 line.find("rate limit") != std::string::npos) {
                 pclose(pipe);
                 m_loggingIn = false;
-                m_currentPass.clear();
+                secureWipe(m_currentPass);
                 if (callback) callback(false, "Rate Limit Exceeded — try again later");
                 return;
             }
@@ -151,7 +173,7 @@ void SteamCMDWorker::login(const std::string& user, const std::string& pass,
 
         if (loggedIn) {
             LOG_INFO("[SteamCMD] Logged in successfully");
-            m_currentPass.clear();
+            secureWipe(m_currentPass);
             m_loggingIn = false;
             if (callback) callback(true, "Logged in OK");
         } else if (needs2FA) {
@@ -160,7 +182,7 @@ void SteamCMDWorker::login(const std::string& user, const std::string& pass,
             if (twoFactorNeededCallback) twoFactorNeededCallback();
         } else {
             LOG_ERROR("[SteamCMD] Login failed: " + failMsg);
-            m_currentPass.clear();
+            secureWipe(m_currentPass);
             m_loggingIn = false;
             if (callback) callback(false, failMsg.empty() ? "Login failed — check your credentials" : failMsg);
         }
@@ -188,7 +210,7 @@ void SteamCMDWorker::submitTwoFactorCode(const std::string& code,
         FILE* pipe = popen(cmd.c_str(), "r");
         if (!pipe) {
             LOG_ERROR("[SteamCMD] Failed to start 2FA login process");
-            m_currentPass.clear();
+            secureWipe(m_currentPass);
             m_loggingIn = false;
             if (callback) callback(false, "Failed to start steamcmd for 2FA");
             return;
@@ -216,7 +238,7 @@ void SteamCMDWorker::submitTwoFactorCode(const std::string& code,
                 wrongCode = true;
             if (line.find("Rate Limit") != std::string::npos) {
                 pclose(pipe);
-                m_currentPass.clear();
+                secureWipe(m_currentPass);
                 m_loggingIn = false;
                 if (callback) callback(false, "Rate Limit Exceeded — try again later");
                 return;
@@ -227,7 +249,7 @@ void SteamCMDWorker::submitTwoFactorCode(const std::string& code,
 
         if (loggedIn) {
             LOG_INFO("[SteamCMD] Successfully logged in with 2FA");
-            m_currentPass.clear();
+            secureWipe(m_currentPass);
             m_loggingIn = false;
             if (callback) callback(true, "Logged in OK");
         } else {
@@ -236,6 +258,85 @@ void SteamCMDWorker::submitTwoFactorCode(const std::string& code,
             std::string msg = wrongCode ? "Invalid 2FA code — please try again"
                             : (failMsg.empty() ? "2FA login failed" : failMsg);
             if (callback) callback(false, msg);
+        }
+    }).detach();
+}
+
+// ---------------------------------------------------------------------------
+// AUTO-LOGIN: Try cached credentials (no password)
+// ---------------------------------------------------------------------------
+void SteamCMDWorker::tryAutoLogin(const std::string& user,
+                                  std::function<void(bool, const std::string&)> callback) {
+    if (m_loggingIn.load()) {
+        LOG_WARN("[SteamCMD] tryAutoLogin() called but already logging in");
+        if (callback) callback(false, "Login already in progress");
+        return;
+    }
+
+    m_loggingIn = true;
+    LOG_INFO("[SteamCMD] Attempting auto-login for user: " + user);
+
+    // No password — steamcmd will use its internally cached session token
+    std::string cmd = "steamcmd +login '" + shellEscape(user) + "' +quit < /dev/null 2>&1";
+
+    std::thread([this, cmd, callback]() {
+        FILE* pipe = popen(cmd.c_str(), "r");
+        if (!pipe) {
+            LOG_ERROR("[SteamCMD] Failed to start auto-login process");
+            m_loggingIn = false;
+            if (callback) callback(false, "Failed to start steamcmd");
+            return;
+        }
+
+        char buf[1024];
+        bool loggedIn = false;
+        bool needs2FA = false;
+        std::string failMsg;
+
+        while (fgets(buf, sizeof(buf), pipe) != nullptr) {
+            std::string line(buf);
+            while (!line.empty() && (line.back() == '\r' || line.back() == '\n'))
+                line.pop_back();
+            line = std::regex_replace(line, std::regex("\\x1B\\[[0-9;]*[A-Za-z]"), "");
+            while (!line.empty() && (line.back() == ' ' || line.front() == ' ')) {
+                if (line.back() == ' ') line.pop_back();
+                if (!line.empty() && line.front() == ' ') line.erase(line.begin());
+            }
+            if (line.empty()) continue;
+
+            LOG_DEBUG("[SteamCMD auto-login] " + line);
+
+            if (line.find("Logged in OK") != std::string::npos ||
+                line.find("Waiting for user info...OK") != std::string::npos)
+                loggedIn = true;
+            if (line.find("Two-factor code:") != std::string::npos ||
+                line.find("Two-Factor") != std::string::npos ||
+                line.find("Steam Guard code:") != std::string::npos)
+                needs2FA = true;
+            if (line.find("FAILED") != std::string::npos && failMsg.empty())
+                failMsg = line;
+            if (line.find("Invalid Password") != std::string::npos ||
+                line.find("Cached credentials not found") != std::string::npos ||
+                line.find("Login Denied") != std::string::npos)
+                failMsg = line;
+        }
+
+        int status = pclose(pipe);
+        int exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+        LOG_INFO("[SteamCMD] Auto-login process exited with code " + std::to_string(exitCode));
+
+        // Clean exit with no failure = success (handles mobile auth flow)
+        if (!loggedIn && !needs2FA && exitCode == 0 && failMsg.empty())
+            loggedIn = true;
+
+        m_loggingIn = false;
+
+        if (loggedIn) {
+            LOG_INFO("[SteamCMD] Auto-login succeeded (cached credentials valid)");
+            if (callback) callback(true, "Auto-login OK");
+        } else {
+            LOG_INFO("[SteamCMD] Auto-login failed — cached credentials expired or missing");
+            if (callback) callback(false, failMsg.empty() ? "Cached credentials expired" : failMsg);
         }
     }).detach();
 }
@@ -306,7 +407,9 @@ void SteamCMDWorker::download(const std::string& workshopId,
                             float prog = std::stof(match[1].str());
                             if (progressCallback) progressCallback(prog / 100.0f);
                             gotProgress = true;
-                        } catch (...) {}
+                        } catch (const std::exception& e) {
+                            LOG_DEBUG("[SteamCMD] Failed to parse progress percent: " + std::string(e.what()));
+                        }
                     }
 
                     if (!gotProgress && std::regex_search(line, match, reBytes)) {
@@ -316,7 +419,9 @@ void SteamCMDWorker::download(const std::string& workshopId,
                             if (total > 0) {
                                 if (progressCallback) progressCallback(static_cast<float>(dl / total));
                             }
-                        } catch (...) {}
+                        } catch (const std::exception& e) {
+                            LOG_DEBUG("[SteamCMD] Failed to parse progress bytes: " + std::string(e.what()));
+                        }
                     }
                 }
 

@@ -30,6 +30,8 @@ public:
     void setStopHandler(VoidHandler h) override { m_stopHandler = h; }
     void setSetVolumeHandler(VolumeHandler h) override { m_volumeHandler = h; }
     void setSetMutedHandler(MuteHandler h) override { m_muteHandler = h; }
+    void setGetStatusHandler(NoArgStringHandler h) override { m_getStatusHandler = h; }
+    void setGetMonitorsHandler(NoArgStringHandler h) override { m_getMonitorsHandler = h; }
 private:
     std::atomic<bool> m_running{false};
     std::thread m_thread;
@@ -42,6 +44,8 @@ private:
     VoidHandler m_stopHandler;
     VolumeHandler m_volumeHandler;
     MuteHandler m_muteHandler;
+    NoArgStringHandler m_getStatusHandler;
+    NoArgStringHandler m_getMonitorsHandler;
 #ifdef _WIN32
     void listenLoop();
 #endif

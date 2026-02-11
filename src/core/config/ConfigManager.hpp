@@ -25,6 +25,9 @@ public:
   using Callback =
       std::function<void(const std::string &key, const nlohmann::json &value)>;
   void startWatching(Callback callback);
+  // Add an additional listener for config changes (supports multiple)
+  int addListener(Callback callback);
+  void removeListener(int id);
 private:
   ConfigManager();
   ~ConfigManager() = default;
@@ -37,6 +40,8 @@ private:
   nlohmann::json m_config;
   std::filesystem::path m_configPath;
   Callback m_callback;
+  std::map<int, Callback> m_listeners;
+  int m_nextListenerId = 1;
   std::atomic<guint> m_saveTimerId{0};
   std::atomic<bool> m_dirty{false};
 };
@@ -55,6 +60,7 @@ template <typename T> T ConfigManager::get(const std::string &key) const {
 }
 template <typename T>
 T ConfigManager::get(const std::string &key, const T &defaultValue) const {
+  std::lock_guard<std::mutex> lock(m_mutex);
   const nlohmann::json *ptr = getValuePtr(key);
   if (ptr) {
     try {
@@ -67,16 +73,25 @@ T ConfigManager::get(const std::string &key, const T &defaultValue) const {
 }
 template <typename T>
 void ConfigManager::set(const std::string &key, const T &value) {
+  Callback callbackCopy;
+  std::map<int, Callback> listenersCopy;
   {
     std::lock_guard<std::mutex> lock(m_mutex);
     nlohmann::json *ptr = getValuePtr(key);
     if (ptr) {
       *ptr = value;
     }
+    callbackCopy = m_callback;
+    listenersCopy = m_listeners;
   }
   scheduleSave();
-  if (m_callback) {
-    m_callback(key, value);
+  if (callbackCopy) {
+    callbackCopy(key, value);
+  }
+  for (const auto &[id, listener] : listenersCopy) {
+    if (listener) {
+      listener(key, value);
+    }
   }
 }
 }  

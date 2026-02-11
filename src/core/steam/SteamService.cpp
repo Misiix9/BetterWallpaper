@@ -86,14 +86,25 @@ SearchResult SteamService::search(const std::string& query, int page, const std:
 
 void SteamService::login(const std::string& password, 
                          std::function<void(bool success, const std::string&)> cb,
-                         std::function<void()> on2Fa) {
+                         std::function<void()> on2Fa,
+                         const std::string& twoFactorCode) {
     std::string user = getSteamUser();
     if (user.empty()) {
         if (cb) cb(false, "No Steam User configured");
         return;
     }
     
-    m_worker.login(user, password, cb, on2Fa);
+    m_worker.login(user, password, cb, on2Fa, twoFactorCode);
+}
+
+void SteamService::tryAutoLogin(std::function<void(bool success, const std::string& msg)> callback) {
+    std::string user = getSteamUser();
+    if (user.empty()) {
+        if (callback) callback(false, "No Steam User configured");
+        return;
+    }
+    
+    m_worker.tryAutoLogin(user, callback);
 }
 
 void SteamService::submit2FA(const std::string& code,

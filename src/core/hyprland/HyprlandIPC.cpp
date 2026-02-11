@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -102,6 +103,10 @@ void HyprlandIPC::eventLoop() {
     std::string bufferStr;
     char buffer[1024];
     while (m_running) {
+      struct pollfd pfd = {sock, POLLIN, 0};
+      int ret = poll(&pfd, 1, 500); // 500ms timeout to check m_running
+      if (ret == 0) continue; // timeout, re-check m_running
+      if (ret < 0) break; // error
       ssize_t n = read(sock, buffer, sizeof(buffer) - 1);
       if (n <= 0)
         break;  

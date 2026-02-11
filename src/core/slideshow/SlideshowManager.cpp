@@ -26,6 +26,7 @@ SlideshowManager::~SlideshowManager() { stop(); }
 void SlideshowManager::start(const std::vector<std::string> &wallpaperIds,
                              int intervalSeconds) {
   stop();  
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   m_playlist = wallpaperIds;
   m_intervalSeconds = intervalSeconds;
   m_currentIndex = 0;
@@ -81,6 +82,7 @@ void SlideshowManager::startFromTag(const std::string &tag,
   start(ids, intervalSeconds);
 }
 void SlideshowManager::stop() {
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   if (m_timerId > 0) {
     g_source_remove(m_timerId);
     m_timerId = 0;
@@ -93,6 +95,7 @@ void SlideshowManager::stop() {
   saveToConfig();
 }
 void SlideshowManager::pause() {
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   if (!m_running || m_paused)
     return;
   if (m_timerId > 0) {
@@ -103,6 +106,7 @@ void SlideshowManager::pause() {
   LOG_INFO("Slideshow paused");
 }
 void SlideshowManager::resume() {
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   if (!m_running || !m_paused)
     return;
   m_paused = false;
@@ -117,6 +121,7 @@ void SlideshowManager::resume() {
   LOG_INFO("Slideshow resumed");
 }
 void SlideshowManager::next() {
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   if (!m_running || m_playlist.empty())
     return;
   m_currentIndex = (m_currentIndex + 1) % static_cast<int>(m_playlist.size());
@@ -136,6 +141,7 @@ void SlideshowManager::next() {
   }
 }
 void SlideshowManager::previous() {
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   if (!m_running || m_playlist.empty())
     return;
   m_currentIndex--;
@@ -158,6 +164,7 @@ void SlideshowManager::previous() {
   }
 }
 std::string SlideshowManager::getCurrentWallpaperId() const {
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   if (m_playlist.empty() || m_currentIndex < 0 ||
       m_currentIndex >= static_cast<int>(m_playlist.size())) {
     return "";
@@ -165,6 +172,7 @@ std::string SlideshowManager::getCurrentWallpaperId() const {
   return m_playlist[m_currentIndex];
 }
 void SlideshowManager::setShuffle(bool shuffle) {
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   m_shuffle = shuffle;
   if (m_shuffle && m_running) {
     shufflePlaylist();
@@ -173,6 +181,7 @@ void SlideshowManager::setShuffle(bool shuffle) {
   saveToConfig();
 }
 void SlideshowManager::tick() {
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   if (m_paused)
     return;
   m_currentIndex = (m_currentIndex + 1) % static_cast<int>(m_playlist.size());
@@ -195,6 +204,7 @@ void SlideshowManager::shufflePlaylist() {
   std::shuffle(m_playlist.begin(), m_playlist.end(), g);
 }
 void SlideshowManager::loadFromConfig() {
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
   auto &conf = bwp::config::ConfigManager::getInstance();
   m_shuffle = conf.get<bool>("slideshow.shuffle");
   m_intervalSeconds = conf.get<int>("slideshow.interval");
@@ -216,9 +226,10 @@ void SlideshowManager::loadFromConfig() {
   }
 }
 void SlideshowManager::saveToConfig() {
+  // Note: caller should hold m_mutex already
   auto &conf = bwp::config::ConfigManager::getInstance();
-  conf.set("slideshow.running", m_running);
-  conf.set("slideshow.shuffle", m_shuffle);
+  conf.set("slideshow.running", m_running.load());
+  conf.set("slideshow.shuffle", m_shuffle.load());
   conf.set("slideshow.interval", m_intervalSeconds);
   conf.set("slideshow.playlist", m_playlist);
   conf.set("slideshow.current_index", m_currentIndex);

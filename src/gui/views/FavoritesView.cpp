@@ -11,7 +11,7 @@ FavoritesView::FavoritesView() {
       },
       this);
   auto &lib = bwp::wallpaper::WallpaperLibrary::getInstance();
-  lib.addChangeCallback(
+  m_changeCallbackId = lib.addChangeCallbackWithId(
       [this](const bwp::wallpaper::WallpaperInfo &changedInfo) {
         auto *info = new bwp::wallpaper::WallpaperInfo(changedInfo);
         g_idle_add(
@@ -39,7 +39,11 @@ FavoritesView::FavoritesView() {
                 this, info));
       });
 }
-FavoritesView::~FavoritesView() {}
+FavoritesView::~FavoritesView() {
+  if (m_changeCallbackId != 0) {
+    bwp::wallpaper::WallpaperLibrary::getInstance().removeChangeCallback(m_changeCallbackId);
+  }
+}
 void FavoritesView::setupUi() {
   m_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
   GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);

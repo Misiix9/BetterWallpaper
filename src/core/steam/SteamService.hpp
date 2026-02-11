@@ -29,9 +29,14 @@ public:
 
     // Login Action
     // Password is NOT stored, only used for session
+    // If twoFactorCode is non-empty, it is sent with the login attempt.
     void login(const std::string& password, 
                std::function<void(bool success, const std::string&)> cb,
-               std::function<void()> on2Fa);
+               std::function<void()> on2Fa,
+               const std::string& twoFactorCode = "");
+    
+    // Auto-login: try using steamcmd's cached session (no password needed)
+    void tryAutoLogin(std::function<void(bool success, const std::string& msg)> callback);
                
     void submit2FA(const std::string& code,
                    std::function<void(bool success, const std::string& msg)> callback);

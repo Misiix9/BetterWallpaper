@@ -22,8 +22,9 @@ public:
   DBusService();
   ~DBusService() override;
   bool initialize() override;
-  void run() override {}  
-  void stop() override {}
+  void run() override {}
+  void stop() override;
+
   void emitWallpaperChanged(const std::string &monitor,
                             const std::string &path);
   void emitProfileChanged(const std::string &name);
@@ -36,6 +37,8 @@ public:
   void setStopHandler(VoidHandler handler) override;
   void setSetVolumeHandler(VolumeHandler handler) override;
   void setSetMutedHandler(MuteHandler handler) override;
+  void setGetStatusHandler(NoArgStringHandler handler) override;
+  void setGetMonitorsHandler(NoArgStringHandler handler) override;
 private:
   static void onBusAcquired(GDBusConnection *connection, const char *name,
                             void *user_data);
@@ -65,5 +68,9 @@ private:
   VoidHandler m_pauseHandler;
   VoidHandler m_resumeHandler;
   VoidHandler m_stopHandler;
+  VolumeHandler m_volumeHandler;
+  MuteHandler m_muteHandler;
+  NoArgStringHandler m_getStatusHandler;
+  NoArgStringHandler m_getMonitorsHandler;
 };
 }  

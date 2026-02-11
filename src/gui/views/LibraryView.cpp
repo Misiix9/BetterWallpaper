@@ -206,7 +206,10 @@ void LibraryView::setupUi() {
                                         bwp::wallpaper::WallpaperInfo *> *>(
                       data);
               if (pair->first->m_grid) {
-                pair->first->m_grid->updateWallpaperInStore(*pair->second);
+                // Try update first; if not found, add as new wallpaper
+                if (!pair->first->m_grid->updateWallpaperInStore(*pair->second)) {
+                  pair->first->m_grid->addWallpaper(*pair->second);
+                }
               }
               delete pair->second;
               delete pair;

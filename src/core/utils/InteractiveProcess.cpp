@@ -8,6 +8,7 @@ InteractiveProcess::InteractiveProcess() {}
 
 InteractiveProcess::~InteractiveProcess() {
     stop();
+    g_clear_object(&m_subprocess);
 }
 
 bool InteractiveProcess::start(const std::vector<std::string>& args) {
@@ -73,7 +74,11 @@ void InteractiveProcess::stop() {
     if (!m_running || !m_subprocess) return;
     
     g_subprocess_send_signal(m_subprocess, SIGTERM);
-    // Allow brief grace period handled by user or eventual kill
+    m_running = false;
+    g_clear_object(&m_subprocess);
+    m_stdin = nullptr;
+    m_stdout = nullptr;
+    m_stderr = nullptr;
 }
 
 void InteractiveProcess::kill() {
@@ -81,6 +86,11 @@ void InteractiveProcess::kill() {
     if (!m_running || !m_subprocess) return;
 
     g_subprocess_force_exit(m_subprocess);
+    m_running = false;
+    g_clear_object(&m_subprocess);
+    m_stdin = nullptr;
+    m_stdout = nullptr;
+    m_stderr = nullptr;
 }
 
 bool InteractiveProcess::isRunning() const {
@@ -156,8 +166,10 @@ void InteractiveProcess::onProcessExited(GObject* source, GAsyncResult* res, gpo
     }
     
     // cleanup
-    // g_object_unref(self->m_subprocess); // Done in destructor or stop? No, keep logic simple.
-    // Ideally use GtkPtr or similar, but m_subprocess is managed by class lifecycle.
+    g_clear_object(&self->m_subprocess);
+    self->m_stdin = nullptr;
+    self->m_stdout = nullptr;
+    self->m_stderr = nullptr;
 }
 
 }

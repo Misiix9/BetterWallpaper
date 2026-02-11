@@ -1,6 +1,7 @@
 #include "AutostartManager.hpp"
 #include "../config/ConfigManager.hpp"
 #include "../utils/Logger.hpp"
+#include "../utils/SafeProcess.hpp"
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -34,7 +35,8 @@ AutostartMethod AutostartManager::stringToMethod(const std::string &str) {
 std::vector<AutostartMethod> AutostartManager::getAvailableMethods() {
   std::vector<AutostartMethod> methods;
   methods.push_back(AutostartMethod::XDGAutostart);
-  if (system("systemctl --user status > /dev/null 2>&1") == 0) {
+  auto statusResult = bwp::utils::SafeProcess::exec({"systemctl", "--user", "status"});
+  if (statusResult.exitCode == 0) {
     methods.push_back(AutostartMethod::SystemdUser);
   }
   const char *xdg_session = std::getenv("XDG_CURRENT_DESKTOP");
@@ -136,8 +138,8 @@ bool AutostartManager::enableSystemdUser() {
   file << "[Install]\n";
   file << "WantedBy=default.target\n";
   file.close();
-  std::string cmd = "systemctl --user enable betterwallpaper.service";
-  if (system(cmd.c_str()) != 0) {
+  auto enableResult = bwp::utils::SafeProcess::exec({"systemctl", "--user", "enable", "betterwallpaper.service"});
+  if (enableResult.exitCode != 0) {
     LOG_WARN("Failed to enable systemd service");
   }
   LOG_INFO("Created systemd user service: " + path);
@@ -152,7 +154,7 @@ bool AutostartManager::disableXDGAutostart() {
   return true;
 }
 bool AutostartManager::disableSystemdUser() {
-  system("systemctl --user disable betterwallpaper.service 2>/dev/null");
+  bwp::utils::SafeProcess::exec({"systemctl", "--user", "disable", "betterwallpaper.service"});
   std::string path = getSystemdServicePath();
   if (fs::exists(path)) {
     fs::remove(path);

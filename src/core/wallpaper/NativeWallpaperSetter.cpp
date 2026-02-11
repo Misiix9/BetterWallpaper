@@ -1,17 +1,18 @@
 #include "NativeWallpaperSetter.hpp"
 #include "WallpaperSetterFactory.hpp"
+#include "../monitor/MonitorManager.hpp"
 #include "../utils/Logger.hpp"
 #include "../utils/ProcessUtils.hpp"
+#include "../utils/SafeProcess.hpp"
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <sstream>
 #ifndef _WIN32
 #include <unistd.h>
 #endif
 #ifdef _WIN32
 #include <windows.h>
-#define popen _popen
-#define pclose _pclose
 #define sleep(x) Sleep(x * 1000)
 #define usleep(x) Sleep(x / 1000)
 #endif
@@ -35,9 +36,7 @@ bool NativeWallpaperSetter::isCommandAvailable(const std::string &cmd) {
 #ifdef _WIN32
     return false;
 #else
-  std::string checkCmd = "which " + cmd + " > /dev/null 2>&1";
-  int result = system(checkCmd.c_str());
-  bool available = (result == 0);
+  bool available = utils::SafeProcess::commandExists(cmd);
   LOG_DEBUG("Command check: " + cmd + " -> " +
             (available ? "available" : "NOT available"));
   return available;
@@ -77,35 +76,46 @@ std::vector<std::string> NativeWallpaperSetter::getMonitors() {
     LOG_DEBUG("Wayland detected: " + std::string(waylandDisplay));
     if (isCommandAvailable("hyprctl")) {
       LOG_DEBUG("Trying hyprctl...");
-      FILE *pipe =
-          popen("hyprctl monitors | grep 'Monitor' | awk '{print $2}'", "r");
-      if (pipe) {
-        char buffer[128];
-        while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
-          std::string mon(buffer);
-          if (!mon.empty() && mon.back() == '\n')
-            mon.pop_back();
-          if (!mon.empty())
-            monitors.push_back(mon);
+      auto result = utils::SafeProcess::exec({"hyprctl", "monitors"});
+      if (result.success()) {
+        std::istringstream stream(result.stdOut);
+        std::string line;
+        while (std::getline(stream, line)) {
+          // Lines like "Monitor DP-1 ..."
+          if (line.find("Monitor") != std::string::npos) {
+            auto spacePos = line.find(' ');
+            if (spacePos != std::string::npos) {
+              auto nameStart = spacePos + 1;
+              auto nameEnd = line.find(' ', nameStart);
+              std::string mon = (nameEnd != std::string::npos)
+                ? line.substr(nameStart, nameEnd - nameStart)
+                : line.substr(nameStart);
+              if (!mon.empty())
+                monitors.push_back(mon);
+            }
+          }
         }
-        pclose(pipe);
       }
     }
     else if (isCommandAvailable("swaymsg")) {
       LOG_DEBUG("Trying swaymsg...");
-      FILE *pipe = popen("swaymsg -t get_outputs | grep '\"name\":' | awk "
-                         "'{print $2}' | tr -d '\",'",
-                         "r");
-      if (pipe) {
-        char buffer[128];
-        while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
-          std::string mon(buffer);
-          if (!mon.empty() && mon.back() == '\n')
-            mon.pop_back();
-          if (!mon.empty())
-            monitors.push_back(mon);
+      auto result = utils::SafeProcess::exec({"swaymsg", "-t", "get_outputs"});
+      if (result.success()) {
+        // Parse JSON-like output for "name" fields
+        std::istringstream stream(result.stdOut);
+        std::string line;
+        while (std::getline(stream, line)) {
+          auto namePos = line.find("\"name\":");
+          if (namePos != std::string::npos) {
+            auto valStart = line.find('"', namePos + 7);
+            auto valEnd = line.find('"', valStart + 1);
+            if (valStart != std::string::npos && valEnd != std::string::npos) {
+              std::string mon = line.substr(valStart + 1, valEnd - valStart - 1);
+              if (!mon.empty())
+                monitors.push_back(mon);
+            }
+          }
         }
-        pclose(pipe);
       }
     } else {
         LOG_DEBUG("No specific Wayland compositor tools found.");
@@ -114,18 +124,20 @@ std::vector<std::string> NativeWallpaperSetter::getMonitors() {
   else {
     LOG_DEBUG("Checking X11...");
     if (isCommandAvailable("xrandr")) {
-      FILE *pipe =
-          popen("xrandr --query | grep ' connected' | awk '{print $1}'", "r");
-      if (pipe) {
-        char buffer[128];
-        while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
-          std::string mon(buffer);
-          if (!mon.empty() && mon.back() == '\n')
-            mon.pop_back();
-          if (!mon.empty())
-            monitors.push_back(mon);
+      auto result = utils::SafeProcess::exec({"xrandr", "--query"});
+      if (result.success()) {
+        std::istringstream stream(result.stdOut);
+        std::string line;
+        while (std::getline(stream, line)) {
+          if (line.find(" connected") != std::string::npos) {
+            auto spacePos = line.find(' ');
+            if (spacePos != std::string::npos) {
+              std::string mon = line.substr(0, spacePos);
+              if (!mon.empty())
+                monitors.push_back(mon);
+            }
+          }
         }
-        pclose(pipe);
       }
     }
   }
@@ -158,27 +170,27 @@ bool NativeWallpaperSetter::setWithSwaybg(const std::string &path,
 #ifdef _WIN32
     return false;
 #else
-  std::cerr << "[BWP] setWithSwaybg starting..." << std::endl;
-  system("pkill -x swaybg 2>/dev/null");
+  LOG_INFO("setWithSwaybg starting...");
+  utils::SafeProcess::exec({"pkill", "-x", "swaybg"});
   usleep(100000);  
-  std::string cmd = "swaybg";
+  std::vector<std::string> args = {"swaybg"};
   if (!monitor.empty()) {
-    cmd += " -o " + monitor;
+    args.push_back("-o");
+    args.push_back(monitor);
   }
-  cmd += " -i \"" + path + "\" -m fill";
-  std::string fullCmd = "nohup " + cmd + " > /tmp/swaybg.log 2>&1 &";
-  std::cerr << "[BWP] Executing: " << fullCmd << std::endl;
-  LOG_INFO("Executing: " + fullCmd);
-  int result = system(fullCmd.c_str());
-  std::cerr << "[BWP] system() returned: " << result << std::endl;
-  usleep(300000);  
-  int checkResult = system("pgrep -x swaybg > /dev/null 2>&1");
-  bool running = (checkResult == 0);
-  std::cerr << "[BWP] swaybg running: " << (running ? "YES" : "NO")
-            << std::endl;
-  if (!running) {
-    std::cerr << "[BWP] Checking /tmp/swaybg.log..." << std::endl;
-    system("cat /tmp/swaybg.log 2>/dev/null");
+  args.push_back("-i");
+  args.push_back(path);
+  args.push_back("-m");
+  args.push_back("fill");
+  bool started = utils::SafeProcess::execDetached(args);
+  if (!started) {
+    LOG_ERROR("Failed to start swaybg");
+    return false;
+  }
+  usleep(300000);
+  auto check = utils::SafeProcess::exec({"pgrep", "-x", "swaybg"});
+  if (!check.success()) {
+    LOG_ERROR("swaybg not running after launch");
     return false;
   }
   LOG_INFO("swaybg started successfully!");
@@ -190,21 +202,24 @@ bool NativeWallpaperSetter::setWithHyprctl(const std::string &path,
 #ifdef _WIN32
     return false;
 #else
-  std::cerr << "[BWP] setWithHyprctl starting..." << std::endl;
-  std::string preloadCmd = "hyprctl hyprpaper preload \"" + path + "\" 2>&1";
-  std::cerr << "[BWP] Preload: " << preloadCmd << std::endl;
-  int preloadResult = system(preloadCmd.c_str());
-  if (preloadResult != 0) {
-    std::cerr << "[BWP] Preload failed: " << preloadResult << std::endl;
+  LOG_INFO("setWithHyprctl starting...");
+  auto preload = utils::SafeProcess::exec({"hyprctl", "hyprpaper", "preload", path});
+  if (!preload.success()) {
+    LOG_ERROR("hyprctl preload failed: " + preload.stdErr);
     return false;
   }
-  std::string monitorName = monitor.empty() ? "eDP-1" : monitor;
-  std::string setCmd =
-      "hyprctl hyprpaper wallpaper \"" + monitorName + "," + path + "\" 2>&1";
-  std::cerr << "[BWP] Set: " << setCmd << std::endl;
-  int setResult = system(setCmd.c_str());
-  std::cerr << "[BWP] Set result: " << setResult << std::endl;
-  return setResult == 0;
+  std::string monitorName = monitor;
+  if (monitorName.empty()) {
+    auto monitors = bwp::monitor::MonitorManager::getInstance().getMonitors();
+    monitorName = monitors.empty() ? "" : monitors[0].name;
+  }
+  auto set = utils::SafeProcess::exec({"hyprctl", "hyprpaper", "wallpaper",
+                                        monitorName + "," + path});
+  if (!set.success()) {
+    LOG_ERROR("hyprctl wallpaper set failed: " + set.stdErr);
+    return false;
+  }
+  return true;
 #endif
 }
 bool NativeWallpaperSetter::setWithSwww(const std::string &path,
@@ -212,36 +227,44 @@ bool NativeWallpaperSetter::setWithSwww(const std::string &path,
 #ifdef _WIN32
     return false;
 #else
-  std::cerr << "[BWP] setWithSwww starting..." << std::endl;
-  system("swww init 2>/dev/null");
+  LOG_INFO("setWithSwww starting...");
+  utils::SafeProcess::exec({"swww", "init"});
   usleep(200000);
-  std::string cmd = "swww img";
+  std::vector<std::string> args = {"swww", "img"};
   if (!monitor.empty()) {
-    cmd += " -o " + monitor;
+    args.push_back("-o");
+    args.push_back(monitor);
   }
-  cmd += " \"" + path + "\" --transition-type fade 2>&1";
-  std::cerr << "[BWP] Running: " << cmd << std::endl;
-  int result = system(cmd.c_str());
-  std::cerr << "[BWP] Result: " << result << std::endl;
-  return result == 0;
+  args.push_back(path);
+  args.push_back("--transition-type");
+  args.push_back("fade");
+  auto result = utils::SafeProcess::exec(args);
+  if (!result.success()) {
+    LOG_ERROR("swww img failed: " + result.stdErr);
+  }
+  return result.success();
 #endif
 }
 bool NativeWallpaperSetter::setWithFeh(const std::string &path) {
 #ifdef _WIN32
     return false;
 #else
-  std::string cmd = "feh --bg-fill \"" + path + "\" 2>&1";
-  std::cerr << "[BWP] Running: " << cmd << std::endl;
-  return system(cmd.c_str()) == 0;
+  auto result = utils::SafeProcess::exec({"feh", "--bg-fill", path});
+  if (!result.success()) {
+    LOG_ERROR("feh failed: " + result.stdErr);
+  }
+  return result.success();
 #endif
 }
 bool NativeWallpaperSetter::setWithXwallpaper(const std::string &path) {
 #ifdef _WIN32
     return false;
 #else
-  std::string cmd = "xwallpaper --zoom \"" + path + "\" 2>&1";
-  std::cerr << "[BWP] Running: " << cmd << std::endl;
-  return system(cmd.c_str()) == 0;
+  auto result = utils::SafeProcess::exec({"xwallpaper", "--zoom", path});
+  if (!result.success()) {
+    LOG_ERROR("xwallpaper failed: " + result.stdErr);
+  }
+  return result.success();
 #endif
 }
 }  

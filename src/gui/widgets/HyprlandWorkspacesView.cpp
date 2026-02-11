@@ -131,19 +131,22 @@ void HyprlandWorkspacesView::showConfigSnippet() {
   auto &hypr = bwp::hyprland::HyprlandManager::getInstance();
   std::string snippet = hypr.generateConfigSnippet();
   GtkWidget *topLevel = gtk_widget_get_ancestor(m_box, GTK_TYPE_WINDOW);
-  GtkWindow *window = GTK_IS_WINDOW(topLevel) ? GTK_WINDOW(topLevel) : nullptr;
-  AdwMessageDialog *dialog = ADW_MESSAGE_DIALOG(
-      adw_message_dialog_new(window, "Hyprland Keybinds", snippet.c_str()));
-  adw_message_dialog_add_response(dialog, "close", "Close");
-  adw_message_dialog_add_response(dialog, "copy", "Copy to Clipboard");
-  adw_message_dialog_set_response_appearance(dialog, "copy",
-                                             ADW_RESPONSE_SUGGESTED);
-  adw_message_dialog_set_default_response(dialog, "copy");
+
+  AdwAlertDialog *dialog = ADW_ALERT_DIALOG(
+      adw_alert_dialog_new("Hyprland Keybinds", snippet.c_str()));
+  adw_alert_dialog_add_response(dialog, "close", "Close");
+  adw_alert_dialog_add_response(dialog, "copy", "Copy to Clipboard");
+  adw_alert_dialog_set_response_appearance(dialog, "copy",
+                                           ADW_RESPONSE_SUGGESTED);
+  adw_alert_dialog_set_default_response(dialog, "copy");
   g_object_set_data_full(G_OBJECT(dialog), "snippet", g_strdup(snippet.c_str()),
                          g_free);
-  g_signal_connect(
-      dialog, "response",
-      G_CALLBACK(+[](AdwMessageDialog *d, const char *response, gpointer) {
+  adw_alert_dialog_choose(
+      dialog, GTK_WIDGET(topLevel),
+      nullptr,  // GCancellable
+      +[](GObject *source, GAsyncResult *result, gpointer) {
+        AdwAlertDialog *d = ADW_ALERT_DIALOG(source);
+        const char *response = adw_alert_dialog_choose_finish(d, result);
         if (g_strcmp0(response, "copy") == 0) {
           const char *text =
               (const char *)g_object_get_data(G_OBJECT(d), "snippet");
@@ -151,10 +154,8 @@ void HyprlandWorkspacesView::showConfigSnippet() {
               gdk_display_get_clipboard(gdk_display_get_default());
           gdk_clipboard_set_text(clipboard, text);
         }
-        gtk_window_close(GTK_WINDOW(d));
-      }),
+      },
       nullptr);
-  gtk_window_present(GTK_WINDOW(dialog));
 }
 void HyprlandWorkspacesView::refresh() {
   auto &hypr = bwp::hyprland::HyprlandManager::getInstance();

@@ -22,7 +22,7 @@ public:
   void clear();
   void addWallpaper(const bwp::wallpaper::WallpaperInfo &info);
   void removeWallpaperById(const std::string &id);
-  void updateWallpaperInStore(const bwp::wallpaper::WallpaperInfo &info);
+  bool updateWallpaperInStore(const bwp::wallpaper::WallpaperInfo &info);
   void notifyDataChanged();
   void filter(const std::string &query);
   void setFilterFavoritesOnly(bool onlyFavorites);
@@ -55,6 +55,7 @@ private:
   SortOrder m_currentSort = SortOrder::NameAsc;
   std::unordered_set<std::string> m_existingPaths;
   std::unordered_map<std::string, WallpaperCard*> m_boundCards;
+  int m_configListenerId = 0;
   void updateFilter();
   static void onSetup(GtkSignalListItemFactory *factory, GtkListItem *item,
                       gpointer user_data);

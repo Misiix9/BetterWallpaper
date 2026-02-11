@@ -3,7 +3,9 @@
 #include "../../core/wallpaper/WallpaperLibrary.hpp"
 #include "../../core/steam/SteamService.hpp"
 #include "../../core/steam/DownloadQueue.hpp"
+#include "../../core/config/ConfigManager.hpp"
 #include "../../core/utils/ToastManager.hpp"
+#include "../widgets/WorkshopCard.hpp"
 #include <curl/curl.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <iostream>
@@ -67,16 +69,31 @@ void WorkshopView::setupBrowsePage() {
   if (!bwp::steam::SteamService::getInstance().hasSteamCMD()) {
     adw_banner_set_revealed(ADW_BANNER(m_steamcmdBanner), true);
   }
-  GtkWidget *headerBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+
+  // Search bar — matches library style: [SearchEntry] [SearchButton] [LoginButton]
+  GtkWidget *headerBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
   gtk_box_append(GTK_BOX(m_browsePage), headerBox);
-  GtkWidget *title = gtk_label_new("Browse Steam Workshop");
-  gtk_widget_add_css_class(title, "heading");
-  gtk_box_append(GTK_BOX(headerBox), title);
-  m_searchBar = gtk_search_entry_new();
-  gtk_widget_set_hexpand(m_searchBar, TRUE);
-  gtk_widget_add_css_class(m_searchBar, "workshop-search-bar");
-  g_signal_connect(m_searchBar, "activate", G_CALLBACK(onSearchEnter), this);
-  gtk_box_append(GTK_BOX(headerBox), m_searchBar);
+
+  m_searchEntry = gtk_search_entry_new();
+  gtk_widget_set_hexpand(m_searchEntry, TRUE);
+  gtk_widget_add_css_class(m_searchEntry, "search-bar");
+  g_signal_connect(m_searchEntry, "activate",
+      G_CALLBACK(+[](GtkSearchEntry*, gpointer data) {
+        static_cast<WorkshopView*>(data)->triggerSearch();
+      }), this);
+  gtk_box_append(GTK_BOX(headerBox), m_searchEntry);
+
+  // Magnifying glass search button
+  m_searchButton = gtk_button_new_from_icon_name("system-search-symbolic");
+  gtk_widget_add_css_class(m_searchButton, "flat");
+  gtk_widget_set_tooltip_text(m_searchButton, "Search Workshop");
+  g_signal_connect(m_searchButton, "clicked",
+      G_CALLBACK(+[](GtkButton*, gpointer data) {
+        static_cast<WorkshopView*>(data)->triggerSearch();
+      }), this);
+  gtk_box_append(GTK_BOX(headerBox), m_searchButton);
+
+  // Login button
   m_loginButton = gtk_button_new();
   gtk_widget_add_css_class(m_loginButton, "workshop-user-btn");
   gtk_widget_set_tooltip_text(
@@ -94,6 +111,7 @@ void WorkshopView::setupBrowsePage() {
       }),
       this);
   gtk_box_append(GTK_BOX(headerBox), m_loginButton);
+
   m_progressBar = gtk_progress_bar_new();
   gtk_widget_set_visible(m_progressBar, FALSE);
   gtk_box_append(GTK_BOX(m_browsePage), m_progressBar);
@@ -102,9 +120,9 @@ void WorkshopView::setupBrowsePage() {
   gtk_box_append(GTK_BOX(m_browsePage), m_browseScrolled);
   m_browseGrid = gtk_flow_box_new();
   gtk_widget_set_valign(m_browseGrid, GTK_ALIGN_START);
-  gtk_flow_box_set_max_children_per_line(GTK_FLOW_BOX(m_browseGrid), 4);
+  gtk_flow_box_set_max_children_per_line(GTK_FLOW_BOX(m_browseGrid), 20);
   gtk_flow_box_set_min_children_per_line(GTK_FLOW_BOX(m_browseGrid), 2);
-  gtk_flow_box_set_homogeneous(GTK_FLOW_BOX(m_browseGrid), TRUE);
+  gtk_flow_box_set_homogeneous(GTK_FLOW_BOX(m_browseGrid), FALSE);
   gtk_flow_box_set_column_spacing(GTK_FLOW_BOX(m_browseGrid), 8);
   gtk_flow_box_set_row_spacing(GTK_FLOW_BOX(m_browseGrid), 8);
   gtk_flow_box_set_selection_mode(GTK_FLOW_BOX(m_browseGrid),
@@ -171,14 +189,17 @@ void WorkshopView::setupBrowsePage() {
 
   gtk_box_append(GTK_BOX(m_browsePage), m_placeholderBox);
 
+  // Build initial set of downloaded workshop IDs
+  refreshDownloadedIds();
+
   // Initial state: show placeholder or load popular wallpapers
   refreshLoginState();
 }
-void WorkshopView::onSearchEnter(GtkEntry *entry, gpointer user_data) {
-  auto *self = static_cast<WorkshopView *>(user_data);
-  const char *text = gtk_editable_get_text(GTK_EDITABLE(entry));
-  self->performSearch(text);
+void WorkshopView::triggerSearch() {
+  const char *text = gtk_editable_get_text(GTK_EDITABLE(m_searchEntry));
+  performSearch(text ? text : "");
 }
+
 void WorkshopView::performSearch(const std::string &query, int page, const std::string &sort) {
   // Check for API Key first
   if (bwp::steam::SteamService::getInstance().getApiKey().empty()) {
@@ -234,183 +255,169 @@ void WorkshopView::performSearch(const std::string &query, int page, const std::
 }
 void WorkshopView::updateBrowseGrid(
     const std::vector<bwp::steam::WorkshopItem> &items) {
+  // Clear old cards
   GtkWidget *child = gtk_widget_get_first_child(m_browseGrid);
   while (child) {
     GtkWidget *next = gtk_widget_get_next_sibling(child);
     gtk_flow_box_remove(GTK_FLOW_BOX(m_browseGrid), child);
     child = next;
   }
+  m_workshopCards.clear();
 
-  static constexpr int CARD_WIDTH = 180;
-  static constexpr int CARD_HEIGHT = 180;
+  // Refresh downloaded IDs before building cards
+  refreshDownloadedIds();
+
+  // Check NSFW filter setting
+  bool showNsfw = bwp::config::ConfigManager::getInstance().get<bool>("content.show_nsfw", false);
 
   for (const auto &item : items) {
-    // Main card box — same as library cards (4:3 ratio)
-    GtkWidget *cardBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-    gtk_widget_set_size_request(cardBox, CARD_WIDTH, CARD_HEIGHT);
-    gtk_widget_set_hexpand(cardBox, TRUE);
-    gtk_widget_add_css_class(cardBox, "wallpaper-card");
+    // Skip NSFW items if the setting is disabled
+    if (item.isNsfw && !showNsfw) {
+      continue;
+    }
 
-    // Overlay for image + title + download btn
-    GtkWidget *overlay = gtk_overlay_new();
-    gtk_widget_set_hexpand(overlay, TRUE);
-    gtk_widget_set_vexpand(overlay, TRUE);
-    gtk_widget_set_overflow(overlay, GTK_OVERFLOW_HIDDEN);
-    gtk_box_append(GTK_BOX(cardBox), overlay);
+    auto* card = new WorkshopCard(item);
+    
+    // Check if already downloaded
+    if (isWorkshopItemDownloaded(item.id)) {
+      card->setDownloaded(true);
+    }
 
-    // Image
-    GtkWidget *image = gtk_picture_new();
-    gtk_picture_set_content_fit(GTK_PICTURE(image), GTK_CONTENT_FIT_COVER);
-    gtk_widget_set_size_request(image, CARD_WIDTH, CARD_HEIGHT);
-    gtk_widget_set_hexpand(image, TRUE);
-    gtk_widget_set_vexpand(image, TRUE);
-    gtk_widget_add_css_class(image, "card-image");
-    gtk_widget_add_css_class(image, "no-thumbnail");
-    gtk_overlay_set_child(GTK_OVERLAY(overlay), image);
+    // Set download callback
+    card->setDownloadCallback([this](const std::string& id, const std::string& title) {
+      bwp::steam::DownloadQueue::getInstance().addToQueue(id, title);
+      showDownloadProgress(title, 0.0f);
+    });
 
-    // Skeleton loading overlay
-    GtkWidget *skeleton = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-    gtk_widget_add_css_class(skeleton, "skeleton");
-    gtk_widget_set_halign(skeleton, GTK_ALIGN_FILL);
-    gtk_widget_set_valign(skeleton, GTK_ALIGN_FILL);
-    gtk_overlay_add_overlay(GTK_OVERLAY(overlay), skeleton);
+    GtkWidget* cardWidget = card->getWidget();
 
-    // Title + download button container at bottom
-    GtkWidget *bottomBar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
-    gtk_widget_add_css_class(bottomBar, "card-title-overlay");
-    gtk_widget_set_valign(bottomBar, GTK_ALIGN_END);
-    gtk_widget_set_halign(bottomBar, GTK_ALIGN_FILL);
+    // Right-click gesture for context menu
+    GtkGesture* rightClick = gtk_gesture_click_new();
+    gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(rightClick), 3); // right mouse
+    g_object_set_data(G_OBJECT(rightClick), "workshop-card", card);
+    g_signal_connect(rightClick, "pressed",
+        G_CALLBACK(+[](GtkGestureClick* gesture, int /*n_press*/, double x, double y, gpointer data) {
+          auto* self = static_cast<WorkshopView*>(data);
+          auto* card = static_cast<WorkshopCard*>(
+              g_object_get_data(G_OBJECT(gesture), "workshop-card"));
+          if (card) {
+            self->showCardContextMenu(card, x, y);
+          }
+        }), this);
+    gtk_widget_add_controller(cardWidget, GTK_EVENT_CONTROLLER(rightClick));
 
-    // Title label (left)
-    GtkWidget *titleLabel = gtk_label_new(item.title.c_str());
-    gtk_label_set_ellipsize(GTK_LABEL(titleLabel), PANGO_ELLIPSIZE_END);
-    gtk_widget_set_halign(titleLabel, GTK_ALIGN_START);
-    gtk_widget_set_hexpand(titleLabel, TRUE);
-    gtk_widget_add_css_class(titleLabel, "card-title-text");
-    gtk_box_append(GTK_BOX(bottomBar), titleLabel);
+    gtk_flow_box_insert(GTK_FLOW_BOX(m_browseGrid), cardWidget, -1);
 
-    // Download button (right)
-    GtkWidget *downloadBtn = gtk_button_new_from_icon_name("folder-download-symbolic");
-    gtk_widget_add_css_class(downloadBtn, "flat");
-    gtk_widget_add_css_class(downloadBtn, "card-fav-btn"); // reuse same small btn style
-    gtk_widget_set_halign(downloadBtn, GTK_ALIGN_END);
-    gtk_widget_set_valign(downloadBtn, GTK_ALIGN_CENTER);
-    gtk_widget_set_tooltip_text(downloadBtn, "Download");
-
-    ItemData *data = new ItemData{item.id, item.title, this};
-    g_object_set_data_full(
-        G_OBJECT(downloadBtn), "item-data", data,
-        [](gpointer d) { delete static_cast<ItemData *>(d); });
-    g_signal_connect(downloadBtn, "clicked", G_CALLBACK(onDownloadClicked), data);
-    gtk_box_append(GTK_BOX(bottomBar), downloadBtn);
-
-    gtk_overlay_add_overlay(GTK_OVERLAY(overlay), bottomBar);
-
-    gtk_flow_box_insert(GTK_FLOW_BOX(m_browseGrid), cardBox, -1);
-
-    // Constrain the FlowBoxChild wrapper to not stretch the card
-    GtkWidget *fbChild = gtk_widget_get_parent(cardBox);
+    // Keep FlowBoxChild tight around the card
+    GtkWidget *fbChild = gtk_widget_get_parent(cardWidget);
     if (fbChild) {
       gtk_widget_set_halign(fbChild, GTK_ALIGN_START);
       gtk_widget_set_valign(fbChild, GTK_ALIGN_START);
     }
 
-    // Async thumbnail download
-    if (!item.thumbnailUrl.empty()) {
-      struct ThumbData {
-        GtkWidget *image;
-        GtkWidget *skeleton;
-        std::string url;
-        std::shared_ptr<bool> alive;
-      };
-      auto alive = std::make_shared<bool>(true);
-      g_object_set_data_full(G_OBJECT(image), "alive-token",
-          new std::shared_ptr<bool>(alive),
-          [](gpointer p) { delete static_cast<std::shared_ptr<bool>*>(p); });
+    // Track card by workshop ID for live download state updates
+    m_workshopCards[item.id] = card;
 
-      auto *td = new ThumbData{image, skeleton, item.thumbnailUrl, alive};
-      std::thread([td]() {
-        // Download image bytes via curl
-        CURL *curl = curl_easy_init();
-        std::string imgData;
-        if (curl) {
-          curl_easy_setopt(curl, CURLOPT_URL, td->url.c_str());
-          curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
-              +[](void *contents, size_t size, size_t nmemb, void *userp) -> size_t {
-                static_cast<std::string*>(userp)->append(
-                    static_cast<char*>(contents), size * nmemb);
-                return size * nmemb;
-              });
-          curl_easy_setopt(curl, CURLOPT_WRITEDATA, &imgData);
-          curl_easy_setopt(curl, CURLOPT_USERAGENT, "BetterWallpaper/1.0");
-          curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
-          curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-          CURLcode res = curl_easy_perform(curl);
-          curl_easy_cleanup(curl);
-          if (res != CURLE_OK) {
-            delete td;
-            return;
-          }
-        }
+    // Clean up card when widget is destroyed
+    g_object_set_data_full(G_OBJECT(cardWidget), "workshop-card-owner", card,
+        [](gpointer p) { delete static_cast<WorkshopCard*>(p); });
+  }
+}
 
-        // Create texture from image bytes
-        GBytes *bytes = g_bytes_new(imgData.data(), imgData.size());
-        GInputStream *stream = g_memory_input_stream_new_from_bytes(bytes);
-        GdkPixbuf *pixbuf = gdk_pixbuf_new_from_stream(stream, nullptr, nullptr);
-        g_object_unref(stream);
-        g_bytes_unref(bytes);
-
-        if (!pixbuf) {
-          delete td;
-          return;
-        }
-
-        struct IdleData {
-          GdkPixbuf *pixbuf;
-          GtkWidget *image;
-          GtkWidget *skeleton;
-          std::shared_ptr<bool> alive;
-        };
-        auto *id = new IdleData{pixbuf, td->image, td->skeleton, td->alive};
-        delete td;
-
-        g_idle_add(+[](gpointer data) -> gboolean {
-          auto *d = static_cast<IdleData*>(data);
-          if (*d->alive) {
-            GdkTexture *texture = GDK_TEXTURE(
-                gdk_memory_texture_new(
-                    gdk_pixbuf_get_width(d->pixbuf),
-                    gdk_pixbuf_get_height(d->pixbuf),
-                    gdk_pixbuf_get_has_alpha(d->pixbuf) ? GDK_MEMORY_R8G8B8A8 : GDK_MEMORY_R8G8B8,
-                    g_bytes_new_with_free_func(
-                        gdk_pixbuf_get_pixels(d->pixbuf),
-                        gdk_pixbuf_get_height(d->pixbuf) * gdk_pixbuf_get_rowstride(d->pixbuf),
-                        (GDestroyNotify)g_object_unref, g_object_ref(d->pixbuf)),
-                    gdk_pixbuf_get_rowstride(d->pixbuf)));
-            gtk_picture_set_paintable(GTK_PICTURE(d->image), GDK_PAINTABLE(texture));
-            gtk_widget_remove_css_class(d->image, "no-thumbnail");
-            gtk_widget_set_visible(d->skeleton, FALSE);
-            g_object_unref(texture);
-          }
-          g_object_unref(d->pixbuf);
-          delete d;
-          return G_SOURCE_REMOVE;
-        }, id);
-      }).detach();
-    } else {
-      gtk_widget_set_visible(skeleton, FALSE);
+void WorkshopView::refreshDownloadedIds() {
+  m_downloadedIds.clear();
+  auto& lib = bwp::wallpaper::WallpaperLibrary::getInstance();
+  auto allWallpapers = lib.getAllWallpapers();
+  for (const auto& wp : allWallpapers) {
+    if (wp.workshop_id > 0) {
+      m_downloadedIds.insert(std::to_string(wp.workshop_id));
     }
   }
 }
-void WorkshopView::onDownloadClicked(GtkButton *  ,
-                                     gpointer user_data) {
-  ItemData *data = static_cast<ItemData *>(user_data);
-  std::string title = data->title.empty() ? data->id : data->title;
+
+bool WorkshopView::isWorkshopItemDownloaded(const std::string& workshopId) const {
+  return m_downloadedIds.count(workshopId) > 0;
+}
+
+void WorkshopView::showCardContextMenu(WorkshopCard* card, double x, double y) {
+  const auto& item = card->getItem();
+
+  GMenu* menu = g_menu_new();
   
-  bwp::steam::DownloadQueue::getInstance().addToQueue(data->id, title);
-  
-  // Show initial persistent download toast (0%)
-  data->view->showDownloadProgress(title, 0.0f);
+  if (!card->isDownloaded()) {
+    g_menu_append(menu, "Download", "workshop-ctx.download");
+  }
+  g_menu_append(menu, "Open in Steam", "workshop-ctx.open-steam");
+  g_menu_append(menu, "Copy Workshop ID", "workshop-ctx.copy-id");
+
+  GtkWidget* popover = gtk_popover_menu_new_from_model(G_MENU_MODEL(menu));
+  gtk_widget_set_parent(popover, card->getWidget());
+  gtk_popover_set_position(GTK_POPOVER(popover), GTK_POS_BOTTOM);
+  gtk_popover_set_has_arrow(GTK_POPOVER(popover), FALSE);
+
+  // Set pointing position
+  GdkRectangle rect = {(int)x, (int)y, 1, 1};
+  gtk_popover_set_pointing_to(GTK_POPOVER(popover), &rect);
+
+  // Create action group
+  GSimpleActionGroup* group = g_simple_action_group_new();
+
+  // Download action
+  GSimpleAction* downloadAction = g_simple_action_new("download", nullptr);
+  struct DownloadData { WorkshopView* view; std::string id; std::string title; };
+  auto* dlData = new DownloadData{this, item.id, item.title};
+  g_object_set_data_full(G_OBJECT(downloadAction), "dl-data", dlData,
+      [](gpointer p) { delete static_cast<DownloadData*>(p); });
+  g_signal_connect(downloadAction, "activate",
+      G_CALLBACK(+[](GSimpleAction* action, GVariant*, gpointer) {
+        auto* d = static_cast<DownloadData*>(g_object_get_data(G_OBJECT(action), "dl-data"));
+        bwp::steam::DownloadQueue::getInstance().addToQueue(d->id, d->title);
+        d->view->showDownloadProgress(d->title, 0.0f);
+      }), nullptr);
+  g_action_map_add_action(G_ACTION_MAP(group), G_ACTION(downloadAction));
+  g_object_unref(downloadAction);
+
+  // Open in Steam action
+  GSimpleAction* openSteamAction = g_simple_action_new("open-steam", nullptr);
+  std::string* steamUrl = new std::string("https://steamcommunity.com/sharedfiles/filedetails/?id=" + item.id);
+  g_object_set_data_full(G_OBJECT(openSteamAction), "url", steamUrl,
+      [](gpointer p) { delete static_cast<std::string*>(p); });
+  g_signal_connect(openSteamAction, "activate",
+      G_CALLBACK(+[](GSimpleAction* action, GVariant*, gpointer) {
+        auto* url = static_cast<std::string*>(g_object_get_data(G_OBJECT(action), "url"));
+        GtkUriLauncher* launcher = gtk_uri_launcher_new(url->c_str());
+        gtk_uri_launcher_launch(launcher, nullptr, nullptr, nullptr, nullptr);
+        g_object_unref(launcher);
+      }), nullptr);
+  g_action_map_add_action(G_ACTION_MAP(group), G_ACTION(openSteamAction));
+  g_object_unref(openSteamAction);
+
+  // Copy Workshop ID action
+  GSimpleAction* copyIdAction = g_simple_action_new("copy-id", nullptr);
+  std::string* idStr = new std::string(item.id);
+  g_object_set_data_full(G_OBJECT(copyIdAction), "wid", idStr,
+      [](gpointer p) { delete static_cast<std::string*>(p); });
+  g_signal_connect(copyIdAction, "activate",
+      G_CALLBACK(+[](GSimpleAction* action, GVariant*, gpointer) {
+        auto* id = static_cast<std::string*>(g_object_get_data(G_OBJECT(action), "wid"));
+        GdkDisplay* display = gdk_display_get_default();
+        GdkClipboard* clipboard = gdk_display_get_clipboard(display);
+        gdk_clipboard_set_text(clipboard, id->c_str());
+      }), nullptr);
+  g_action_map_add_action(G_ACTION_MAP(group), G_ACTION(copyIdAction));
+  g_object_unref(copyIdAction);
+
+  gtk_widget_insert_action_group(popover, "workshop-ctx", G_ACTION_GROUP(group));
+  g_object_unref(group);
+  g_object_unref(menu);
+
+  // Clean up popover on close
+  g_signal_connect(popover, "closed",
+      G_CALLBACK(+[](GtkPopover* p, gpointer) {
+        gtk_widget_unparent(GTK_WIDGET(p));
+      }), nullptr);
+
+  gtk_popover_popup(GTK_POPOVER(popover));
 }
 
 void WorkshopView::updatePagination() {
@@ -442,8 +449,7 @@ void WorkshopView::showSteamLoginDialog(const std::string& prefillUser,
   GtkWindow *window = GTK_IS_WINDOW(root) ? GTK_WINDOW(root) : nullptr;
 
   auto *dialog = adw_alert_dialog_new("Steam Login",
-      "Enter your Steam credentials to enable downloads.\n"
-      "2FA will be prompted if enabled on your account.");
+      "Enter your Steam credentials to enable downloads.");
   
   GtkWidget* content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
   
@@ -457,6 +463,18 @@ void WorkshopView::showSteamLoginDialog(const std::string& prefillUser,
   gtk_entry_set_placeholder_text(GTK_ENTRY(passEntry), "Password");
   gtk_entry_set_visibility(GTK_ENTRY(passEntry), FALSE);
   gtk_box_append(GTK_BOX(content), passEntry);
+
+  // 2FA code — optional, only needed if user has Steam Guard enabled
+  GtkWidget* twoFaLabel = gtk_label_new("Steam Guard / 2FA code (leave empty if not enabled)");
+  gtk_widget_add_css_class(twoFaLabel, "dim-label");
+  gtk_widget_add_css_class(twoFaLabel, "caption");
+  gtk_widget_set_halign(twoFaLabel, GTK_ALIGN_START);
+  gtk_widget_set_margin_top(twoFaLabel, 6);
+  gtk_box_append(GTK_BOX(content), twoFaLabel);
+
+  GtkWidget* twoFaEntry = gtk_entry_new();
+  gtk_entry_set_placeholder_text(GTK_ENTRY(twoFaEntry), "XXXXX (optional)");
+  gtk_box_append(GTK_BOX(content), twoFaEntry);
 
   // Error label — visible if errorMsg was provided (reopen-on-failure pattern)
   GtkWidget* errorLabel = gtk_label_new(nullptr);
@@ -482,6 +500,7 @@ void WorkshopView::showSteamLoginDialog(const std::string& prefillUser,
   // synchronously in the handler and never access the dialog from async callbacks.
   g_object_set_data(G_OBJECT(dialog), "user_entry", userEntry);
   g_object_set_data(G_OBJECT(dialog), "pass_entry", passEntry);
+  g_object_set_data(G_OBJECT(dialog), "twofa_entry", twoFaEntry);
 
   auto loginResponseCb = +[](AdwAlertDialog *d, const char *response, gpointer selfPtr) {
       auto* self = static_cast<WorkshopView*>(selfPtr);
@@ -491,9 +510,11 @@ void WorkshopView::showSteamLoginDialog(const std::string& prefillUser,
       // Read entries NOW — dialog is still alive during the signal handler
       GtkWidget* u = GTK_WIDGET(g_object_get_data(G_OBJECT(d), "user_entry"));
       GtkWidget* p = GTK_WIDGET(g_object_get_data(G_OBJECT(d), "pass_entry"));
+      GtkWidget* t = GTK_WIDGET(g_object_get_data(G_OBJECT(d), "twofa_entry"));
       std::string user = gtk_editable_get_text(GTK_EDITABLE(u));
       std::string pass = gtk_editable_get_text(GTK_EDITABLE(p));
-      // From here on, only use `self`, `user`, `pass` (safe value copies).
+      std::string twoFaCode = gtk_editable_get_text(GTK_EDITABLE(t));
+      // From here on, only use `self`, `user`, `pass`, `twoFaCode` (safe value copies).
       // The dialog will be destroyed once this handler returns.
 
       if (user.empty() || pass.empty()) {
@@ -549,7 +570,8 @@ void WorkshopView::showSteamLoginDialog(const std::string& prefillUser,
                   static_cast<WorkshopView*>(data)->showSteam2FADialog();
                   return G_SOURCE_REMOVE;
               }, self);
-          });
+          },
+          twoFaCode);  // Pass 2FA code if user entered one
       // Dialog auto-closes when handler returns; login continues in background
   };
   g_signal_connect(dialog, "response", G_CALLBACK(loginResponseCb), this);
@@ -659,6 +681,34 @@ void WorkshopView::refreshLoginState() {
   std::string user = bwp::steam::SteamService::getInstance().getSteamUser();
   bool loggedIn = !user.empty(); 
 
+  // On first call, if user is saved, attempt auto-login via steamcmd cached credentials
+  if (loggedIn && !m_autoLoginAttempted) {
+    m_autoLoginAttempted = true;
+    
+    struct AutoLoginData { WorkshopView* view; };
+    auto* data = new AutoLoginData{this};
+    
+    bwp::steam::SteamService::getInstance().tryAutoLogin(
+        [data](bool success, const std::string& msg) {
+            // Callback from background thread — marshal to GTK main thread
+            struct Result { WorkshopView* view; bool success; std::string msg; };
+            auto* r = new Result{data->view, success, msg};
+            delete data;
+            g_idle_add(+[](gpointer ptr) -> gboolean {
+                auto* r = static_cast<Result*>(ptr);
+                if (!r->success) {
+                    LOG_INFO("Steam auto-login failed: " + r->msg + " — clearing saved user");
+                    bwp::steam::SteamService::getInstance().setSteamUser("");
+                    r->view->refreshLoginState();
+                } else {
+                    LOG_INFO("Steam auto-login succeeded — session is active");
+                }
+                delete r;
+                return G_SOURCE_REMOVE;
+            }, r);
+        });
+  }
+
   GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
   if (loggedIn) {
     gtk_box_append(GTK_BOX(box),
@@ -765,6 +815,7 @@ void WorkshopView::showLogoutDialog() {
                          gtk_flow_box_remove(GTK_FLOW_BOX(self->m_browseGrid), child);
                          child = next;
                        }
+                       self->m_workshopCards.clear();
 
                        self->refreshLoginState(); // Will show placeholder and hide browse area
 
@@ -869,13 +920,25 @@ void WorkshopView::setupDownloadCallbacks() {
 
         struct DoneData {
           WorkshopView* view;
+          std::string workshopId;
           std::string title;
           bool success;
         };
-        auto* dd = new DoneData{this, title, success};
+        auto* dd = new DoneData{this, workshopId, title, success};
         g_idle_add(+[](gpointer data) -> gboolean {
           auto* d = static_cast<DoneData*>(data);
           d->view->showDownloadComplete(d->title, d->success);
+          
+          if (d->success) {
+            // Mark the workshop card as downloaded (checkmark)
+            d->view->m_downloadedIds.insert(d->workshopId);
+            auto it = d->view->m_workshopCards.find(d->workshopId);
+            if (it != d->view->m_workshopCards.end()) {
+              it->second->setDownloaded(true);
+            }
+            // The library view auto-refreshes via WallpaperLibrary change callbacks
+          }
+
           delete d;
           return G_SOURCE_REMOVE;
         }, dd);

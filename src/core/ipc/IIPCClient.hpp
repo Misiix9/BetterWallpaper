@@ -15,5 +15,7 @@ public:
     virtual bool setWallpaper(const std::string &path, const std::string &monitor) = 0;
     virtual std::string getWallpaper(const std::string &monitor) = 0;
     virtual std::string getDaemonVersion() = 0;
+    virtual std::string getStatus() = 0;
+    virtual std::string getMonitors() = 0;
 };
 }  

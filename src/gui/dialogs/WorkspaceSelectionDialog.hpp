@@ -13,7 +13,8 @@ public:
   void show(Callback callback);
 private:
   void setupUi();
-  GtkWidget *m_dialog;
+  AdwAlertDialog *m_dialog;
+  GtkWindow *m_parent;
   std::string m_wallpaperPath;
   std::vector<GtkWidget *> m_checkboxes;
   Callback m_callback;

@@ -26,6 +26,8 @@ public:
   using ChangeCallback = std::function<void(const WallpaperInfo &info)>;
   void setChangeCallback(ChangeCallback cb);  
   void addChangeCallback(ChangeCallback cb);
+  int addChangeCallbackWithId(ChangeCallback cb);
+  void removeChangeCallback(int id);
   std::filesystem::path getDataDirectory() const;
 private:
   void removeDuplicates();
@@ -41,5 +43,7 @@ private:
   std::atomic<bool> m_initialized{false};
   ChangeCallback m_changeCallback;
   std::vector<ChangeCallback> m_changeCallbacks;
+  std::unordered_map<int, ChangeCallback> m_idCallbacks;
+  int m_nextCallbackId = 1;
 };
 }  

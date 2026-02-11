@@ -88,12 +88,13 @@ void KeybindsView::populateList() {
 void KeybindsView::onCaptureKeybind(const std::string& action) {
   m_pendingAction = action;
   GtkWidget *root = gtk_widget_get_root(m_box);
-  GtkWindow *parentWindow = GTK_IS_WINDOW(root) ? GTK_WINDOW(root) : nullptr;
-  m_captureDialog = adw_message_dialog_new(parentWindow, "Press a key combination", 
-    "Press the key combination you want to assign, or Escape to cancel.");
-  adw_message_dialog_add_response(ADW_MESSAGE_DIALOG(m_captureDialog), "cancel", "Cancel");
+
+  m_captureDialog = GTK_WIDGET(adw_alert_dialog_new("Press a key combination", 
+    "Press the key combination you want to assign, or Escape to cancel."));
+  adw_alert_dialog_add_response(ADW_ALERT_DIALOG(m_captureDialog), "cancel", "Cancel");
   GtkEventController *keyController = gtk_event_controller_key_new();
-  g_object_set_data(G_OBJECT(keyController), "action", new std::string(action));
+  g_object_set_data_full(G_OBJECT(keyController), "action", new std::string(action),
+    [](gpointer d) { delete static_cast<std::string*>(d); });
   g_object_set_data(G_OBJECT(keyController), "dialog", m_captureDialog);
   g_signal_connect(keyController, "key-pressed", G_CALLBACK(+[](
     GtkEventControllerKey*, guint keyval, guint, GdkModifierType state, gpointer data) -> gboolean {
@@ -101,7 +102,7 @@ void KeybindsView::onCaptureKeybind(const std::string& action) {
     std::string* action = static_cast<std::string*>(g_object_get_data(G_OBJECT(ctrl), "action"));
     GtkWidget* dialog = static_cast<GtkWidget*>(g_object_get_data(G_OBJECT(ctrl), "dialog"));
     if (keyval == GDK_KEY_Escape) {
-      gtk_window_close(GTK_WINDOW(dialog));
+      adw_dialog_close(ADW_DIALOG(dialog));
       return TRUE;
     }
     if (keyval == GDK_KEY_Control_L || keyval == GDK_KEY_Control_R ||
@@ -115,13 +116,12 @@ void KeybindsView::onCaptureKeybind(const std::string& action) {
     GdkModifierType cleanState = static_cast<GdkModifierType>(state & mask);
     if (action) {
       bwp::input::KeybindManager::getInstance().setKeybind(*action, keyval, cleanState);
-      delete action;
-      g_object_set_data(G_OBJECT(ctrl), "action", nullptr);
+      g_object_set_data(G_OBJECT(ctrl), "action", nullptr); // triggers destroy notify
     }
-    gtk_window_close(GTK_WINDOW(dialog));
+    adw_dialog_close(ADW_DIALOG(dialog));
     return TRUE;
   }), keyController);
   gtk_widget_add_controller(m_captureDialog, keyController);
-  gtk_window_present(GTK_WINDOW(m_captureDialog));
+  adw_dialog_present(ADW_DIALOG(m_captureDialog), root);
 }
 }  

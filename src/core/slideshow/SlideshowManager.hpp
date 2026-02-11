@@ -1,5 +1,7 @@
 #pragma once
+#include <atomic>
 #include <functional>
+#include <mutex>
 #ifdef _WIN32
 typedef unsigned int guint;
 #else
@@ -46,11 +48,12 @@ private:
   std::vector<std::string> m_shuffledIndices;
   int m_currentIndex = 0;
   int m_intervalSeconds = 300;  
-  bool m_running = false;
-  bool m_paused = false;
-  bool m_shuffle = false;
-  bool m_loading = false;   
+  std::atomic<bool> m_running{false};
+  std::atomic<bool> m_paused{false};
+  std::atomic<bool> m_shuffle{false};
+  std::atomic<bool> m_loading{false};   
   guint m_timerId = 0;
   WallpaperChangeCallback m_changeCallback;
+  mutable std::recursive_mutex m_mutex;
 };
 }  

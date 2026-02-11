@@ -229,36 +229,7 @@ void SteamWorkshopClient::search(const std::string &query,
       LOG_ERROR("Workshop search error: " + std::string(e.what()));
     }
     if (result.items.empty()) {
-      LOG_WARN("Using mock workshop data (API unavailable or returned empty)");
-      WorkshopItem item1;
-      item1.id = "3411756828";
-      item1.title = "Cyberpunk City - " + query;
-      item1.author = "NeonArtist";
-      item1.type = WorkshopItemType::Scene;
-      item1.rating = 4.5;
-      item1.subscriberCount = 12500;
-      item1.previewUrl =
-          "https://steamuserimages-a.akamaihd.net/ugc/placeholder1.jpg";
-      result.items.push_back(item1);
-      WorkshopItem item2;
-      item2.id = "3509272789";
-      item2.title = "Anime Scenery " + query;
-      item2.author = "OtakuDev";
-      item2.type = WorkshopItemType::Scene;
-      item2.rating = 4.2;
-      item2.subscriberCount = 8900;
-      result.items.push_back(item2);
-      WorkshopItem item3;
-      item3.id = "3514276991";
-      item3.title = "Nature Timelapse";
-      item3.author = "Photographer";
-      item3.type = WorkshopItemType::Video;
-      item3.rating = 4.8;
-      item3.subscriberCount = 34200;
-      result.items.push_back(item3);
-      result.totalResults = 3;
-      result.totalPages = 1;
-      result.currentPage = page;
+      LOG_WARN("Workshop search returned no results for query: " + query);
     }
     if (callback) {
       callback(result);

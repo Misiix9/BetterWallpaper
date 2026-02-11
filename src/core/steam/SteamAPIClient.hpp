@@ -16,6 +16,7 @@ struct WorkshopItem {
     int subscriptions = 0;
     std::vector<std::string> tags;
     bool isDownloaded = false;
+    bool isNsfw = false; // Detected from tags or Steam API flags
 };
 
 struct SearchResult {

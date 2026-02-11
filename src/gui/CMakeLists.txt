@@ -20,6 +20,7 @@ add_executable(betterwallpaper
     MainWindow.cpp
     widgets/Sidebar.cpp
     widgets/WallpaperCard.cpp
+    widgets/WorkshopCard.cpp
     widgets/SearchBar.cpp
     widgets/WallpaperGrid.cpp
     widgets/MonitorLayout.cpp

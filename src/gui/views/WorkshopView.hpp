@@ -4,9 +4,12 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <unordered_map>
+#include <unordered_set>
 #include "../../core/steam/SteamService.hpp"
 #include "../../core/steam/DownloadQueue.hpp"
 #include "../widgets/WallpaperGrid.hpp"
+#include "../widgets/WorkshopCard.hpp"
 
 namespace bwp::gui {
 
@@ -15,7 +18,7 @@ public:
   WorkshopView();
   ~WorkshopView();
 
-  GtkWidget *getWidget() const { return m_box; } // Matches const
+  GtkWidget *getWidget() const { return m_box; }
   void refreshInstalled();
 
 private:
@@ -29,8 +32,9 @@ private:
   
   GtkWidget* m_browsePage = nullptr;
   GtkWidget* m_browseScrolled = nullptr;
-  GtkWidget* m_browseGrid = nullptr;
-  GtkWidget* m_searchBar = nullptr;
+  GtkWidget* m_browseGrid = nullptr;  // FlowBox
+  GtkWidget* m_searchEntry = nullptr; // GtkSearchEntry
+  GtkWidget* m_searchButton = nullptr; // Magnifying glass button
   GtkWidget* m_loginButton;
   GtkWidget* m_profilePopover = nullptr;
   GtkWidget* m_steamcmdBanner;
@@ -49,6 +53,13 @@ private:
   GtkWidget* m_placeholderBox = nullptr;
   
   bool m_isSearching = false;
+  bool m_autoLoginAttempted = false;
+
+  // Track workshop cards for download state updates
+  std::unordered_map<std::string, WorkshopCard*> m_workshopCards; // workshopId → card
+  
+  // Track downloaded workshop IDs for checkmark indicators
+  std::unordered_set<std::string> m_downloadedIds;
 
   void setupUi();
   void setupInstalledPage();
@@ -57,10 +68,16 @@ private:
   // Helpers
   void updateBrowseGrid(const std::vector<bwp::steam::WorkshopItem>& items);
   void refreshLoginState();
+  void refreshDownloadedIds();
+  bool isWorkshopItemDownloaded(const std::string& workshopId) const;
   void performSearch(const std::string& query, int page = 1, const std::string& sort = "textsearch");
   void loadPopularWallpapers();
   void updatePagination();
   void showProfileMenu();
+  void triggerSearch();
+  
+  // Right-click context menu
+  void showCardContextMenu(WorkshopCard* card, double x, double y);
   
   // Dialogs
   void showSteamLoginDialog(const std::string& prefillUser = "", const std::string& errorMsg = "");
@@ -68,16 +85,6 @@ private:
   void showSteamcmdInstallDialog();
   void showLogoutDialog();
   void showApiKeyDialog();
-
-  // Callbacks
-  static void onSearchEnter(GtkEntry *entry, gpointer user_data);
-  static void onDownloadClicked(GtkButton *btn, gpointer user_data);
-  
-  struct ItemData {
-      std::string id;
-      std::string title;
-      WorkshopView* view;
-  };
 
   // Download progress toast tracking
   AdwToast* m_downloadToast = nullptr;

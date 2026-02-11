@@ -15,6 +15,7 @@ else()
     )
     target_link_libraries(betterwallpaper-tray PRIVATE
         bwp_ipc
+        nlohmann_json::nlohmann_json
         PkgConfig::GTK3
         PkgConfig::APPINDICATOR3
     )

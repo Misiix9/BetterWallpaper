@@ -860,22 +860,6 @@ entry placeholder {
     transition: opacity var(--transition-fast);
 }
 
-/* Mini video controls bar */
-.video-controls {
-    background-color: var(--glass-medium);
-    border-radius: var(--radius-sm);
-    padding: 4px 8px;
-    border: 1px solid var(--border-subtle);
-}
-
-/* History tab thumbnails */
-.history-thumb {
-    border-radius: var(--radius-xs, 4px);
-    background-color: var(--obsidian);
-    min-width: 48px;
-    min-height: 36px;
-}
-
 
 /* ─────────────────────────────────────────────────────────────────────────────
    SECTION 12: STATUS BADGES

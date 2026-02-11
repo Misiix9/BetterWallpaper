@@ -4,12 +4,12 @@
 namespace bwp::gui {
 WorkspaceSelectionDialog::WorkspaceSelectionDialog(
     GtkWindow *parent, const std::string &wallpaperPath)
-    : m_wallpaperPath(wallpaperPath) {
+    : m_parent(parent), m_wallpaperPath(wallpaperPath) {
   std::string filename =
       std::filesystem::path(wallpaperPath).filename().string();
   std::string title = "Set Wallpaper for Workspaces";
-  m_dialog = adw_message_dialog_new(
-      parent, title.c_str(), ("Select workspaces for:\n" + filename).c_str());
+  m_dialog = ADW_ALERT_DIALOG(adw_alert_dialog_new(
+      title.c_str(), ("Select workspaces for:\n" + filename).c_str()));
   setupUi();
 }
 WorkspaceSelectionDialog::~WorkspaceSelectionDialog() {}
@@ -46,24 +46,22 @@ void WorkspaceSelectionDialog::setupUi() {
       }),
       this);
   gtk_box_append(GTK_BOX(box), selectAllBtn);
-  adw_message_dialog_set_extra_child(ADW_MESSAGE_DIALOG(m_dialog), box);
-  adw_message_dialog_add_response(ADW_MESSAGE_DIALOG(m_dialog), "cancel",
-                                  "Cancel");
-  adw_message_dialog_add_response(ADW_MESSAGE_DIALOG(m_dialog), "apply",
-                                  "Apply");
-  adw_message_dialog_set_response_appearance(ADW_MESSAGE_DIALOG(m_dialog),
-                                             "apply", ADW_RESPONSE_SUGGESTED);
-  adw_message_dialog_set_default_response(ADW_MESSAGE_DIALOG(m_dialog),
-                                          "apply");
+  adw_alert_dialog_set_extra_child(m_dialog, box);
+  adw_alert_dialog_add_response(m_dialog, "cancel", "Cancel");
+  adw_alert_dialog_add_response(m_dialog, "apply", "Apply");
+  adw_alert_dialog_set_response_appearance(m_dialog, "apply",
+                                           ADW_RESPONSE_SUGGESTED);
+  adw_alert_dialog_set_default_response(m_dialog, "apply");
+  adw_alert_dialog_set_close_response(m_dialog, "cancel");
 }
 void WorkspaceSelectionDialog::show(Callback callback) {
   m_callback = callback;
-  g_object_set_data(G_OBJECT(m_dialog), "self", this);
-  g_signal_connect(
-      m_dialog, "response",
-      G_CALLBACK(+[](AdwMessageDialog *d, const char *response, gpointer) {
-        auto *self = static_cast<WorkspaceSelectionDialog *>(
-            g_object_get_data(G_OBJECT(d), "self"));
+  adw_alert_dialog_choose(
+      m_dialog, GTK_WIDGET(m_parent), nullptr,
+      +[](GObject *source, GAsyncResult *result, gpointer data) {
+        auto *self = static_cast<WorkspaceSelectionDialog *>(data);
+        const char *response =
+            adw_alert_dialog_choose_finish(ADW_ALERT_DIALOG(source), result);
         if (g_strcmp0(response, "apply") == 0 && self->m_callback) {
           std::set<int> selected;
           for (size_t i = 0; i < self->m_checkboxes.size(); ++i) {
@@ -76,13 +74,9 @@ void WorkspaceSelectionDialog::show(Callback callback) {
             bwp::hyprland::HyprlandManager::getInstance().setWorkspaceWallpaper(
                 wsId, self->m_wallpaperPath);
           }
-          if (self->m_callback) {
-            self->m_callback(selected);
-          }
+          self->m_callback(selected);
         }
-        gtk_window_close(GTK_WINDOW(d));
-      }),
-      nullptr);
-  gtk_window_present(GTK_WINDOW(m_dialog));
+      },
+      this);
 }
 }  
