@@ -6,59 +6,46 @@
 #include <iostream>
 #include <mutex>
 #include <string>
-
 namespace bwp::utils {
-
 #ifdef _WIN32
 #undef ERROR
 #undef WARNING
 #undef INFO
 #undef DEBUG
 #endif
-
 enum class LogLevel { DBUG, INFO, WARN, ERR, FATAL };
-
 class Logger {
 public:
   static void init(const std::filesystem::path &logDir);
   static void log(LogLevel level, const std::string &message,
                   const char *file = __builtin_FILE(),
                   int line = __builtin_LINE());
-
-  // Formatting helper
   template <typename... Args>
   static void logFmt(LogLevel level, const char *fmt, Args... args) {
     char buffer[1024];
     std::snprintf(buffer, sizeof(buffer), fmt, args...);
     log(level, buffer);
   }
-
 private:
   static std::string levelToString(LogLevel level);
   static std::string getTimestamp();
   static void rotateLogsIfNeeded();
-
   static std::mutex m_mutex;
   static std::filesystem::path m_logFile;
   static std::ofstream m_fileStream;
   static LogLevel m_minLevel;
 };
-
 class ScopeTracer {
 public:
   ScopeTracer(const char *functionName) : m_functionName(functionName) {
     Logger::log(LogLevel::DBUG, ">>>> ENTERING: " + m_functionName);
   }
-
   ~ScopeTracer() {
     Logger::log(LogLevel::DBUG, "<<<< EXITING: " + m_functionName);
   }
-
 private:
   std::string m_functionName;
 };
-
-// Macros for convenience
 #define LOG_DEBUG(msg)                                                         \
   ::bwp::utils::Logger::log(::bwp::utils::LogLevel::DBUG, msg, __FILE__,       \
                             __LINE__)
@@ -72,9 +59,6 @@ private:
 #define LOG_FATAL(msg)                                                         \
   ::bwp::utils::Logger::log(::bwp::utils::LogLevel::FATAL, msg, __FILE__,      \
                             __LINE__)
-
 #define LOG_SCOPE_FUNCTION(name) ::bwp::utils::ScopeTracer scopeTracer(name)
-
 #define LOG_SCOPE_AUTO() LOG_SCOPE_FUNCTION(__FUNCTION__)
-
-} // namespace bwp::utils
+}  

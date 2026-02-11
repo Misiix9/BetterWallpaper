@@ -5,26 +5,16 @@
 #include <gtk/gtk.h>
 #include <string>
 #include <vector>
-
 namespace bwp::gui {
-
-/**
- * Dialog for creating/editing a schedule entry.
- * Allows configuring time, days, and profile to activate.
- */
 class ScheduleDialog {
 public:
   using SaveCallback =
       std::function<void(const bwp::core::ScheduleEntry &entry)>;
-
   explicit ScheduleDialog(GtkWindow *parent);
   ~ScheduleDialog();
-
   void show();
   void show(const bwp::core::ScheduleEntry &entry);
-
   void setSaveCallback(SaveCallback callback) { m_saveCallback = callback; }
-
 private:
   void setupUi();
   void createTimeSection();
@@ -34,7 +24,6 @@ private:
   void populateFromEntry(const bwp::core::ScheduleEntry &entry);
   bwp::core::ScheduleEntry buildEntry() const;
   void onSave();
-
   GtkWidget *m_dialog = nullptr;
   GtkWidget *m_nameEntry = nullptr;
   GtkWidget *m_startHourSpin = nullptr;
@@ -42,13 +31,9 @@ private:
   GtkWidget *m_endHourSpin = nullptr;
   GtkWidget *m_endMinSpin = nullptr;
   GtkWidget *m_profileDropdown = nullptr;
-
-  // Day toggles (Sun-Sat)
   GtkWidget *m_dayToggles[7] = {nullptr};
-
   std::string m_scheduleId;
-  std::vector<std::pair<std::string, std::string>> m_profiles; // id, name
+  std::vector<std::pair<std::string, std::string>> m_profiles;  
   SaveCallback m_saveCallback;
 };
-
-} // namespace bwp::gui
+}  

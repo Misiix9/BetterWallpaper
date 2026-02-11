@@ -6,9 +6,7 @@
 #include "DBusService.hpp"
 #endif
 #include <memory>
-
 namespace bwp::ipc {
-
 class IPCServiceFactory {
 public:
     static std::unique_ptr<IIPCService> createService() {
@@ -19,5 +17,4 @@ public:
 #endif
     }
 };
-
-} // namespace bwp::ipc
+}  

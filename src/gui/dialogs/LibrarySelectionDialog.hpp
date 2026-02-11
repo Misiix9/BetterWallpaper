@@ -1,30 +1,19 @@
 #pragma once
-
 #include <adwaita.h>
 #include <functional>
 #include <gtk/gtk.h>
 #include <string>
-
 namespace bwp::gui {
-
-/**
- * Dialog for selecting a wallpaper from the library.
- */
 class LibrarySelectionDialog {
 public:
   using Callback = std::function<void(const std::string &selectedPath)>;
-
   LibrarySelectionDialog(GtkWindow *parent);
   ~LibrarySelectionDialog();
-
   void show(Callback callback);
-
 private:
   void setupUi();
-
-  GtkWidget *m_dialog; // AdwWindow actually, to act as a proper dialog
+  GtkWidget *m_dialog;  
   GtkWidget *m_contentBox;
   Callback m_callback;
 };
-
-} // namespace bwp::gui
+}  

@@ -1,38 +1,29 @@
 #include "Error.hpp"
 #include <sstream>
-
 namespace bwp {
-
 Error::Error(ErrorCode code)
     : m_code(code), m_severity(getDefaultSeverity(code)) {
   auto [msg, userMsg] = getDefaultMessages(code);
   m_message = std::move(msg);
   m_userMessage = std::move(userMsg);
 }
-
 Error::Error(ErrorCode code, std::string_view context)
     : m_code(code), m_severity(getDefaultSeverity(code)),
       m_context(std::string(context)) {
   auto [msg, userMsg] = getDefaultMessages(code);
   m_message = std::move(msg);
   m_userMessage = std::move(userMsg);
-
-  // Append context to message
   if (!context.empty()) {
     m_message += ": ";
     m_message += context;
   }
 }
-
 Error::Error(ErrorCode code, std::string_view message,
              std::string_view userMessage, ErrorSeverity severity)
     : m_code(code), m_severity(severity), m_message(message),
       m_userMessage(userMessage) {}
-
 std::string Error::toString() const {
   std::ostringstream ss;
-
-  // Severity prefix
   switch (m_severity) {
   case ErrorSeverity::Info:
     ss << "[INFO] ";
@@ -47,24 +38,15 @@ std::string Error::toString() const {
     ss << "[FATAL] ";
     break;
   }
-
-  // Error code
   ss << "(" << static_cast<uint32_t>(m_code) << ") ";
-
-  // Message
   ss << m_message;
-
-  // Context if available
   if (m_context.has_value() && !m_context->empty()) {
     ss << " [Context: " << *m_context << "]";
   }
-
   return ss.str();
 }
-
 std::pair<std::string, std::string> Error::getDefaultMessages(ErrorCode code) {
   switch (code) {
-  // General
   case ErrorCode::Success:
     return {"Operation completed successfully", "Done!"};
   case ErrorCode::Unknown:
@@ -77,8 +59,6 @@ std::pair<std::string, std::string> Error::getDefaultMessages(ErrorCode code) {
             "Invalid input. Please check your settings."};
   case ErrorCode::OutOfMemory:
     return {"Out of memory", "Not enough memory to complete this operation."};
-
-  // File operations
   case ErrorCode::FileNotFound:
     return {"File not found", "The file could not be found."};
   case ErrorCode::FileReadError:
@@ -94,8 +74,6 @@ std::pair<std::string, std::string> Error::getDefaultMessages(ErrorCode code) {
             "You don't have permission to access this file."};
   case ErrorCode::DirectoryNotFound:
     return {"Directory not found", "The folder could not be found."};
-
-  // Wallpaper
   case ErrorCode::WallpaperNotFound:
     return {"Wallpaper not found", "The wallpaper file could not be found."};
   case ErrorCode::UnsupportedWallpaperType:
@@ -109,8 +87,6 @@ std::pair<std::string, std::string> Error::getDefaultMessages(ErrorCode code) {
     return {"Render error", "Failed to render the wallpaper."};
   case ErrorCode::ThumbnailGenerationFailed:
     return {"Thumbnail generation failed", "Could not create a preview image."};
-
-  // Monitor
   case ErrorCode::MonitorNotFound:
     return {"Monitor not found", "The specified monitor was not found."};
   case ErrorCode::WaylandConnectionFailed:
@@ -121,8 +97,6 @@ std::pair<std::string, std::string> Error::getDefaultMessages(ErrorCode code) {
             "Your compositor does not support wlr-layer-shell."};
   case ErrorCode::NoDisplayAvailable:
     return {"No display available", "No display is available."};
-
-  // IPC/Daemon
   case ErrorCode::DaemonNotRunning:
     return {"Daemon not running",
             "BetterWallpaper daemon is not running. Please start it first."};
@@ -134,8 +108,6 @@ std::pair<std::string, std::string> Error::getDefaultMessages(ErrorCode code) {
             "Communication with the daemon failed."};
   case ErrorCode::IPCTimeout:
     return {"IPC timeout", "The operation timed out."};
-
-  // Configuration
   case ErrorCode::ConfigLoadFailed:
     return {"Failed to load configuration",
             "Could not load settings. Using defaults."};
@@ -147,8 +119,6 @@ std::pair<std::string, std::string> Error::getDefaultMessages(ErrorCode code) {
     return {"Profile not found", "The specified profile was not found."};
   case ErrorCode::ProfileInvalid:
     return {"Invalid profile", "The profile configuration is invalid."};
-
-  // Workshop
   case ErrorCode::WorkshopAPIError:
     return {"Workshop API error", "Could not communicate with Steam Workshop."};
   case ErrorCode::DownloadFailed:
@@ -161,16 +131,12 @@ std::pair<std::string, std::string> Error::getDefaultMessages(ErrorCode code) {
   case ErrorCode::AuthenticationRequired:
     return {"Authentication required",
             "Please sign in to Steam to access this feature."};
-
-  // Hyprland
   case ErrorCode::HyprlandNotRunning:
     return {"Hyprland not running", "Hyprland is not running or not detected."};
   case ErrorCode::HyprlandIPCFailed:
     return {"Hyprland IPC failed", "Could not communicate with Hyprland."};
   case ErrorCode::WorkspaceNotFound:
     return {"Workspace not found", "The specified workspace was not found."};
-
-  // Theming
   case ErrorCode::ColorExtractionFailed:
     return {"Color extraction failed",
             "Could not extract colors from the wallpaper."};
@@ -180,61 +146,46 @@ std::pair<std::string, std::string> Error::getDefaultMessages(ErrorCode code) {
     return {"Theme tool not found",
             "No compatible theming tool (pywal, matugen) was found."};
   }
-
   return {"Unknown error", "An error occurred."};
 }
-
 ErrorSeverity Error::getDefaultSeverity(ErrorCode code) {
   switch (code) {
   case ErrorCode::Success:
     return ErrorSeverity::Info;
-
   case ErrorCode::NotImplemented:
   case ErrorCode::DownloadCancelled:
   case ErrorCode::ThumbnailGenerationFailed:
     return ErrorSeverity::Warning;
-
   case ErrorCode::OutOfMemory:
   case ErrorCode::WaylandConnectionFailed:
   case ErrorCode::LayerShellNotSupported:
     return ErrorSeverity::Fatal;
-
   default:
     return ErrorSeverity::Error;
   }
 }
-
-// Static factory methods
-
 Error Error::fileNotFound(std::string_view path) {
   return Error(ErrorCode::FileNotFound, path);
 }
-
 Error Error::invalidFormat(std::string_view path,
                            std::string_view expectedFormat) {
   std::string context =
       std::string(path) + " (expected: " + std::string(expectedFormat) + ")";
   return Error(ErrorCode::InvalidFormat, context);
 }
-
 Error Error::webWallpaperNotSupported(std::string_view wallpaperName) {
   return Error(ErrorCode::WebWallpaperNotSupported, wallpaperName);
 }
-
 Error Error::monitorNotFound(std::string_view monitorName) {
   return Error(ErrorCode::MonitorNotFound, monitorName);
 }
-
 Error Error::daemonNotRunning() { return Error(ErrorCode::DaemonNotRunning); }
-
 Error Error::configLoadFailed(std::string_view path, std::string_view reason) {
   std::string context = std::string(path) + ": " + std::string(reason);
   return Error(ErrorCode::ConfigLoadFailed, context);
 }
-
 Error Error::networkError(std::string_view url, std::string_view reason) {
   std::string context = std::string(url) + " - " + std::string(reason);
   return Error(ErrorCode::NetworkError, context);
 }
-
-} // namespace bwp
+}  

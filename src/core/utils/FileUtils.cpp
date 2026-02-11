@@ -12,21 +12,25 @@
 #else
 #include <unistd.h>
 #endif
-
 namespace bwp::utils {
-
 #ifdef _WIN32
 std::filesystem::path FileUtils::getUserHomeDir() {
     const char* home = std::getenv("USERPROFILE");
     if (home) return std::filesystem::path(home);
     return std::filesystem::path("C:\\");
 }
+#else
+std::filesystem::path FileUtils::getUserHomeDir() {
+    const char* home = std::getenv("HOME");
+    if (home) return std::filesystem::path(home);
+    struct passwd* pw = getpwuid(getuid());
+    if (pw && pw->pw_dir) return std::filesystem::path(pw->pw_dir);
+    return std::filesystem::current_path();
+}
 #endif
-
 bool FileUtils::exists(const std::filesystem::path &path) {
   return std::filesystem::exists(path);
 }
-
 bool FileUtils::createDirectories(const std::filesystem::path &path) {
   try {
     return std::filesystem::create_directories(path);
@@ -34,7 +38,6 @@ bool FileUtils::createDirectories(const std::filesystem::path &path) {
     return false;
   }
 }
-
 std::string FileUtils::readFile(const std::filesystem::path &path) {
   std::ifstream f(path);
   if (!f.is_open())
@@ -43,10 +46,8 @@ std::string FileUtils::readFile(const std::filesystem::path &path) {
   buffer << f.rdbuf();
   return buffer.str();
 }
-
 bool FileUtils::writeFile(const std::filesystem::path &path,
                           const std::string &content) {
-  // Create parent if needed
   if (path.has_parent_path()) {
     createDirectories(path.parent_path());
   }
@@ -59,16 +60,14 @@ bool FileUtils::writeFile(const std::filesystem::path &path,
   if (f.fail()) return false;
   return true;
 }
-
 std::filesystem::path FileUtils::expandPath(const std::string &pathVal) {
   if (pathVal.empty())
     return "";
-
   if (pathVal[0] == '~') {
 #ifdef _WIN32
     std::string result = getUserHomeDir().string();
     if (pathVal.length() > 1 && (pathVal[1] == '/' || pathVal[1] == '\\')) {
-        result += "\\" + pathVal.substr(2); // Skip ~/
+        result += "\\" + pathVal.substr(2);  
     }
     return std::filesystem::path(result);
 #else
@@ -83,7 +82,6 @@ std::filesystem::path FileUtils::expandPath(const std::string &pathVal) {
       if (pathVal.length() > 1 && pathVal[1] == '/') {
         result += pathVal.substr(1);
       } else if (pathVal.length() > 1) {
-        // ~user syntax not supported fully here, simplified
         result += "/" + pathVal.substr(1);
       }
       return std::filesystem::path(result);
@@ -92,15 +90,10 @@ std::filesystem::path FileUtils::expandPath(const std::string &pathVal) {
   }
   return std::filesystem::path(pathVal);
 }
-
 std::string FileUtils::getMimeType(const std::filesystem::path &path) {
-  // Basic extension check for now, can implement magic bytes later
-  // or use 'file --mime-type' command
-
   std::string ext = getExtension(path);
   for (auto &c : ext)
     c = std::tolower(c);
-
   if (ext == "png")
     return "image/png";
   if (ext == "jpg" || ext == "jpeg")
@@ -113,18 +106,12 @@ std::string FileUtils::getMimeType(const std::filesystem::path &path) {
     return "image/gif";
   if (ext == "pkg")
     return "application/x-wallpaper-engine";
-
   return "application/octet-stream";
 }
-
 std::string FileUtils::calculateHash(const std::filesystem::path &path) {
 #ifdef _WIN32
-    // Use certutil? Or just stub for now to compile.
-    // implementing certutil call is messy. Stubbing.
     return ""; 
 #else
-  // Using simple shell command for now to avoid OpenSSL dependency complexity
-  // in this phase Sha256sum
   std::string cmd = "sha256sum \"" + path.string() + "\" 2>/dev/null";
   std::array<char, 128> buffer;
   std::string result;
@@ -136,14 +123,12 @@ std::string FileUtils::calculateHash(const std::filesystem::path &path) {
   while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
     result += buffer.data();
   }
-  // Result format: "hash  filename"
   std::istringstream iss(result);
   std::string hash;
   iss >> hash;
   return hash;
 #endif
 }
-
 std::string FileUtils::getExtension(const std::filesystem::path &path) {
   if (!path.has_extension())
     return "";
@@ -152,5 +137,4 @@ std::string FileUtils::getExtension(const std::filesystem::path &path) {
     ext = ext.substr(1);
   return ext;
 }
-
-} // namespace bwp::utils
+}  

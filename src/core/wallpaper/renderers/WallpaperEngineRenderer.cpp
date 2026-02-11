@@ -8,100 +8,70 @@
 #include <thread>
 #include <unistd.h>
 #include <vector>
-
 namespace bwp::wallpaper {
-
 WallpaperEngineRenderer::WallpaperEngineRenderer() {}
-
 WallpaperEngineRenderer::~WallpaperEngineRenderer() { terminateProcess(); }
-
 bool WallpaperEngineRenderer::load(const std::string &path) {
   LOG_SCOPE_AUTO();
-
   if (path.empty()) {
     LOG_ERROR("Cannot load wallpaper: empty path provided");
     return false;
   }
-
   terminateProcess();
   m_pkPath = path;
   m_crashCount = 0;
-
   play();
   return true;
 }
-
-void WallpaperEngineRenderer::render(cairo_t *cr, int /*width*/,
-                                     int /*height*/) {
-  // Render loop logging skipped to avoid spam.
+void WallpaperEngineRenderer::render(cairo_t *cr, int  ,
+                                     int  ) {
   cairo_set_source_rgba(cr, 0, 0, 0, 0);
-  // Maybe draw transparent?
   cairo_set_source_rgba(cr, 0, 0, 0, 0);
   cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
   cairo_paint(cr);
   cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 }
-
 void WallpaperEngineRenderer::setScalingMode(ScalingMode mode) {
   LOG_SCOPE_AUTO();
   m_mode = mode;
-  // Need to restart process with new args if running?
   if (m_pid != -1) {
-    play(); // restart
+    play();  
   }
 }
-
 void WallpaperEngineRenderer::setMonitor(const std::string &monitor) {
   m_monitor = monitor;
   m_monitors.clear();
   m_monitors.push_back(monitor);
 }
-
 void WallpaperEngineRenderer::setMonitors(
     const std::vector<std::string> &monitors) {
   m_monitors = monitors;
   if (!monitors.empty()) {
-    m_monitor = monitors[0]; // Primary?
+    m_monitor = monitors[0];  
   }
 }
-
 void WallpaperEngineRenderer::launchProcess() {
   LOG_SCOPE_AUTO();
-
   if (m_pkPath.empty()) {
     LOG_ERROR("Cannot launch process: no wallpaper path set");
     return;
   }
-
-  // Check throttle
   auto now = std::chrono::steady_clock::now();
   auto elapsed =
       std::chrono::duration_cast<std::chrono::seconds>(now - m_lastLaunchTime)
           .count();
-
   if (elapsed > 60) {
-    m_crashCount = 0; // Reset if stable for 60s
+    m_crashCount = 0;  
   }
-
   m_lastLaunchTime = now;
-
-  // Existing launch logic...
   std::string bin = "linux-wallpaperengine";
   std::vector<std::string> args;
   args.push_back(bin);
-
-  // Extract Workshop ID logic...
   std::string arg = m_pkPath;
-
-  // HTML/Web Support
   if (m_pkPath.find(".html") != std::string::npos ||
       m_pkPath.find(".htm") != std::string::npos) {
-    // linux-wallpaperengine expects the directory for web headers usually, OR
-    // the index.html? Documentation says: passes file to browser. We pass the
-    // full path.
     arg = m_pkPath;
   }
-
   size_t pkgPos = m_pkPath.find("scene.pkg");
   if (pkgPos != std::string::npos) {
     std::string dir = m_pkPath.substr(0, pkgPos);
@@ -115,21 +85,11 @@ void WallpaperEngineRenderer::launchProcess() {
       }
     }
   }
-
-  // Decide command structure based on monitor count
-  // Multi-monitor chaining: ./linux-wallpaperengine --screen-root A --bg ID
-  // --screen-root B --bg ID Single/Default: ./linux-wallpaperengine ID
-  // [--screen-root A]
-
   if (arg.empty()) {
     LOG_ERROR("Cannot launch: wallpaper arg resolved to empty string");
     return;
   }
-
-  // Always put the positional background ID first
   args.push_back(arg);
-
-  // Add --screen-root for each monitor
   if (!m_monitors.empty()) {
     for (const auto &mon : m_monitors) {
       args.push_back("--screen-root");
@@ -139,103 +99,70 @@ void WallpaperEngineRenderer::launchProcess() {
     args.push_back("--screen-root");
     args.push_back(m_monitor);
   }
-
   if (m_fpsLimit > 0) {
     args.push_back("--fps");
     args.push_back(std::to_string(m_fpsLimit));
   }
-
   if (m_muted) {
     args.push_back("--silent");
   }
-
   if (m_noAudioProcessing) {
     args.push_back("--no-audio-processing");
   }
-
   if (m_disableMouse) {
     args.push_back("--disable-mouse");
   }
-
   if (m_noAutomute) {
     args.push_back("--noautomute");
   }
-
   if (!m_muted && m_volumeLevel >= 0 && m_volumeLevel <= 100) {
     args.push_back("--volume");
     args.push_back(std::to_string(m_volumeLevel));
   }
-
   std::string cmdLog = "Launching: ";
   for (const auto &a : args)
     cmdLog += a + " ";
   LOG_INFO(cmdLog);
-
   pid_t pid = fork();
   if (pid == 0) {
-    // Set LD_LIBRARY_PATH to include the executable's directory for libGLEW
-    // symlink This avoids hardcoded paths and works from both build and install
-    // locations
     std::string exeDir;
-    std::string workingDir = "."; // Default CWD
+    std::string workingDir = ".";  
     try {
       exeDir =
           std::filesystem::canonical("/proc/self/exe").parent_path().string();
     } catch (...) {
-      exeDir = "."; // Fallback to current directory
+      exeDir = ".";  
     }
-
-    // Check if we can bypass the wrapper script and run directly
-    // This fixes issues where the wrapper script mishandles LD_LIBRARY_PATH
     if (std::filesystem::exists(
             "/opt/linux-wallpaperengine/linux-wallpaperengine")) {
       bin = "/opt/linux-wallpaperengine/linux-wallpaperengine";
       workingDir = "/opt/linux-wallpaperengine";
     }
-
-    // Set working directory
     int chdirRes = chdir(workingDir.c_str());
-    (void)chdirRes; // Suppress unused warning
-
+    (void)chdirRes;  
     const char *currentLd = getenv("LD_LIBRARY_PATH");
     std::string newLd = exeDir;
-    // Also add the project root (one level up from build/src/gui)
     newLd += ":" + exeDir + "/..";
     newLd += ":" + exeDir + "/../..";
     newLd += ":" + exeDir + "/../../..";
-
-    // Fix for broken AUR package / installation script
-    // which fails to find libcef.so in the root of the install dir
     if (bin.find("/opt/linux-wallpaperengine") != std::string::npos) {
-      // Prioritize the install dir if we are running the binary directly
-      // Must include BOTH root (for libcef.so) and lib/ (for kissfft etc)
       newLd =
           "/opt/linux-wallpaperengine:/opt/linux-wallpaperengine/lib:" + newLd;
     } else {
       newLd += ":/opt/linux-wallpaperengine:/opt/linux-wallpaperengine/lib";
     }
     newLd += ":/usr/lib/linux-wallpaperengine";
-
     if (currentLd) {
       newLd += ":";
       newLd += currentLd;
     }
     setenv("LD_LIBRARY_PATH", newLd.c_str(), 1);
-
-    // Ensure DISPLAY is set for XWayland/GLX support on Wayland compositors
-    // linux-wallpaperengine requires X11/GLX, so it needs XWayland
     const char *display = getenv("DISPLAY");
     if (!display || display[0] == '\0') {
-      // Try common XWayland display values
       setenv("DISPLAY", ":0", 1);
     }
-
-    // Ensure XDG_SESSION_TYPE is set — linux-wallpaperengine uses it to
-    // detect the window server. Under systemd user services these variables
-    // may not be inherited from the graphical session.
     const char *sessionType = getenv("XDG_SESSION_TYPE");
     if (!sessionType || sessionType[0] == '\0') {
-      // If WAYLAND_DISPLAY is set, we're on Wayland
       const char *waylandDisplay = getenv("WAYLAND_DISPLAY");
       if (waylandDisplay && waylandDisplay[0] != '\0') {
         setenv("XDG_SESSION_TYPE", "wayland", 1);
@@ -243,11 +170,8 @@ void WallpaperEngineRenderer::launchProcess() {
         setenv("XDG_SESSION_TYPE", "x11", 1);
       }
     }
-
-    // Ensure WAYLAND_DISPLAY is set for Wayland compositors
     const char *waylandDisp = getenv("WAYLAND_DISPLAY");
     if (!waylandDisp || waylandDisp[0] == '\0') {
-      // Try common Wayland display socket names
       const char *xdgRuntime = getenv("XDG_RUNTIME_DIR");
       if (xdgRuntime) {
         std::string socketPath = std::string(xdgRuntime) + "/wayland-1";
@@ -261,20 +185,8 @@ void WallpaperEngineRenderer::launchProcess() {
         }
       }
     }
-
-    // Create new session to detach from terminal (allows surviving app closure)
-    // This makes the process independent and it will continue running even
-    // after the parent app exits - key for wallpaper persistence
     setsid();
-
-    // Close standard file descriptors to fully daemonize
-    // This prevents the process from being affected by terminal closure
     close(STDIN_FILENO);
-    // Keep stdout/stderr open for logging - redirect to /dev/null for
-    // true daemonization if needed (comment these out for debugging)
-    // close(STDOUT_FILENO);
-    // close(STDERR_FILENO);
-
     std::vector<char *> c_args;
     for (const auto &a : args)
       c_args.push_back(const_cast<char *>(a.c_str()));
@@ -284,51 +196,36 @@ void WallpaperEngineRenderer::launchProcess() {
   } else if (pid > 0) {
     m_pid = pid;
     m_isPlaying = true;
-
     LOG_INFO("Spawned wallpaper process with PID: " + std::to_string(pid) +
              " (independent session via setsid)");
-
-    // Do NOT block invalidating the UI. Let the watcher thread handle crashes.
-    // std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    // ... waitpid ...
   }
 }
-
 void WallpaperEngineRenderer::play() {
   LOG_SCOPE_AUTO();
-
   if (m_pkPath.empty()) {
     LOG_WARN("play() called but no wallpaper path set — ignoring");
     return;
   }
-
   if (m_pid != -1) {
     kill(m_pid, SIGCONT);
     m_isPlaying = true;
     return;
   }
-
   m_stopWatcher = false;
   if (!m_watcherThread.joinable()) {
     m_watcherThread =
         std::thread(&WallpaperEngineRenderer::monitorProcess, this);
   }
-
   launchProcess();
 }
-
 void WallpaperEngineRenderer::monitorProcess() {
   LOG_SCOPE_AUTO();
-  const int MAX_CRASH_COUNT = 3; // Stop after 3 consecutive crashes
-
+  const int MAX_CRASH_COUNT = 3;  
   while (!m_stopWatcher) {
     if (m_pid > 0) {
       int status;
-      // Use WNOHANG to avoid blocking indefinitely
       pid_t res = waitpid(m_pid, &status, WNOHANG);
-
       if (res == m_pid && !m_stopWatcher) {
-        // Process exited
         if (m_crashCount >= MAX_CRASH_COUNT) {
           LOG_ERROR("WallpaperEngine crashed " + std::to_string(m_crashCount) +
                     " times. Giving up - GLX/OpenGL may be unavailable.");
@@ -337,29 +234,22 @@ void WallpaperEngineRenderer::monitorProcess() {
           m_stopWatcher = true;
           break;
         }
-
         LOG_WARN("WallpaperEngine crashed. Attempt " +
                  std::to_string(m_crashCount + 1) + "/" +
                  std::to_string(MAX_CRASH_COUNT));
-
         int backoff = std::min(
             static_cast<int>(std::pow(2.0, static_cast<double>(m_crashCount))),
             30);
         m_crashCount++;
-
         m_pid = -1;
-
-        // Interruptible sleep
         std::unique_lock<std::mutex> lock(m_cvMutex);
         m_cv.wait_for(lock, std::chrono::seconds(backoff),
                       [this] { return m_stopWatcher.load(); });
-
         if (!m_stopWatcher && m_crashCount < MAX_CRASH_COUNT &&
             !m_pkPath.empty()) {
           launchProcess();
         }
       } else if (res == 0) {
-        // Process still running, sleep a bit (interruptible)
         std::unique_lock<std::mutex> lock(m_cvMutex);
         m_cv.wait_for(lock, std::chrono::milliseconds(500),
                       [this] { return m_stopWatcher.load(); });
@@ -371,7 +261,6 @@ void WallpaperEngineRenderer::monitorProcess() {
     }
   }
 }
-
 void WallpaperEngineRenderer::pause() {
   LOG_SCOPE_AUTO();
   if (m_pid != -1) {
@@ -381,14 +270,12 @@ void WallpaperEngineRenderer::pause() {
     m_isPlaying = false;
   }
 }
-
 void WallpaperEngineRenderer::detach() {
   LOG_SCOPE_AUTO();
   if (m_pid != -1) {
     LOG_INFO("Detaching wallpaper process " + std::to_string(m_pid) +
              " (Persistence Enabled)");
     m_detached = true;
-    // Signal watcher to stop without killing
     m_stopWatcher = true;
     m_cv.notify_all();
     if (m_watcherThread.joinable()) {
@@ -398,118 +285,78 @@ void WallpaperEngineRenderer::detach() {
     m_isPlaying = false;
   }
 }
-
 void WallpaperEngineRenderer::stop() {
   LOG_SCOPE_AUTO();
   terminateProcess();
 }
-
 bool WallpaperEngineRenderer::isPlaying() const {
   return m_isPlaying && m_pid != -1;
 }
-
 void WallpaperEngineRenderer::terminateProcess() {
   LOG_SCOPE_AUTO();
   m_stopWatcher = true;
   m_cv.notify_all();
-
-  pid_t pidToReap = m_pid; // Save before we clear it
-
+  pid_t pidToReap = m_pid;  
   if (pidToReap != -1 && !m_detached) {
     kill(pidToReap, SIGTERM);
   }
-
   if (m_watcherThread.joinable()) {
     m_watcherThread.join();
   }
-
-  // Explicitly reap the child process to prevent zombies.
-  // The watcher thread may have already reaped it, but we do a final check.
   if (pidToReap != -1 && !m_detached) {
     int status = 0;
-    // Give the process a moment to die after SIGTERM
-    for (int i = 0; i < 20; ++i) { // Up to 2 seconds
+    for (int i = 0; i < 20; ++i) {  
       pid_t res = waitpid(pidToReap, &status, WNOHANG);
       if (res == pidToReap || res == -1) {
-        // Reaped successfully, or already gone (ECHILD)
         break;
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
-    // If still alive after 2s, force kill and reap
     if (waitpid(pidToReap, &status, WNOHANG) == 0) {
       LOG_WARN("Process " + std::to_string(pidToReap) +
                " did not exit after SIGTERM, sending SIGKILL");
       kill(pidToReap, SIGKILL);
-      waitpid(pidToReap, &status, 0); // Block until reaped
+      waitpid(pidToReap, &status, 0);  
     }
   }
-
   m_pid = -1;
   m_isPlaying = false;
 }
-
 void WallpaperEngineRenderer::setVolume(float volume) {
-  // Map 0.0-1.0 float to 0-100 integer for WE CLI
   int vol = static_cast<int>(volume * 100.0f);
   setVolumeLevel(vol);
 }
-
-void WallpaperEngineRenderer::setPlaybackSpeed(float /*speed*/) {
-  // Not supported via CLI args easily
+void WallpaperEngineRenderer::setPlaybackSpeed(float  ) {
 }
-
 void WallpaperEngineRenderer::setFpsLimit(int fps) {
   if (m_fpsLimit != fps) {
     m_fpsLimit = fps;
     if (m_isPlaying && m_pid != -1) {
-      // Must fully restart to apply new args
       terminateProcess();
       m_crashCount = 0;
       play();
     }
   }
 }
-
 void WallpaperEngineRenderer::setMuted(bool muted) {
-  // Just store the flag — do NOT restart the process.
-  // The --silent arg is a launch-time setting. Restarting the entire
-  // wallpaper process on every mute toggle (e.g. on every Hyprland
-  // activewindow event) causes visible flicker. The new value will
-  // take effect the next time the process is naturally (re)launched.
   m_muted = muted;
 }
-
 void WallpaperEngineRenderer::setNoAudioProcessing(bool enabled) {
-  // Store for next launch — don't restart the process mid-playback.
   m_noAudioProcessing = enabled;
 }
-
 void WallpaperEngineRenderer::setDisableMouse(bool enabled) {
-  // Store for next launch — don't restart the process mid-playback.
   m_disableMouse = enabled;
 }
-
 void WallpaperEngineRenderer::setNoAutomute(bool enabled) {
-  // Store for next launch — don't restart the process mid-playback.
   m_noAutomute = enabled;
 }
-
 void WallpaperEngineRenderer::setVolumeLevel(int volume) {
   volume = std::clamp(volume, 0, 100);
-  // Store for next launch — don't restart the process mid-playback.
-  // Volume is a launch-time CLI arg for linux-wallpaperengine.
   m_volumeLevel = volume;
 }
-
 void WallpaperEngineRenderer::setAudioData(
-    const std::vector<float> & /*audioBands*/) {
-  // Wallpaper Engine (linux port) typically captures audio internally via
-  // PulseAudio. We don't need to pass FFT data manually unless we are injecting
-  // it. For now, this is a no-op as the external process handles it. If we need
-  // to send data, we would write to a pipe/socket here.
+    const std::vector<float> &  ) {
 }
-
 WallpaperType WallpaperEngineRenderer::getType() const {
   if (m_pkPath.find(".html") != std::string::npos ||
       m_pkPath.find(".htm") != std::string::npos)
@@ -519,5 +366,4 @@ WallpaperType WallpaperEngineRenderer::getType() const {
     return WallpaperType::WEVideo;
   return WallpaperType::WEScene;
 }
-
-} // namespace bwp::wallpaper
+}  

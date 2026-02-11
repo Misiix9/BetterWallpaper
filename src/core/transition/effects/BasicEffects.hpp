@@ -1,8 +1,6 @@
 #pragma once
 #include "../TransitionEffect.hpp"
-
 namespace bwp::transition {
-
 class FadeEffect : public TransitionEffect {
 public:
   std::string getName() const override { return "Fade"; }
@@ -10,7 +8,6 @@ public:
               double progress, int width, int height,
               const TransitionParams &params) override;
 };
-
 class SlideEffect : public TransitionEffect {
 public:
   std::string getName() const override { return "Slide"; }
@@ -18,7 +15,6 @@ public:
               double progress, int width, int height,
               const TransitionParams &params) override;
 };
-
 class WipeEffect : public TransitionEffect {
 public:
   std::string getName() const override { return "Wipe"; }
@@ -26,5 +22,4 @@ public:
               double progress, int width, int height,
               const TransitionParams &params) override;
 };
-
-} // namespace bwp::transition
+}  

@@ -5,11 +5,8 @@
 #else
 #include "LinuxIPCClient.hpp"
 #endif
-
 #include <memory>
-
 namespace bwp::ipc {
-
 class IPCClientFactory {
 public:
     static std::unique_ptr<IIPCClient> createClient() {
@@ -20,5 +17,4 @@ public:
 #endif
     }
 };
-
-} // namespace bwp::ipc
+}  

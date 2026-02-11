@@ -2,106 +2,72 @@
 #include "../transition/effects/BasicEffects.hpp"
 #include "../utils/Logger.hpp"
 #include <gtk/gtk.h>
-#include <gtk4-layer-shell/gtk4-layer-shell.h> // Assuming this library is used
-
+#include <gtk4-layer-shell/gtk4-layer-shell.h>  
 namespace bwp::wallpaper {
-
 WallpaperWindow::WallpaperWindow(const monitor::MonitorInfo &monitor)
     : m_monitor(monitor) {
   m_window = gtk_window_new();
   gtk_window_set_decorated(GTK_WINDOW(m_window), FALSE);
   gtk_window_set_title(GTK_WINDOW(m_window), "BetterWallpaper-Renderer");
-
-  // Initialize Layer Shell
   gtk_layer_init_for_window(GTK_WINDOW(m_window));
-
-  // Set parameters
   gtk_layer_set_layer(GTK_WINDOW(m_window), GTK_LAYER_SHELL_LAYER_BACKGROUND);
-
-  // Anchor to all edges
   gtk_layer_set_anchor(GTK_WINDOW(m_window), GTK_LAYER_SHELL_EDGE_LEFT, TRUE);
   gtk_layer_set_anchor(GTK_WINDOW(m_window), GTK_LAYER_SHELL_EDGE_RIGHT, TRUE);
   gtk_layer_set_anchor(GTK_WINDOW(m_window), GTK_LAYER_SHELL_EDGE_TOP, TRUE);
   gtk_layer_set_anchor(GTK_WINDOW(m_window), GTK_LAYER_SHELL_EDGE_BOTTOM, TRUE);
-
-  // Exclusive zone -1 to ignore
   gtk_layer_set_exclusive_zone(GTK_WINDOW(m_window), -1);
-
-  // Assign to monitor
   GdkDisplay *display = gdk_display_get_default();
-  // Getting GdkMonitor from monitor name is tricky, iterating display monitors:
   GListModel *monitors = gdk_display_get_monitors(display);
   for (guint i = 0; i < g_list_model_get_n_items(monitors); i++) {
     GdkMonitor *gdkMonitor = GDK_MONITOR(g_list_model_get_item(monitors, i));
-
     const char *connector = gdk_monitor_get_connector(gdkMonitor);
-
     if (connector && std::string(connector) == monitor.name) {
       gtk_layer_set_monitor(GTK_WINDOW(m_window), gdkMonitor);
       break;
     }
   }
-
-  // Setup drawing area
   m_drawingArea = gtk_drawing_area_new();
   gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(m_drawingArea), onDraw, this,
                                  nullptr);
   gtk_window_set_child(GTK_WINDOW(m_window), m_drawingArea);
-
-  // Frame clock for animations
   gtk_widget_add_tick_callback(m_drawingArea, onExtractFrame, this, nullptr);
 }
-
 WallpaperWindow::~WallpaperWindow() {
   if (m_window) {
     gtk_window_destroy(GTK_WINDOW(m_window));
   }
 }
-
 void WallpaperWindow::setRenderer(std::weak_ptr<WallpaperRenderer> renderer) {
   m_renderer = renderer;
   gtk_widget_queue_draw(m_drawingArea);
 }
-
 void WallpaperWindow::show() {
   if (gtk_layer_is_layer_window(GTK_WINDOW(m_window))) {
     gtk_widget_set_visible(m_window, TRUE);
   } else {
     LOG_ERROR("Window is not a layer surface! strict layer shell compliance "
               "enabled. Hiding window.");
-    // Optional: Destroy? Or just keep hidden.
   }
 }
-
 void WallpaperWindow::hide() { gtk_widget_set_visible(m_window, FALSE); }
-
-void WallpaperWindow::updateMonitor(const monitor::MonitorInfo & /*monitor*/) {
-  // Re-assign monitor logic if changed
+void WallpaperWindow::updateMonitor(const monitor::MonitorInfo &  ) {
 }
-
 void WallpaperWindow::transitionTo(
     std::shared_ptr<WallpaperRenderer> nextRenderer) {
-  // If no current renderer or drawing area not ready, just set directly
   if (!m_drawingArea || m_renderer.expired()) {
     LOG_INFO("Setting renderer directly (no transition)");
     setRenderer(nextRenderer);
     return;
   }
-
   int width = gtk_widget_get_width(m_drawingArea);
   int height = gtk_widget_get_height(m_drawingArea);
-
-  // If dimensions are invalid, skip transition and set directly
   if (width <= 0 || height <= 0) {
     LOG_WARN("Drawing area has invalid dimensions, setting renderer directly");
     setRenderer(nextRenderer);
     return;
   }
-
   LOG_INFO("Transitioning to new wallpaper (" + std::to_string(width) + "x" +
            std::to_string(height) + ")");
-
-  // Snapshots
   cairo_surface_t *from =
       cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
   cairo_t *crFrom = cairo_create(from);
@@ -109,7 +75,6 @@ void WallpaperWindow::transitionTo(
     current->render(crFrom, width, height);
   }
   cairo_destroy(crFrom);
-
   cairo_surface_t *to =
       cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
   cairo_t *crTo = cairo_create(to);
@@ -117,8 +82,6 @@ void WallpaperWindow::transitionTo(
     nextRenderer->render(crTo, width, height);
   }
   cairo_destroy(crTo);
-
-  // Start transition (Fade default with easeInOut)
   auto effect = std::make_shared<bwp::transition::FadeEffect>();
   m_transitionEngine.start(from, to, effect, 600, "easeInOut",
                            [this, nextRenderer]() {
@@ -126,28 +89,21 @@ void WallpaperWindow::transitionTo(
                              if (nextRenderer)
                                nextRenderer->play();
                            });
-
   cairo_surface_destroy(from);
   cairo_surface_destroy(to);
-
   gtk_widget_queue_draw(m_drawingArea);
 }
-
 gboolean WallpaperWindow::onExtractFrame(GtkWidget *widget,
-                                         GdkFrameClock * /*clock*/,
+                                         GdkFrameClock *  ,
                                          gpointer user_data) {
   auto *self = static_cast<WallpaperWindow *>(user_data);
-
   if (self->m_transitionEngine.isActive()) {
     gtk_widget_queue_draw(widget);
     return G_SOURCE_CONTINUE;
   }
-
-  // Calculate FPS
   static auto lastLog = std::chrono::steady_clock::now();
   static int frameCount = 0;
   frameCount++;
-
   auto now = std::chrono::steady_clock::now();
   if (std::chrono::duration_cast<std::chrono::seconds>(now - lastLog).count() >=
       5) {
@@ -156,10 +112,7 @@ gboolean WallpaperWindow::onExtractFrame(GtkWidget *widget,
     frameCount = 0;
     lastLog = now;
   }
-
-  // If renderer requires animation loop, queue draw
   if (auto renderer = self->m_renderer.lock()) {
-    // ...
     if (renderer->isPlaying()) {
       gtk_widget_queue_draw(widget);
       return G_SOURCE_CONTINUE;
@@ -167,45 +120,32 @@ gboolean WallpaperWindow::onExtractFrame(GtkWidget *widget,
   }
   return G_SOURCE_CONTINUE;
 }
-
 void WallpaperWindow::onDraw(GtkDrawingArea *area, cairo_t *cr, int width,
                              int height, gpointer user_data) {
   auto *self = static_cast<WallpaperWindow *>(user_data);
-
-  // Apply window opacity to drawing context
   if (self->m_opacity < 1.0) {
     cairo_push_group(cr);
   }
-
   if (self->m_transitionEngine.isActive()) {
     if (!self->m_transitionEngine.render(cr, width, height)) {
-      // Finished just now
       gtk_widget_queue_draw(GTK_WIDGET(area));
     }
   } else if (auto renderer = self->m_renderer.lock()) {
     renderer->render(cr, width, height);
   } else {
-    // Black background default
     cairo_set_source_rgb(cr, 0, 0, 0);
     cairo_paint(cr);
   }
-
-  // Apply opacity if less than 1.0
   if (self->m_opacity < 1.0) {
     cairo_pop_group_to_source(cr);
     cairo_paint_with_alpha(cr, self->m_opacity);
   }
 }
-
 void WallpaperWindow::setOpacity(double opacity) {
   m_opacity = std::max(0.0, std::min(1.0, opacity));
-
-  // Queue a redraw to apply the new opacity
   if (m_drawingArea) {
     gtk_widget_queue_draw(m_drawingArea);
   }
 }
-
 double WallpaperWindow::getOpacity() const { return m_opacity; }
-
-} // namespace bwp::wallpaper
+}  

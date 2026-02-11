@@ -7,20 +7,15 @@
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
-
 namespace bwp::wallpaper {
-
 WallpaperPreloader &WallpaperPreloader::getInstance() {
   static WallpaperPreloader instance;
   return instance;
 }
-
 WallpaperPreloader::WallpaperPreloader() {
   LOG_INFO("WallpaperPreloader initialized");
 }
-
 WallpaperPreloader::~WallpaperPreloader() {
-  // Cancel all ongoing preloads
   std::lock_guard<std::mutex> lock(m_mutex);
   for (auto &[path, entry] : m_preloads) {
     entry->cancelled = true;
@@ -30,17 +25,13 @@ WallpaperPreloader::~WallpaperPreloader() {
   }
   m_preloads.clear();
 }
-
 void WallpaperPreloader::preload(const std::string &path,
                                  PreloadCallback callback) {
   if (path.empty()) {
     LOG_WARN("Cannot preload empty path");
     return;
   }
-
   std::lock_guard<std::mutex> lock(m_mutex);
-
-  // Check if already preloaded or preloading
   auto it = m_preloads.find(path);
   if (it != m_preloads.end()) {
     auto &entry = it->second;
@@ -53,18 +44,13 @@ void WallpaperPreloader::preload(const std::string &path,
     }
     if (entry->state == PreloadState::Loading) {
       LOG_DEBUG("Wallpaper already preloading: " + path);
-      // Update callback if provided
       if (callback) {
         entry->callback = callback;
       }
       return;
     }
   }
-
-  // Evict old preloads if at limit
   evictOldPreloads();
-
-  // Create new preload entry
   auto entry = std::make_shared<PreloadEntry>();
   entry->path = path;
   entry->state = PreloadState::Loading;
@@ -73,19 +59,13 @@ void WallpaperPreloader::preload(const std::string &path,
       std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::steady_clock::now().time_since_epoch())
           .count();
-
   m_preloads[path] = entry;
-
   LOG_INFO("Starting preload for: " + path);
-
-  // Start preload in background thread
   entry->preloadThread = std::thread([this, path]() { doPreload(path); });
   entry->preloadThread.detach();
 }
-
 void WallpaperPreloader::doPreload(const std::string &path) {
   std::shared_ptr<PreloadEntry> entry;
-
   {
     std::lock_guard<std::mutex> lock(m_mutex);
     auto it = m_preloads.find(path);
@@ -94,16 +74,11 @@ void WallpaperPreloader::doPreload(const std::string &path) {
     }
     entry = it->second;
   }
-
   if (entry->cancelled) {
     return;
   }
-
-  // Detect wallpaper type
   WallpaperType type = detectType(path);
-
   std::shared_ptr<WallpaperRenderer> renderer;
-
   try {
     switch (type) {
     case WallpaperType::StaticImage: {
@@ -115,33 +90,24 @@ void WallpaperPreloader::doPreload(const std::string &path) {
       }
       break;
     }
-
     case WallpaperType::Video: {
       LOG_DEBUG("Preloading video: " + path);
       auto videoRenderer = std::make_shared<VideoRenderer>();
-      // Load but don't start playing
       if (videoRenderer->load(path)) {
-        videoRenderer->pause(); // Ensure paused
+        videoRenderer->pause();  
         renderer = videoRenderer;
         LOG_INFO("Video preloaded (paused): " + path);
       }
       break;
     }
-
     case WallpaperType::WEScene:
     case WallpaperType::WEVideo:
     case WallpaperType::WEWeb: {
       LOG_DEBUG("Validating WE assets for: " + path);
-      // For WE scenes, we can't really preload the external process
-      // But we can validate that the assets exist
       auto weRenderer = std::make_shared<WallpaperEngineRenderer>();
-
-      // Check if the path and required files exist
       std::filesystem::path scenePath(path);
       bool valid = false;
-
       if (std::filesystem::exists(scenePath)) {
-        // Check for scene.json or project.json
         auto dir = scenePath.parent_path();
         if (std::filesystem::exists(dir / "scene.json") ||
             std::filesystem::exists(dir / "project.json") ||
@@ -149,10 +115,7 @@ void WallpaperPreloader::doPreload(const std::string &path) {
           valid = true;
         }
       }
-
       if (valid) {
-        // Store the renderer for later use
-        // Note: We don't call load() here as that starts the process
         renderer = weRenderer;
         LOG_INFO("WE scene validated and ready: " + path);
       } else {
@@ -160,7 +123,6 @@ void WallpaperPreloader::doPreload(const std::string &path) {
       }
       break;
     }
-
     default:
       LOG_WARN("Unknown wallpaper type for preload: " + path);
       break;
@@ -168,8 +130,6 @@ void WallpaperPreloader::doPreload(const std::string &path) {
   } catch (const std::exception &e) {
     LOG_ERROR("Preload failed for " + path + ": " + e.what());
   }
-
-  // Update entry with result
   {
     std::lock_guard<std::mutex> lock(m_mutex);
     auto it = m_preloads.find(path);
@@ -177,20 +137,15 @@ void WallpaperPreloader::doPreload(const std::string &path) {
       it->second->renderer = renderer;
       it->second->state =
           renderer ? PreloadState::Ready : PreloadState::Failed;
-
-      // Call callback on main thread
       PreloadCallback callback = it->second->callback;
       PreloadState state = it->second->state;
-
       if (callback) {
-        // Use g_idle_add to call on main thread
         struct CallbackData {
           PreloadCallback cb;
           std::string path;
           PreloadState state;
         };
         CallbackData *data = new CallbackData{callback, path, state};
-
         g_idle_add(
             [](gpointer userData) -> gboolean {
               CallbackData *d = static_cast<CallbackData *>(userData);
@@ -205,7 +160,6 @@ void WallpaperPreloader::doPreload(const std::string &path) {
     }
   }
 }
-
 WallpaperPreloader::PreloadState
 WallpaperPreloader::getState(const std::string &path) const {
   std::lock_guard<std::mutex> lock(m_mutex);
@@ -215,28 +169,23 @@ WallpaperPreloader::getState(const std::string &path) const {
   }
   return PreloadState::None;
 }
-
 bool WallpaperPreloader::isReady(const std::string &path) const {
   return getState(path) == PreloadState::Ready;
 }
-
 std::shared_ptr<WallpaperRenderer>
 WallpaperPreloader::getPreloadedRenderer(const std::string &path) {
   std::lock_guard<std::mutex> lock(m_mutex);
   auto it = m_preloads.find(path);
   if (it != m_preloads.end() && it->second->state == PreloadState::Ready) {
     auto renderer = it->second->renderer;
-    // Remove from cache (will be owned by caller now)
     m_preloads.erase(it);
     return renderer;
   }
   return nullptr;
 }
-
 void WallpaperPreloader::clearPreload(const std::string &path) {
   std::lock_guard<std::mutex> lock(m_mutex);
   if (path.empty()) {
-    // Clear all
     for (auto &[p, entry] : m_preloads) {
       entry->cancelled = true;
     }
@@ -251,7 +200,6 @@ void WallpaperPreloader::clearPreload(const std::string &path) {
     }
   }
 }
-
 void WallpaperPreloader::cancelPreload(const std::string &path) {
   std::lock_guard<std::mutex> lock(m_mutex);
   auto it = m_preloads.find(path);
@@ -261,32 +209,22 @@ void WallpaperPreloader::cancelPreload(const std::string &path) {
     LOG_DEBUG("Cancelled preload for: " + path);
   }
 }
-
 void WallpaperPreloader::setMaxPreloads(size_t max) {
   std::lock_guard<std::mutex> lock(m_mutex);
   m_maxPreloads = max;
   evictOldPreloads();
 }
-
 void WallpaperPreloader::evictOldPreloads() {
-  // Already under lock when called
-
   if (m_preloads.size() < m_maxPreloads) {
     return;
   }
-
-  // Find oldest ready preloads to evict
   std::vector<std::pair<int64_t, std::string>> readyPreloads;
   for (const auto &[path, entry] : m_preloads) {
     if (entry->state == PreloadState::Ready) {
       readyPreloads.emplace_back(entry->preloadedAtMs, path);
     }
   }
-
-  // Sort by time (oldest first)
   std::sort(readyPreloads.begin(), readyPreloads.end());
-
-  // Evict oldest until under limit
   size_t toEvict = m_preloads.size() - m_maxPreloads + 1;
   for (size_t i = 0; i < toEvict && i < readyPreloads.size(); ++i) {
     const std::string &pathToEvict = readyPreloads[i].second;
@@ -294,10 +232,8 @@ void WallpaperPreloader::evictOldPreloads() {
     LOG_DEBUG("Evicted old preload: " + pathToEvict);
   }
 }
-
 WallpaperType WallpaperPreloader::detectType(const std::string &path) const {
   std::string mime = utils::FileUtils::getMimeType(path);
-
   if (mime.find("image/") != std::string::npos &&
       mime.find("gif") == std::string::npos) {
     return WallpaperType::StaticImage;
@@ -307,8 +243,6 @@ WallpaperType WallpaperPreloader::detectType(const std::string &path) const {
   } else if (mime.find("x-wallpaper-engine") != std::string::npos) {
     return WallpaperType::WEScene;
   }
-
-  // Fallback based on extension
   std::string ext = utils::FileUtils::getExtension(path);
   if (ext == "mp4" || ext == "webm" || ext == "mkv" || ext == "gif") {
     return WallpaperType::Video;
@@ -316,8 +250,6 @@ WallpaperType WallpaperPreloader::detectType(const std::string &path) const {
   if (ext == "pkg" || ext == "json" || ext == "html" || ext == "htm") {
     return WallpaperType::WEScene;
   }
-
-  return WallpaperType::StaticImage; // Default
+  return WallpaperType::StaticImage;  
 }
-
-} // namespace bwp::wallpaper
+}  

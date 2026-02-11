@@ -5,11 +5,8 @@
 #else
 #include "LinuxTrayIcon.hpp"
 #endif
-
 #include <memory>
-
 namespace bwp::tray {
-
 class TrayIconFactory {
 public:
     static std::unique_ptr<ITrayIcon> create() {
@@ -20,5 +17,4 @@ public:
 #endif
     }
 };
-
-} // namespace bwp::tray
+}  

@@ -10,9 +10,7 @@
 #endif
 #include <memory>
 #include <vector>
-
 namespace bwp::wallpaper {
-
 class WallpaperSetterFactory {
 public:
     static std::unique_ptr<IWallpaperSetter> createSetter() {
@@ -20,27 +18,17 @@ public:
         auto win = std::make_unique<WindowsWallpaperSetter>();
         if (win->isSupported()) return win;
         #else
-        // 1. Hyprland
         auto hypr = std::make_unique<HyprlandWallpaperSetter>();
         if (hypr->isSupported()) return hypr;
-        
-        // 2. GNOME
         auto gnome = std::make_unique<GnomeWallpaperSetter>();
         if (gnome->isSupported()) return gnome;
-
-        // 3. KDE
         auto kde = std::make_unique<KdeWallpaperSetter>();
         if (kde->isSupported()) return kde;
-        
-        // 3. SwayBG (Generic Wayland Fallback)
         auto sway = std::make_unique<SwayBgWallpaperSetter>();
         if (sway->isSupported()) return sway;
         #endif
-        
         return nullptr;
     }
-    
-    // Legacy support: get list of available names
     static std::vector<std::string> getAvailableMethodNames() {
         std::vector<std::string> methods;
         #ifdef _WIN32
@@ -54,5 +42,4 @@ public:
         return methods;
     }
 };
-
-} // namespace bwp::wallpaper
+}  

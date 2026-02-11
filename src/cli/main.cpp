@@ -2,7 +2,6 @@
 #include <iostream>
 #include <string>
 #include <vector>
-
 void printUsage() {
   std::cout << "Usage: bwp <command> [args] [--monitor <name>]\n"
             << "Commands:\n"
@@ -16,18 +15,14 @@ void printUsage() {
             << "  version      Show daemon version\n"
             << std::endl;
 }
-
 int main(int argc, char **argv) {
   if (argc < 2) {
     printUsage();
     return 1;
   }
-
   std::string command = argv[1];
-  std::string monitor = "eDP-1"; // Default monitor
+  std::string monitor = "eDP-1";  
   std::string path = "";
-
-  // Simple argument parsing
   for (int i = 2; i < argc; ++i) {
     std::string arg = argv[i];
     if (arg == "--monitor" && i + 1 < argc) {
@@ -36,14 +31,12 @@ int main(int argc, char **argv) {
       path = arg;
     }
   }
-
   auto client = bwp::ipc::IPCClientFactory::createClient();
   if (!client || !client->connect()) {
     std::cerr << "Error: Could not connect to BetterWallpaper daemon."
               << std::endl;
     return 1;
   }
-
   if (command == "set") {
     if (path.empty()) {
       std::cerr << "Error: 'set' requires a wallpaper path." << std::endl;
@@ -77,6 +70,5 @@ int main(int argc, char **argv) {
     printUsage();
     return 1;
   }
-
   return 0;
 }

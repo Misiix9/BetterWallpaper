@@ -17,62 +17,44 @@
 #include "views/ScheduleView.hpp"
 #include "views/SettingsView.hpp"
 #include <adwaita.h>
-
 namespace bwp::gui {
-
 static constexpr int MIN_WINDOW_WIDTH = 960;
 static constexpr int MIN_WINDOW_HEIGHT = 600;
 static constexpr int DEFAULT_WINDOW_WIDTH =
     bwp::constants::defaults::WINDOW_WIDTH;
 static constexpr int DEFAULT_WINDOW_HEIGHT =
     bwp::constants::defaults::WINDOW_HEIGHT;
-// Sidebar width handled in Sidebar class (240px)
-
-// #endregion
-
 MainWindow::MainWindow(AdwApplication *app) {
-  // #endregion
-
   LOG_SCOPE_AUTO();
   m_window = GTK_WIDGET(adw_application_window_new(GTK_APPLICATION(app)));
   gtk_window_set_title(GTK_WINDOW(m_window), bwp::constants::APP_NAME);
-
   loadWindowState();
-
-  // Enforce defaults if not loaded
   int w, h;
   gtk_window_get_default_size(GTK_WINDOW(m_window), &w, &h);
+
+  // sanity check dimensions
   if (w < MIN_WINDOW_WIDTH)
     w = DEFAULT_WINDOW_WIDTH;
   if (h < MIN_WINDOW_HEIGHT)
     h = DEFAULT_WINDOW_HEIGHT;
+
   gtk_window_set_default_size(GTK_WINDOW(m_window), w, h);
   gtk_widget_set_size_request(m_window, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT);
-
   g_signal_connect(m_window, "close-request", G_CALLBACK(onCloseRequest), this);
-
-  // #endregion
-
   setupUi();
 
-  // Register toast notification callback
+  // global toast handler
   bwp::core::utils::ToastManager::getInstance().setExtendedCallback(
       [this](const bwp::core::utils::ToastRequest &request) {
-        // Must run on GTK main thread
         auto *req = new bwp::core::utils::ToastRequest(request);
         g_idle_add(+[](gpointer data) -> gboolean {
           auto *r = static_cast<bwp::core::utils::ToastRequest *>(data);
-          // Find the MainWindow's toast overlay from the app
           auto *app = g_application_get_default();
           if (!app) { delete r; return FALSE; }
           auto *win = gtk_application_get_active_window(GTK_APPLICATION(app));
           if (!win) { delete r; return FALSE; }
-
-          // Navigate to the toast overlay (it's the content of the AdwApplicationWindow)
           GtkWidget *content = adw_application_window_get_content(ADW_APPLICATION_WINDOW(win));
           if (!content || !ADW_IS_TOAST_OVERLAY(content)) { delete r; return FALSE; }
-
-          // Create toast with type-specific prefix and CSS class
           std::string prefix;
           std::string textColor;
           switch (r->type) {
@@ -81,11 +63,9 @@ MainWindow::MainWindow(AdwApplication *app) {
             case bwp::core::utils::ToastType::Warning: prefix = "⚠ "; textColor = "#FCD34D"; break;
             default: break;
           }
-
-          AdwToast *toast = adw_toast_new(" "); // Fix: Must provide non-null text to avoid assertion failure
+          // libadwaita asserts title != NULL even if custom title is used
+          AdwToast *toast = adw_toast_new(" ");  
           adw_toast_set_timeout(toast, r->durationMs > 0 ? (r->durationMs / 1000) : 0);
-
-          // Use a custom title label with colored Pango markup
           GtkWidget *toastLabel = gtk_label_new(nullptr);
           std::string fullMsg = prefix + r->message;
           if (!textColor.empty()) {
@@ -98,8 +78,6 @@ MainWindow::MainWindow(AdwApplication *app) {
           }
           gtk_label_set_ellipsize(GTK_LABEL(toastLabel), PANGO_ELLIPSIZE_END);
           adw_toast_set_custom_title(toast, toastLabel);
-
-          // Add first action button if present
           if (!r->actions.empty()) {
             adw_toast_set_button_label(toast, r->actions[0].label.c_str());
             auto *cb = new std::function<void()>(r->actions[0].callback);
@@ -114,17 +92,12 @@ MainWindow::MainWindow(AdwApplication *app) {
                 },
                 G_CONNECT_DEFAULT);
           }
-
           adw_toast_overlay_add_toast(ADW_TOAST_OVERLAY(content), toast);
           delete r;
           return FALSE;
         }, req);
       });
-
-  // #endregion
-
   bwp::input::InputManager::getInstance().setup(GTK_WINDOW(m_window));
-
   bwp::core::PowerManager::getInstance().addCallback([this](bool onBattery) {
     bool shouldPause = bwp::config::ConfigManager::getInstance().get<bool>(
         "playback.pause_on_battery");
@@ -139,28 +112,17 @@ MainWindow::MainWindow(AdwApplication *app) {
     }
   });
   bwp::core::PowerManager::getInstance().startMonitoring();
-
   gtk_widget_set_visible(m_window, TRUE);
-
-  // #endregion
-
   m_weRenderer = std::make_unique<bwp::wallpaper::WallpaperEngineRenderer>();
-
-  // #endregion
-
-  // Slideshow Logic — use IPC to tell daemon to set the wallpaper.
-  // The GUI must NOT spawn its own wallpaper processes.
   auto &sm = bwp::core::SlideshowManager::getInstance();
   sm.setChangeCallback([this](const std::string &id) {
     auto &lib = bwp::wallpaper::WallpaperLibrary::getInstance();
     auto wp = lib.getWallpaper(id);
     if (wp) {
-      // Route through IPC to daemon — it owns the renderers
       auto &monMgr = bwp::monitor::MonitorManager::getInstance();
       auto monitors = monMgr.getMonitors();
       std::string targetMonitor =
           monitors.empty() ? "HDMI-A-1" : monitors[0].name;
-
       bwp::ipc::LinuxIPCClient ipcClient;
       if (ipcClient.connect()) {
         LOG_INFO("Slideshow: sending IPC SetWallpaper for " + wp->path);
@@ -169,10 +131,6 @@ MainWindow::MainWindow(AdwApplication *app) {
         LOG_ERROR("Slideshow: failed to connect to daemon via IPC");
       }
     }
-
-    // Update Favorite Count (Proof of concept implementation - counts all
-    // favorites) Optimization: Cache this or only re-count if favorite status
-    // changed? For now, simple count.
     auto all = lib.getAllWallpapers();
     int favCount = 0;
     for (const auto &w : all) {
@@ -183,45 +141,24 @@ MainWindow::MainWindow(AdwApplication *app) {
       m_sidebar->updateBadge("favorites", favCount);
   });
 }
-
 MainWindow::~MainWindow() { saveWindowState(); }
-
 void MainWindow::show() {
   LOG_SCOPE_AUTO();
   gtk_window_present(GTK_WINDOW(m_window));
 }
-
 void MainWindow::setupUi() {
   LOG_SCOPE_AUTO();
-  // LAYOUT: Monochrome Glass
-  // Root: GtkBox (Horizontal) -> [Sidebar] [Separator] [Stack]
-  // Wrapped in AdwApplicationWindow content.
-
-  // 0. Toast Overlay
   m_toastOverlay = adw_toast_overlay_new();
   adw_application_window_set_content(ADW_APPLICATION_WINDOW(m_window),
                                      m_toastOverlay);
-
   GtkWidget *rootBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-  // adw_application_window_set_content(ADW_APPLICATION_WINDOW(m_window),
-  // rootBox); // Old way
   adw_toast_overlay_set_child(ADW_TOAST_OVERLAY(m_toastOverlay), rootBox);
-
-  // 1. Sidebar
   m_sidebar = std::make_unique<Sidebar>();
   gtk_box_append(GTK_BOX(rootBox), m_sidebar->getWidget());
-
-  // 2. Separator (Vertical Line) - handled by .sidebar border-right usually,
-  // but explicit is safer for styling Actually Design Memory says "Border:
-  // #262626". Sidebar CSS handles it.
-
-  // 3. Content Area
   m_contentStack = adw_view_stack_new();
   gtk_widget_set_hexpand(m_contentStack, TRUE);
   gtk_widget_set_vexpand(m_contentStack, TRUE);
   gtk_box_append(GTK_BOX(rootBox), m_contentStack);
-
-  // Wire up Sidebar
   m_sidebar->setCallback([this](const std::string &page) {
     if (page == "library") {
       adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(m_contentStack),
@@ -235,8 +172,6 @@ void MainWindow::setupUi() {
       adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(m_contentStack),
                                             "workshop");
     } else if (page == "folder.new") {
-      // New Folder Dialog logic...
-      // (Simplified for this refactor, relying on existing logic patterns)
     } else if (page.rfind("folder.", 0) == 0) {
       std::string folderId = page.substr(7);
       m_folderView->loadFolder(folderId);
@@ -264,21 +199,15 @@ void MainWindow::setupUi() {
                                             "hyprland");
     }
   });
-
-  // Create Core Views
   m_libraryView = std::make_unique<LibraryView>();
   adw_view_stack_add_named(ADW_VIEW_STACK(m_contentStack),
                            m_libraryView->getWidget(), "library");
-
   m_monitorsView = std::make_unique<MonitorsView>();
   adw_view_stack_add_named(ADW_VIEW_STACK(m_contentStack),
                            m_monitorsView->getWidget(), "monitors");
-
   m_folderView = std::make_unique<FolderView>();
   adw_view_stack_add_named(ADW_VIEW_STACK(m_contentStack),
                            m_folderView->getWidget(), "folder");
-
-  // Initial Favorite Count
   auto all = bwp::wallpaper::WallpaperLibrary::getInstance().getAllWallpapers();
   int favCount = 0;
   for (const auto &w : all) {
@@ -287,7 +216,6 @@ void MainWindow::setupUi() {
   }
   m_sidebar->updateBadge("favorites", favCount);
 }
-
 void MainWindow::ensureWorkshopView() {
   LOG_SCOPE_AUTO();
   if (m_workshopViewAdded)
@@ -298,7 +226,6 @@ void MainWindow::ensureWorkshopView() {
   });
   m_workshopViewAdded = true;
 }
-
 void MainWindow::ensureSettingsView() {
   LOG_SCOPE_AUTO();
   if (m_settingsViewAdded)
@@ -309,7 +236,6 @@ void MainWindow::ensureSettingsView() {
   });
   m_settingsViewAdded = true;
 }
-
 void MainWindow::ensureFavoritesView() {
   LOG_SCOPE_AUTO();
   if (m_favoritesViewAdded)
@@ -320,7 +246,6 @@ void MainWindow::ensureFavoritesView() {
   });
   m_favoritesViewAdded = true;
 }
-
 void MainWindow::ensureProfilesView() {
   LOG_SCOPE_AUTO();
   if (m_profilesViewAdded)
@@ -331,7 +256,6 @@ void MainWindow::ensureProfilesView() {
   });
   m_profilesViewAdded = true;
 }
-
 void MainWindow::ensureScheduleView() {
   LOG_SCOPE_AUTO();
   if (m_scheduleViewAdded)
@@ -342,7 +266,6 @@ void MainWindow::ensureScheduleView() {
   });
   m_scheduleViewAdded = true;
 }
-
 void MainWindow::ensureHyprlandView() {
   LOG_SCOPE_AUTO();
   if (m_hyprlandViewAdded)
@@ -352,7 +275,6 @@ void MainWindow::ensureHyprlandView() {
                            m_hyprlandView->getWidget(), "hyprland");
   m_hyprlandViewAdded = true;
 }
-
 void MainWindow::loadWindowState() {
   LOG_SCOPE_AUTO();
   auto &config = bwp::config::ConfigManager::getInstance();
@@ -362,33 +284,21 @@ void MainWindow::loadWindowState() {
     width = DEFAULT_WINDOW_WIDTH;
   if (height < MIN_WINDOW_HEIGHT)
     height = DEFAULT_WINDOW_HEIGHT;
-
   std::string mode = config.get<std::string>("general.window_mode");
   bool isFloating = (mode == "floating");
-
   if (isFloating) {
-    // Floating: Fixed size, not resizable by user (standard app behavior?)
-    // Or maybe just resizable but with defaults? User asked for "fixed width
-    // and height".
     gtk_window_set_resizable(GTK_WINDOW(m_window), FALSE);
     gtk_window_set_default_size(GTK_WINDOW(m_window), width, height);
-    gtk_widget_set_size_request(m_window, width, height); // Force size
+    gtk_widget_set_size_request(m_window, width, height);  
   } else {
-    // Tiling: Resizable, let WM handle it
     gtk_window_set_resizable(GTK_WINDOW(m_window), TRUE);
-    gtk_window_set_default_size(GTK_WINDOW(m_window), width, height); // hint
-    gtk_widget_set_size_request(m_window, -1, -1); // Unset forced size
+    gtk_window_set_default_size(GTK_WINDOW(m_window), width, height);  
+    gtk_widget_set_size_request(m_window, -1, -1);  
   }
-
   if (config.get<bool>("window.maximized") && !isFloating) {
     gtk_window_maximize(GTK_WINDOW(m_window));
   }
 }
-
-// Keep saveWindowState and onCloseRequest as is (copied from previous logic
-// implicitly by not changing them if they were separate... wait, I'm
-// refactoring the whole file essentially to ensure consistency, so I will
-// include them).
 void MainWindow::saveWindowState() {
   LOG_SCOPE_AUTO();
   if (!m_window)
@@ -396,7 +306,6 @@ void MainWindow::saveWindowState() {
   auto &config = bwp::config::ConfigManager::getInstance();
   bool maximized = gtk_window_is_maximized(GTK_WINDOW(m_window));
   config.set<bool>("window.maximized", maximized);
-
   if (!maximized) {
     int width = gtk_widget_get_width(m_window);
     int height = gtk_widget_get_height(m_window);
@@ -406,7 +315,6 @@ void MainWindow::saveWindowState() {
     }
   }
 }
-
 gboolean MainWindow::onCloseRequest(GtkWindow *, gpointer user_data) {
   LOG_SCOPE_AUTO();
   MainWindow *self = static_cast<MainWindow *>(user_data);
@@ -414,5 +322,4 @@ gboolean MainWindow::onCloseRequest(GtkWindow *, gpointer user_data) {
     self->saveWindowState();
   return FALSE;
 }
-
-} // namespace bwp::gui
+}  

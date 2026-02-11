@@ -1,22 +1,15 @@
 #pragma once
 #include <gtk/gtk.h>
 #include <string>
-
 namespace bwp::ipc {
-
 class IPCServer {
 public:
   static IPCServer &getInstance();
-
-  // Register the DBus object and start listening
   void initialize();
-
 private:
   IPCServer();
   ~IPCServer();
-
   guint m_ownerId = 0;
-
   static void onBusAcquired(GBusType type, GDBusConnection *connection,
                             gpointer user_data);
   static void onNameAcquired(GDBusConnection *connection, const gchar *name,
@@ -30,5 +23,4 @@ private:
                            GDBusMethodInvocation *invocation,
                            gpointer user_data);
 };
-
-} // namespace bwp::ipc
+}  

@@ -8,7 +8,6 @@
 #ifndef _WIN32
 #include <unistd.h>
 #endif
-
 #ifdef _WIN32
 #include <windows.h>
 #define popen _popen
@@ -16,14 +15,11 @@
 #define sleep(x) Sleep(x * 1000)
 #define usleep(x) Sleep(x / 1000)
 #endif
-
 namespace bwp::wallpaper {
-
 NativeWallpaperSetter &NativeWallpaperSetter::getInstance() {
   static NativeWallpaperSetter instance;
   return instance;
 }
-
 std::string NativeWallpaperSetter::methodToString(Method method) {
   switch (method) {
   case Method::Swaybg: return "swaybg";
@@ -35,11 +31,8 @@ std::string NativeWallpaperSetter::methodToString(Method method) {
   default: return "unknown";
   }
 }
-
 bool NativeWallpaperSetter::isCommandAvailable(const std::string &cmd) {
 #ifdef _WIN32
-    // Basic check for Windows commands?
-    // For now, always false for linux tools or assume true for internal
     return false;
 #else
   std::string checkCmd = "which " + cmd + " > /dev/null 2>&1";
@@ -50,17 +43,11 @@ bool NativeWallpaperSetter::isCommandAvailable(const std::string &cmd) {
   return available;
 #endif
 }
-
 void NativeWallpaperSetter::detectMethods() {
   m_availableMethods.clear();
-  
-  // Use Factory to detect
   auto names = WallpaperSetterFactory::getAvailableMethodNames();
-  
 #ifdef _WIN32
-  // Windows mostly uses internal/factory setter
   for (const auto& name : names) {
-       // Just verification, usually "WindowsNative"
   }
 #else
   for (const auto& name : names) {
@@ -69,36 +56,25 @@ void NativeWallpaperSetter::detectMethods() {
     else if (name == "KDE") m_availableMethods.push_back(Method::Kde);
     else if (name == "SwayBG") m_availableMethods.push_back(Method::Swaybg);
   }
-  
-  // Fallback X11 checks
   if (utils::ProcessUtils::commandExists("feh")) m_availableMethods.push_back(Method::Feh);
   if (utils::ProcessUtils::commandExists("xwallpaper")) m_availableMethods.push_back(Method::Xwallpaper);
 #endif
-  
   m_availableMethods.push_back(Method::Internal);
-  
   LOG_INFO("Available methods: " + std::to_string(m_availableMethods.size()));
 }
-
 std::vector<NativeWallpaperSetter::Method>
 NativeWallpaperSetter::getAvailableMethods() {
   return m_availableMethods;
 }
-
 std::vector<std::string> NativeWallpaperSetter::getMonitors() {
   LOG_DEBUG("NativeWallpaperSetter::getMonitors() start");
   std::vector<std::string> monitors;
-
 #ifdef _WIN32
-  // Simple Windows monitor enumeration (Stub or use EnumDisplayMonitors)
-  // For MVP, just return primary "0" or "1"
   monitors.push_back("0"); 
 #else
-  // Check Wayland
   const char *waylandDisplay = std::getenv("WAYLAND_DISPLAY");
   if (waylandDisplay) {
     LOG_DEBUG("Wayland detected: " + std::string(waylandDisplay));
-    // Try Hyprland (hyprctl)
     if (isCommandAvailable("hyprctl")) {
       LOG_DEBUG("Trying hyprctl...");
       FILE *pipe =
@@ -115,7 +91,6 @@ std::vector<std::string> NativeWallpaperSetter::getMonitors() {
         pclose(pipe);
       }
     }
-    // Try Sway (swaymsg)
     else if (isCommandAvailable("swaymsg")) {
       LOG_DEBUG("Trying swaymsg...");
       FILE *pipe = popen("swaymsg -t get_outputs | grep '\"name\":' | awk "
@@ -136,7 +111,6 @@ std::vector<std::string> NativeWallpaperSetter::getMonitors() {
         LOG_DEBUG("No specific Wayland compositor tools found.");
     }
   }
-  // Check X11 (or XWayland fallback)
   else {
     LOG_DEBUG("Checking X11...");
     if (isCommandAvailable("xrandr")) {
@@ -156,137 +130,102 @@ std::vector<std::string> NativeWallpaperSetter::getMonitors() {
     }
   }
 #endif
-
-  // Fallback if none found
   if (monitors.empty()) {
     LOG_DEBUG("No monitors found, adding default.");
-    monitors.push_back("0"); // Default index
+    monitors.push_back("0");  
   }
-
   LOG_DEBUG("NativeWallpaperSetter::getMonitors() end");
   return monitors;
 }
-
 bool NativeWallpaperSetter::setWallpaper(const std::string &imagePath,
                                          const std::string &monitor) {
   LOG_INFO("=== NativeWallpaperSetter (Factory) ===");
   LOG_INFO("  Image: " + imagePath);
-  
   if (!std::filesystem::exists(imagePath)) {
     LOG_ERROR("File not found: " + imagePath);
     return false;
   }
-  
-  // Use Factory to get setter
   auto setter = WallpaperSetterFactory::createSetter();
   if (!setter) {
     LOG_ERROR("No supported wallpaper setter found!");
     return false;
   }
-  
   LOG_INFO("Using detected setter: " + setter->getName());
   return setter->setWallpaper(imagePath, monitor);
 }
-
-// Stub Linux specific methods on Windows or wrap them
 bool NativeWallpaperSetter::setWithSwaybg(const std::string &path,
                                           const std::string &monitor) {
 #ifdef _WIN32
     return false;
 #else
   std::cerr << "[BWP] setWithSwaybg starting..." << std::endl;
-
-  // Kill existing swaybg
   system("pkill -x swaybg 2>/dev/null");
-  usleep(100000); // 100ms
-
+  usleep(100000);  
   std::string cmd = "swaybg";
   if (!monitor.empty()) {
     cmd += " -o " + monitor;
   }
   cmd += " -i \"" + path + "\" -m fill";
-
-  // Run in background with nohup
   std::string fullCmd = "nohup " + cmd + " > /tmp/swaybg.log 2>&1 &";
-
   std::cerr << "[BWP] Executing: " << fullCmd << std::endl;
   LOG_INFO("Executing: " + fullCmd);
-
   int result = system(fullCmd.c_str());
   std::cerr << "[BWP] system() returned: " << result << std::endl;
-
-  // Wait and check
-  usleep(300000); // 300ms
+  usleep(300000);  
   int checkResult = system("pgrep -x swaybg > /dev/null 2>&1");
   bool running = (checkResult == 0);
-
   std::cerr << "[BWP] swaybg running: " << (running ? "YES" : "NO")
             << std::endl;
-
   if (!running) {
-    // Check log
     std::cerr << "[BWP] Checking /tmp/swaybg.log..." << std::endl;
     system("cat /tmp/swaybg.log 2>/dev/null");
     return false;
   }
-
   LOG_INFO("swaybg started successfully!");
   return true;
 #endif
 }
-
 bool NativeWallpaperSetter::setWithHyprctl(const std::string &path,
                                            const std::string &monitor) {
 #ifdef _WIN32
     return false;
 #else
   std::cerr << "[BWP] setWithHyprctl starting..." << std::endl;
-
   std::string preloadCmd = "hyprctl hyprpaper preload \"" + path + "\" 2>&1";
   std::cerr << "[BWP] Preload: " << preloadCmd << std::endl;
-
   int preloadResult = system(preloadCmd.c_str());
   if (preloadResult != 0) {
     std::cerr << "[BWP] Preload failed: " << preloadResult << std::endl;
     return false;
   }
-
   std::string monitorName = monitor.empty() ? "eDP-1" : monitor;
   std::string setCmd =
       "hyprctl hyprpaper wallpaper \"" + monitorName + "," + path + "\" 2>&1";
   std::cerr << "[BWP] Set: " << setCmd << std::endl;
-
   int setResult = system(setCmd.c_str());
   std::cerr << "[BWP] Set result: " << setResult << std::endl;
-
   return setResult == 0;
 #endif
 }
-
 bool NativeWallpaperSetter::setWithSwww(const std::string &path,
                                         const std::string &monitor) {
 #ifdef _WIN32
     return false;
 #else
   std::cerr << "[BWP] setWithSwww starting..." << std::endl;
-
   system("swww init 2>/dev/null");
   usleep(200000);
-
   std::string cmd = "swww img";
   if (!monitor.empty()) {
     cmd += " -o " + monitor;
   }
   cmd += " \"" + path + "\" --transition-type fade 2>&1";
-
   std::cerr << "[BWP] Running: " << cmd << std::endl;
   int result = system(cmd.c_str());
   std::cerr << "[BWP] Result: " << result << std::endl;
-
   return result == 0;
 #endif
 }
-
 bool NativeWallpaperSetter::setWithFeh(const std::string &path) {
 #ifdef _WIN32
     return false;
@@ -296,7 +235,6 @@ bool NativeWallpaperSetter::setWithFeh(const std::string &path) {
   return system(cmd.c_str()) == 0;
 #endif
 }
-
 bool NativeWallpaperSetter::setWithXwallpaper(const std::string &path) {
 #ifdef _WIN32
     return false;
@@ -306,5 +244,4 @@ bool NativeWallpaperSetter::setWithXwallpaper(const std::string &path) {
   return system(cmd.c_str()) == 0;
 #endif
 }
-
-} // namespace bwp::wallpaper
+}  

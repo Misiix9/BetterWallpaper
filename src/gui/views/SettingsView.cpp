@@ -6,19 +6,14 @@
 #include "../../core/wallpaper/LibraryScanner.hpp"
 #include <algorithm>
 #include <iostream>
-
 namespace bwp::gui {
-
 SettingsView::SettingsView() {
   setupUi();
   takeSnapshot();
-
-  // Watch for config changes to show the unsaved bar
   bwp::config::ConfigManager::getInstance().startWatching(
       [this](const std::string &, const nlohmann::json &) {
         if (!m_hasUnsavedChanges) {
           m_hasUnsavedChanges = true;
-          // Must update UI on main thread
           g_idle_add(
               +[](gpointer data) -> gboolean {
                 auto *self = static_cast<SettingsView *>(data);
@@ -29,51 +24,36 @@ SettingsView::SettingsView() {
         }
       });
 }
-
 SettingsView::~SettingsView() {
-  // Clear the watcher so it doesn't reference destroyed SettingsView
   bwp::config::ConfigManager::getInstance().startWatching(nullptr);
 }
-
 void SettingsView::takeSnapshot() {
   auto &conf = bwp::config::ConfigManager::getInstance();
   m_configSnapshot = conf.getJson();
   m_hasUnsavedChanges = false;
 }
-
 void SettingsView::showUnsavedBar() {
   if (m_unsavedRevealer) {
     gtk_revealer_set_reveal_child(GTK_REVEALER(m_unsavedRevealer), TRUE);
   }
 }
-
 void SettingsView::hideUnsavedBar() {
   if (m_unsavedRevealer) {
     gtk_revealer_set_reveal_child(GTK_REVEALER(m_unsavedRevealer), FALSE);
   }
 }
-
 void SettingsView::onKeepChanges() {
   takeSnapshot();
   hideUnsavedBar();
   bwp::core::utils::ToastManager::getInstance().showSuccess("Settings saved");
 }
-
 void SettingsView::onDiscardChanges() {
-  // Restore the snapshot to ConfigManager
   auto &conf = bwp::config::ConfigManager::getInstance();
-  // Temporarily disable watcher to avoid re-triggering
   conf.startWatching(nullptr);
-
   conf.getJson() = m_configSnapshot;
-
   m_hasUnsavedChanges = false;
   hideUnsavedBar();
-
-  // Rebuild pages to reflect restored values
   rebuildPages();
-
-  // Re-enable watcher
   conf.startWatching(
       [this](const std::string &, const nlohmann::json &) {
         if (!m_hasUnsavedChanges) {
@@ -87,15 +67,10 @@ void SettingsView::onDiscardChanges() {
               this);
         }
       });
-
   bwp::core::utils::ToastManager::getInstance().showInfo("Changes discarded");
 }
-
 void SettingsView::rebuildPages() {
-  // Remove all pages from the stack and sidebar, then recreate
   m_pageInfos.clear();
-
-  // Remove all children from sidebar
   while (true) {
     GtkListBoxRow *row =
         gtk_list_box_get_row_at_index(GTK_LIST_BOX(m_sidebarList), 0);
@@ -103,8 +78,6 @@ void SettingsView::rebuildPages() {
       break;
     gtk_list_box_remove(GTK_LIST_BOX(m_sidebarList), GTK_WIDGET(row));
   }
-
-  // Remove all pages from stack
 #if ADW_CHECK_VERSION(1, 4, 0)
   while (gtk_widget_get_first_child(m_stack)) {
     adw_view_stack_remove(ADW_VIEW_STACK(m_stack),
@@ -118,14 +91,11 @@ void SettingsView::rebuildPages() {
     gtk_stack_remove(GTK_STACK(m_stack), child);
   }
 #endif
-
-  // Reset transition widget pointers
   m_transitionEffectDropdown = nullptr;
   m_transitionDurationSpin = nullptr;
   m_transitionEasingDropdown = nullptr;
   m_transitionEnabledSwitch = nullptr;
   m_currentLibraryGroup = nullptr;
-
   auto addPage = [&](const char *id, const char *title, const char *icon,
                      GtkWidget *pageWidget,
                      std::vector<std::string> keywords = {}) {
@@ -134,26 +104,21 @@ void SettingsView::rebuildPages() {
 #else
     gtk_stack_add_named(GTK_STACK(m_stack), pageWidget, id);
 #endif
-
     keywords.push_back(title);
     keywords.push_back(id);
     m_pageInfos.push_back({id, title, keywords});
-
     GtkWidget *row = gtk_list_box_row_new();
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
     gtk_widget_set_margin_start(box, 12);
     gtk_widget_set_margin_end(box, 12);
     gtk_widget_set_margin_top(box, 8);
     gtk_widget_set_margin_bottom(box, 8);
-
     gtk_box_append(GTK_BOX(box), gtk_image_new_from_icon_name(icon));
     gtk_box_append(GTK_BOX(box), gtk_label_new(title));
     gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(row), box);
-
     g_object_set_data_full(G_OBJECT(row), "page_id", g_strdup(id), g_free);
     gtk_list_box_append(GTK_LIST_BOX(m_sidebarList), row);
   };
-
   addPage("general", "General", "emblem-system-symbolic", createGeneralPage(),
           {"startup", "autostart", "theme", "language", "notification"});
   addPage("graphics", "Graphics", "video-display-symbolic",
@@ -175,49 +140,38 @@ void SettingsView::rebuildPages() {
           {"folder", "directory", "library", "path", "steam", "workshop"});
   addPage("about", "About", "help-about-symbolic", createAboutPage(),
           {"version", "license", "credits", "author"});
-
   GtkListBoxRow *first =
       gtk_list_box_get_row_at_index(GTK_LIST_BOX(m_sidebarList), 0);
   if (first)
     gtk_list_box_select_row(GTK_LIST_BOX(m_sidebarList), first);
 }
-
 void SettingsView::setupUi() {
-  // Outer box: split view + unsaved changes bar
   m_outerBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-
 #if ADW_CHECK_VERSION(1, 4, 0)
   m_splitView = adw_overlay_split_view_new();
 #else
-  // Fallback for older adwaita
   m_splitView = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 #endif
   m_content = m_splitView;
   gtk_widget_set_vexpand(m_splitView, TRUE);
   gtk_box_append(GTK_BOX(m_outerBox), m_splitView);
-
-  // === Unsaved Changes Bar ===
   m_unsavedRevealer = gtk_revealer_new();
   gtk_revealer_set_transition_type(GTK_REVEALER(m_unsavedRevealer),
                                    GTK_REVEALER_TRANSITION_TYPE_SLIDE_UP);
   gtk_revealer_set_transition_duration(GTK_REVEALER(m_unsavedRevealer), 200);
   gtk_revealer_set_reveal_child(GTK_REVEALER(m_unsavedRevealer), FALSE);
-
   GtkWidget *barBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
   gtk_widget_add_css_class(barBox, "toolbar");
   gtk_widget_set_margin_start(barBox, 16);
   gtk_widget_set_margin_end(barBox, 16);
   gtk_widget_set_margin_top(barBox, 8);
   gtk_widget_set_margin_bottom(barBox, 8);
-
   GtkWidget *barIcon = gtk_image_new_from_icon_name("document-edit-symbolic");
   gtk_box_append(GTK_BOX(barBox), barIcon);
-
   GtkWidget *barLabel = gtk_label_new("You have unsaved changes");
   gtk_widget_set_hexpand(barLabel, TRUE);
   gtk_label_set_xalign(GTK_LABEL(barLabel), 0.0);
   gtk_box_append(GTK_BOX(barBox), barLabel);
-
   GtkWidget *discardBtn = gtk_button_new_with_label("Discard");
   gtk_widget_add_css_class(discardBtn, "destructive-action");
   g_signal_connect(
@@ -227,7 +181,6 @@ void SettingsView::setupUi() {
       }),
       this);
   gtk_box_append(GTK_BOX(barBox), discardBtn);
-
   GtkWidget *saveBtn = gtk_button_new_with_label("Save");
   gtk_widget_add_css_class(saveBtn, "suggested-action");
   g_signal_connect(
@@ -237,22 +190,16 @@ void SettingsView::setupUi() {
       }),
       this);
   gtk_box_append(GTK_BOX(barBox), saveBtn);
-
   gtk_revealer_set_child(GTK_REVEALER(m_unsavedRevealer), barBox);
   gtk_box_append(GTK_BOX(m_outerBox), m_unsavedRevealer);
-
-  // 1. Sidebar
   GtkWidget *sidebarBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
   gtk_widget_set_size_request(sidebarBox, 200, -1);
   gtk_widget_add_css_class(sidebarBox, "background");
-
   GtkWidget *header = gtk_label_new("Settings");
   gtk_widget_add_css_class(header, "title-2");
   gtk_widget_set_margin_top(header, 12);
   gtk_widget_set_margin_bottom(header, 8);
   gtk_box_append(GTK_BOX(sidebarBox), header);
-
-  // Search entry for filtering settings pages
   m_searchEntry = gtk_search_entry_new();
   gtk_widget_set_margin_start(m_searchEntry, 8);
   gtk_widget_set_margin_end(m_searchEntry, 8);
@@ -266,12 +213,10 @@ void SettingsView::setupUi() {
       }),
       this);
   gtk_box_append(GTK_BOX(sidebarBox), m_searchEntry);
-
   m_sidebarList = gtk_list_box_new();
   gtk_widget_add_css_class(m_sidebarList, "navigation-sidebar");
   gtk_widget_set_vexpand(m_sidebarList, TRUE);
   gtk_box_append(GTK_BOX(sidebarBox), m_sidebarList);
-
 #if ADW_CHECK_VERSION(1, 4, 0)
   adw_overlay_split_view_set_sidebar(ADW_OVERLAY_SPLIT_VIEW(m_splitView),
                                      sidebarBox);
@@ -280,8 +225,6 @@ void SettingsView::setupUi() {
   gtk_box_append(GTK_BOX(m_splitView),
                  gtk_separator_new(GTK_ORIENTATION_VERTICAL));
 #endif
-
-  // 2. Content Stack
 #if ADW_CHECK_VERSION(1, 4, 0)
   m_stack = adw_view_stack_new();
   adw_overlay_split_view_set_content(ADW_OVERLAY_SPLIT_VIEW(m_splitView),
@@ -293,40 +236,29 @@ void SettingsView::setupUi() {
   gtk_widget_set_hexpand(m_stack, TRUE);
   gtk_box_append(GTK_BOX(m_splitView), m_stack);
 #endif
-
   auto addPage = [&](const char *id, const char *title, const char *icon,
                      GtkWidget *pageWidget,
                      std::vector<std::string> keywords = {}) {
-  // Add to stack
 #if ADW_CHECK_VERSION(1, 4, 0)
     adw_view_stack_add_named(ADW_VIEW_STACK(m_stack), pageWidget, id);
 #else
     gtk_stack_add_named(GTK_STACK(m_stack), pageWidget, id);
 #endif
-
-    // Store searchable info
     keywords.push_back(title);
     keywords.push_back(id);
     m_pageInfos.push_back({id, title, keywords});
-
-    // Add sidebar row
     GtkWidget *row = gtk_list_box_row_new();
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
     gtk_widget_set_margin_start(box, 12);
     gtk_widget_set_margin_end(box, 12);
     gtk_widget_set_margin_top(box, 8);
     gtk_widget_set_margin_bottom(box, 8);
-
     gtk_box_append(GTK_BOX(box), gtk_image_new_from_icon_name(icon));
     gtk_box_append(GTK_BOX(box), gtk_label_new(title));
     gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(row), box);
-
-    // Store ID
     g_object_set_data_full(G_OBJECT(row), "page_id", g_strdup(id), g_free);
     gtk_list_box_append(GTK_LIST_BOX(m_sidebarList), row);
   };
-
-  // Create Pages
   addPage("general", "General", "emblem-system-symbolic", createGeneralPage(),
           {"startup", "autostart", "theme", "language", "notification"});
   addPage("graphics", "Graphics", "video-display-symbolic",
@@ -348,8 +280,6 @@ void SettingsView::setupUi() {
           {"folder", "directory", "library", "path", "steam", "workshop"});
   addPage("about", "About", "help-about-symbolic", createAboutPage(),
           {"version", "license", "credits", "author"});
-
-  // Navigation Logic
   g_signal_connect(
       m_sidebarList, "row-activated",
       G_CALLBACK(+[](GtkListBox *, GtkListBoxRow *row, gpointer data) {
@@ -366,29 +296,23 @@ void SettingsView::setupUi() {
         }
       }),
       this);
-
-  // Select first
   GtkListBoxRow *first =
       gtk_list_box_get_row_at_index(GTK_LIST_BOX(m_sidebarList), 0);
   if (first)
     gtk_list_box_select_row(GTK_LIST_BOX(m_sidebarList), first);
 }
-
 void SettingsView::filterSettings(const std::string &query) {
   std::string lower = query;
   std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-
   for (int i = 0; i < static_cast<int>(m_pageInfos.size()); ++i) {
     GtkListBoxRow *row =
         gtk_list_box_get_row_at_index(GTK_LIST_BOX(m_sidebarList), i);
     if (!row)
       continue;
-
     if (lower.empty()) {
       gtk_widget_set_visible(GTK_WIDGET(row), TRUE);
       continue;
     }
-
     bool match = false;
     for (const auto &kw : m_pageInfos[i].keywords) {
       std::string kwLower = kw;
@@ -400,8 +324,6 @@ void SettingsView::filterSettings(const std::string &query) {
       }
     }
     gtk_widget_set_visible(GTK_WIDGET(row), match);
-
-    // If match found and it's the first visible, navigate to it
     if (match) {
       const char *id = (const char *)g_object_get_data(G_OBJECT(row), "page_id");
       if (id) {
@@ -414,7 +336,6 @@ void SettingsView::filterSettings(const std::string &query) {
     }
   }
 }
-
 GtkWidget *SettingsView::createSourcesPage() {
   GtkWidget *page = adw_preferences_page_new();
   GtkWidget *group = adw_preferences_group_new();
@@ -424,53 +345,25 @@ GtkWidget *SettingsView::createSourcesPage() {
       ADW_PREFERENCES_GROUP(group), "Manage folders scanned for wallpapers");
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
                            ADW_PREFERENCES_GROUP(group));
-
   m_currentLibraryGroup = group;
   updateLibraryList(group);
   return page;
 }
-
 void SettingsView::setupLibraryList(GtkWidget *group) {
   updateLibraryList(group);
 }
-
 void SettingsView::updateLibraryList(GtkWidget *group) {
-  // Clear existing content (except header/add button if we structure it that
-  // way) AdwPreferencesGroup doesn't have "remove all". We have to track rows?
-  // Or just rebuild the group every time?
-  // The header struct has `m_libraryGroup` removed.
-  // Let's assume we pass the group.
-
-  // Actually, Adwaita doesn't easily let us clear.
-  // A better way is to rebuild the page content or use a ListBox inside the
-  // group? Use AdwPreferencesGroup with a ListBox? Let's follow the previous
-  // pattern: remove specific rows if we track them. But we removed
-  // `m_libraryRows` from header? No, I see `m_libraryRows` was implicitly
-  // removed in header edit? Let's check header edit again. I replaced the
-  // private section completely. `std::vector<GtkWidget *> m_libraryRows;` was
-  // REMOVED.
-
-  // So I cannot use `m_libraryRows`.
-  // Alternative: Use a gtk_list_box inside the group's "child" (but prefs group
-  // works with rows). Or: Just remove all children of the group? Iterating
-  // children is possible.
-
   GtkWidget *child = gtk_widget_get_first_child(group);
   while (child) {
     GtkWidget *next = gtk_widget_get_next_sibling(child);
     adw_preferences_group_remove(ADW_PREFERENCES_GROUP(group), child);
     child = next;
   }
-
-  // Add "Add Source" button row
   GtkWidget *addRow = adw_action_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(addRow), "Add New Source");
   GtkWidget *addBtn = gtk_button_new_from_icon_name("list-add-symbolic");
   gtk_widget_set_valign(addBtn, GTK_ALIGN_CENTER);
-
-  // We need to pass group to the callback
   g_object_set_data(G_OBJECT(addBtn), "group_ptr", group);
-
   g_signal_connect(
       addBtn, "clicked", G_CALLBACK(+[](GtkButton *btn, gpointer data) {
         SettingsView *self = static_cast<SettingsView *>(data);
@@ -479,28 +372,22 @@ void SettingsView::updateLibraryList(GtkWidget *group) {
         self->onAddSource(grp);
       }),
       this);
-
   adw_action_row_add_suffix(ADW_ACTION_ROW(addRow), addBtn);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), addRow);
-
-  // List existing sources
   auto paths =
       bwp::config::ConfigManager::getInstance().get<std::vector<std::string>>(
           "library.paths");
   for (const auto &path : paths) {
     GtkWidget *row = adw_action_row_new();
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), path.c_str());
-
     GtkWidget *delBtn = gtk_button_new_from_icon_name("user-trash-symbolic");
     gtk_widget_set_valign(delBtn, GTK_ALIGN_CENTER);
     gtk_widget_add_css_class(delBtn, "destructive-action");
-
     std::string *pathCopy = new std::string(path);
     g_object_set_data_full(
         G_OBJECT(delBtn), "path", pathCopy,
         [](gpointer data) { delete static_cast<std::string *>(data); });
     g_object_set_data(G_OBJECT(delBtn), "group_ptr", group);
-
     g_signal_connect(
         delBtn, "clicked", G_CALLBACK(+[](GtkButton *btn, gpointer data) {
           SettingsView *self = static_cast<SettingsView *>(data);
@@ -512,27 +399,21 @@ void SettingsView::updateLibraryList(GtkWidget *group) {
             self->onRemoveSource(grp, *p);
         }),
         this);
-
     adw_action_row_add_suffix(ADW_ACTION_ROW(row), delBtn);
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), row);
   }
 }
-
 void SettingsView::onAddSource(GtkWidget *group) {
   auto dialog = gtk_file_chooser_native_new(
       "Select Wallpaper Folder", GTK_WINDOW(gtk_widget_get_root(m_content)),
       GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER, "Select", "Cancel");
-
-  // Store group on dialog to pass to response
   g_object_set_data(G_OBJECT(dialog), "group_ptr", group);
-
   g_signal_connect(
       dialog, "response",
       G_CALLBACK(+[](GtkNativeDialog *dialog, int response, gpointer data) {
         SettingsView *self = static_cast<SettingsView *>(data);
         GtkWidget *grp =
             (GtkWidget *)g_object_get_data(G_OBJECT(dialog), "group_ptr");
-
         if (response == GTK_RESPONSE_ACCEPT) {
           GFile *file = gtk_file_chooser_get_file(GTK_FILE_CHOOSER(dialog));
           char *path = g_file_get_path(file);
@@ -559,7 +440,6 @@ void SettingsView::onAddSource(GtkWidget *group) {
       this);
   gtk_native_dialog_show(GTK_NATIVE_DIALOG(dialog));
 }
-
 void SettingsView::onRemoveSource(GtkWidget *group, const std::string &path) {
   auto &conf = bwp::config::ConfigManager::getInstance();
   auto paths = conf.get<std::vector<std::string>>("library.paths");
@@ -571,20 +451,14 @@ void SettingsView::onRemoveSource(GtkWidget *group, const std::string &path) {
     bwp::wallpaper::LibraryScanner::getInstance().scan(paths);
   }
 }
-
 GtkWidget *SettingsView::createGeneralPage() {
   GtkWidget *page = adw_preferences_page_new();
-
-  // Group: Application
   GtkWidget *appGroup = adw_preferences_group_new();
   adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(appGroup),
                                   "Application");
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
                            ADW_PREFERENCES_GROUP(appGroup));
-
   auto &conf = bwp::config::ConfigManager::getInstance();
-
-  // Autostart
   GtkWidget *autostartRow = adw_switch_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(autostartRow),
                                 "Start on Boot");
@@ -608,8 +482,6 @@ GtkWidget *SettingsView::createGeneralPage() {
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(appGroup), autostartRow);
-
-  // Tray
   GtkWidget *trayRow = adw_switch_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(trayRow),
                                 "Start Minimized");
@@ -624,8 +496,6 @@ GtkWidget *SettingsView::createGeneralPage() {
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(appGroup), trayRow);
-
-  // Window Mode
   GtkWidget *windowModeRow = adw_combo_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(windowModeRow),
                                 "Window Mode");
@@ -648,15 +518,11 @@ GtkWidget *SettingsView::createGeneralPage() {
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(appGroup), windowModeRow);
-
-  // Group: Appearance (Theming)
   GtkWidget *themeGroup = adw_preferences_group_new();
   adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(themeGroup),
                                   "Appearance & Theming");
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
                            ADW_PREFERENCES_GROUP(themeGroup));
-
-  // Color Extraction
   GtkWidget *extractRow = adw_switch_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(extractRow),
                                 "Color Extraction");
@@ -671,8 +537,6 @@ GtkWidget *SettingsView::createGeneralPage() {
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(themeGroup), extractRow);
-
-  // Backend Tool
   GtkWidget *toolRow = adw_combo_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(toolRow),
                                 "Theming Backend");
@@ -700,14 +564,11 @@ GtkWidget *SettingsView::createGeneralPage() {
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(themeGroup), toolRow);
-
-  // Group: Backup
   GtkWidget *backupGroup = adw_preferences_group_new();
   adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(backupGroup),
                                   "Backup &amp; Reset");
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
                            ADW_PREFERENCES_GROUP(backupGroup));
-
   GtkWidget *exportRow = adw_action_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(exportRow),
                                 "Export Configuration");
@@ -716,8 +577,6 @@ GtkWidget *SettingsView::createGeneralPage() {
   gtk_widget_set_valign(exportBtn, GTK_ALIGN_CENTER);
   adw_action_row_add_suffix(ADW_ACTION_ROW(exportRow), exportBtn);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(backupGroup), exportRow);
-
-  // Reset to Defaults
   GtkWidget *resetRow = adw_action_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(resetRow),
                                 "Reset to Defaults");
@@ -735,22 +594,16 @@ GtkWidget *SettingsView::createGeneralPage() {
       nullptr);
   adw_action_row_add_suffix(ADW_ACTION_ROW(resetRow), resetBtn);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(backupGroup), resetRow);
-
   return page;
 }
-
 GtkWidget *SettingsView::createGraphicsPage() {
   GtkWidget *page = adw_preferences_page_new();
   auto &conf = bwp::config::ConfigManager::getInstance();
-
-  // Group: Performance
   GtkWidget *perfGroup = adw_preferences_group_new();
   adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(perfGroup),
                                   "Performance");
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
                            ADW_PREFERENCES_GROUP(perfGroup));
-
-  // FPS
   GtkWidget *fpsRow = adw_combo_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(fpsRow),
                                 "Global FPS Limit");
@@ -790,8 +643,6 @@ GtkWidget *SettingsView::createGraphicsPage() {
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(perfGroup), fpsRow);
-
-  // Scaling
   GtkWidget *scalingRow = adw_combo_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(scalingRow),
                                 "Default Scaling");
@@ -809,7 +660,6 @@ GtkWidget *SettingsView::createGraphicsPage() {
   adw_combo_row_set_selected(ADW_COMBO_ROW(scalingRow), s_idx);
   g_signal_connect(scalingRow, "notify::selected",
                    G_CALLBACK(+[](AdwComboRow *row, GParamSpec *, gpointer) {
-                     // Simplification for brevity
                      int idx = adw_combo_row_get_selected(row);
                      const char *v = "fill";
                      if (idx == 1)
@@ -821,8 +671,6 @@ GtkWidget *SettingsView::createGraphicsPage() {
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(perfGroup), scalingRow);
-
-  // Group: Resource Management
   GtkWidget *resourceGroup = adw_preferences_group_new();
   adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(resourceGroup),
                                   "Resource Management");
@@ -831,8 +679,6 @@ GtkWidget *SettingsView::createGraphicsPage() {
       "Limit memory usage to prevent system slowdown");
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
                            ADW_PREFERENCES_GROUP(resourceGroup));
-
-  // RAM Limit
   GtkWidget *ramRow = adw_spin_row_new_with_range(512, 8192, 256);
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(ramRow), "RAM Limit (MB)");
   adw_action_row_set_subtitle(
@@ -850,8 +696,6 @@ GtkWidget *SettingsView::createGraphicsPage() {
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(resourceGroup), ramRow);
-
-  // GPU Selection
   GtkWidget *gpuRow = adw_combo_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(gpuRow), "GPU Preference");
   adw_action_row_set_subtitle(ADW_ACTION_ROW(gpuRow),
@@ -881,15 +725,11 @@ GtkWidget *SettingsView::createGraphicsPage() {
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(resourceGroup), gpuRow);
-
-  // Group: Content
   GtkWidget *contentGroup = adw_preferences_group_new();
   adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(contentGroup),
                                   "Content");
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
                            ADW_PREFERENCES_GROUP(contentGroup));
-
-  // NSFW Toggle
   GtkWidget *nsfwRow = adw_switch_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nsfwRow),
                                 "Show Adult Content");
@@ -905,14 +745,11 @@ GtkWidget *SettingsView::createGraphicsPage() {
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(contentGroup), nsfwRow);
-
-  // Group: Slideshow
   GtkWidget *slideGroup = adw_preferences_group_new();
   adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(slideGroup),
                                   "Slideshow");
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
                            ADW_PREFERENCES_GROUP(slideGroup));
-
   GtkWidget *intervalRow = adw_spin_row_new_with_range(5, 3600, 5);
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(intervalRow),
                                 "Interval (seconds)");
@@ -925,7 +762,6 @@ GtkWidget *SettingsView::createGraphicsPage() {
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(slideGroup), intervalRow);
-
   GtkWidget *shuffleRow = adw_switch_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(shuffleRow), "Shuffle");
   adw_switch_row_set_active(ADW_SWITCH_ROW(shuffleRow),
@@ -937,10 +773,8 @@ GtkWidget *SettingsView::createGraphicsPage() {
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(slideGroup), shuffleRow);
-
   return page;
 }
-
 GtkWidget *SettingsView::createAudioPage() {
   GtkWidget *page = adw_preferences_page_new();
   GtkWidget *group = adw_preferences_group_new();
@@ -949,8 +783,6 @@ GtkWidget *SettingsView::createAudioPage() {
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
                            ADW_PREFERENCES_GROUP(group));
   auto &conf = bwp::config::ConfigManager::getInstance();
-
-  // Volume
   GtkWidget *volRow = adw_spin_row_new_with_range(0, 100, 1);
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(volRow),
                                 "Global Volume Target");
@@ -966,8 +798,6 @@ GtkWidget *SettingsView::createAudioPage() {
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), volRow);
-
-  // Audio Enabled (Global Mute)
   GtkWidget *muteRow = adw_switch_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(muteRow), "Audio Enabled");
   adw_action_row_set_subtitle(ADW_ACTION_ROW(muteRow),
@@ -982,19 +812,15 @@ GtkWidget *SettingsView::createAudioPage() {
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), muteRow);
-
   return page;
 }
-
 GtkWidget *SettingsView::createPlaybackPage() {
   GtkWidget *page = adw_preferences_page_new();
   GtkWidget *group = adw_preferences_group_new();
   adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(group), "Power Saving");
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
                            ADW_PREFERENCES_GROUP(group));
-
   auto &conf = bwp::config::ConfigManager::getInstance();
-
   GtkWidget *batRow = adw_switch_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(batRow),
                                 "Pause on Battery");
@@ -1002,7 +828,6 @@ GtkWidget *SettingsView::createPlaybackPage() {
                               "Pause wallpaper when discharging");
   adw_switch_row_set_active(ADW_SWITCH_ROW(batRow),
                             conf.get<bool>("playback.pause_on_battery"));
-
   g_signal_connect(batRow, "notify::active",
                    G_CALLBACK(+[](AdwSwitchRow *r, GParamSpec *, gpointer) {
                      bwp::config::ConfigManager::getInstance().set(
@@ -1010,16 +835,12 @@ GtkWidget *SettingsView::createPlaybackPage() {
                          static_cast<bool>(adw_switch_row_get_active(r)));
                    }),
                    nullptr);
-
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), batRow);
   return page;
 }
-
 GtkWidget *SettingsView::createTransitionsPage() {
   GtkWidget *page = adw_preferences_page_new();
   auto &conf = bwp::config::ConfigManager::getInstance();
-
-  // Group: Transition Settings
   GtkWidget *transGroup = adw_preferences_group_new();
   adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(transGroup),
                                   "Wallpaper Transitions");
@@ -1028,8 +849,6 @@ GtkWidget *SettingsView::createTransitionsPage() {
       "Configure how wallpapers transition when switching");
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
                            ADW_PREFERENCES_GROUP(transGroup));
-
-  // Enable Transitions
   m_transitionEnabledSwitch = adw_switch_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(m_transitionEnabledSwitch),
                                 "Enable Transitions");
@@ -1045,14 +864,11 @@ GtkWidget *SettingsView::createTransitionsPage() {
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(transGroup),
                             m_transitionEnabledSwitch);
-
-  // Effect Dropdown
   m_transitionEffectDropdown = adw_combo_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(m_transitionEffectDropdown),
                                 "Transition Effect");
   adw_action_row_set_subtitle(ADW_ACTION_ROW(m_transitionEffectDropdown),
                               "Visual style of the transition");
-
   const char *effects[] = {
       "Fade",     "Slide", "Wipe",  "Expanding Circle", "Expanding Square",
       "Dissolve", "Zoom",  "Morph", "Angled Wipe",      "Pixelate",
@@ -1061,8 +877,6 @@ GtkWidget *SettingsView::createTransitionsPage() {
   adw_combo_row_set_model(ADW_COMBO_ROW(m_transitionEffectDropdown),
                           G_LIST_MODEL(effectModel));
   g_object_unref(effectModel);
-
-  // Set current effect
   std::string currentEffect =
       conf.get<std::string>("transitions.default_effect", "Fade");
   int effectIdx = 0;
@@ -1074,7 +888,6 @@ GtkWidget *SettingsView::createTransitionsPage() {
   }
   adw_combo_row_set_selected(ADW_COMBO_ROW(m_transitionEffectDropdown),
                              effectIdx);
-
   g_signal_connect(m_transitionEffectDropdown, "notify::selected",
                    G_CALLBACK(+[](AdwComboRow *row, GParamSpec *, gpointer) {
                      guint i = adw_combo_row_get_selected(row);
@@ -1122,8 +935,6 @@ GtkWidget *SettingsView::createTransitionsPage() {
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(transGroup),
                             m_transitionEffectDropdown);
-
-  // Duration Slider
   m_transitionDurationSpin = adw_spin_row_new_with_range(100, 3000, 50);
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(m_transitionDurationSpin),
                                 "Duration (ms)");
@@ -1140,14 +951,11 @@ GtkWidget *SettingsView::createTransitionsPage() {
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(transGroup),
                             m_transitionDurationSpin);
-
-  // Easing Dropdown
   m_transitionEasingDropdown = adw_combo_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(m_transitionEasingDropdown),
                                 "Easing Function");
   adw_action_row_set_subtitle(ADW_ACTION_ROW(m_transitionEasingDropdown),
                               "How the animation accelerates/decelerates");
-
   const char *easings[] = {"linear",        "easeIn",       "easeOut",
                            "easeInOut",     "easeInQuad",   "easeOutQuad",
                            "easeInCubic",   "easeOutCubic", "easeInOutCubic",
@@ -1158,11 +966,9 @@ GtkWidget *SettingsView::createTransitionsPage() {
   adw_combo_row_set_model(ADW_COMBO_ROW(m_transitionEasingDropdown),
                           G_LIST_MODEL(easingModel));
   g_object_unref(easingModel);
-
-  // Set current easing
   std::string currentEasing =
       conf.get<std::string>("transitions.easing", "easeInOut");
-  int easingIdx = 3; // Default to easeInOut
+  int easingIdx = 3;  
   for (int easingIndex = 0; easings[easingIndex] != nullptr; ++easingIndex) {
     if (currentEasing == easings[easingIndex]) {
       easingIdx = easingIndex;
@@ -1171,7 +977,6 @@ GtkWidget *SettingsView::createTransitionsPage() {
   }
   adw_combo_row_set_selected(ADW_COMBO_ROW(m_transitionEasingDropdown),
                              easingIdx);
-
   g_signal_connect(m_transitionEasingDropdown, "notify::selected",
                    G_CALLBACK(+[](AdwComboRow *row, GParamSpec *, gpointer) {
                      guint i = adw_combo_row_get_selected(row);
@@ -1234,36 +1039,27 @@ GtkWidget *SettingsView::createTransitionsPage() {
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(transGroup),
                             m_transitionEasingDropdown);
-
-  // Preview Button Row
   GtkWidget *previewRow = adw_action_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(previewRow),
                                 "Preview Transition");
   adw_action_row_set_subtitle(ADW_ACTION_ROW(previewRow),
                               "Test your transition settings");
-
   GtkWidget *previewBtn = gtk_button_new_with_label("Preview");
   gtk_widget_add_css_class(previewBtn, "suggested-action");
   gtk_widget_set_valign(previewBtn, GTK_ALIGN_CENTER);
-
   g_signal_connect(previewBtn, "clicked",
                    G_CALLBACK(+[](GtkButton *, gpointer data) {
                      SettingsView *self = static_cast<SettingsView *>(data);
                      self->showTransitionPreviewDialog();
                    }),
                    this);
-
   adw_action_row_add_suffix(ADW_ACTION_ROW(previewRow), previewBtn);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(transGroup), previewRow);
-
-  // Group: Advanced
   GtkWidget *advGroup = adw_preferences_group_new();
   adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(advGroup),
                                   "Advanced Options");
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
                            ADW_PREFERENCES_GROUP(advGroup));
-
-  // Info about linux-wallpaperengine compatibility
   GtkWidget *infoRow = adw_action_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(infoRow),
                                 "Wallpaper Engine Transitions");
@@ -1275,26 +1071,19 @@ GtkWidget *SettingsView::createTransitionsPage() {
       gtk_image_new_from_icon_name("dialog-information-symbolic");
   adw_action_row_add_prefix(ADW_ACTION_ROW(infoRow), infoIcon);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(advGroup), infoRow);
-
   return page;
 }
-
 void SettingsView::showTransitionPreviewDialog() {
   if (!m_transitionDialog) {
     GtkRoot *root = gtk_widget_get_root(m_content);
     GtkWindow *window = GTK_IS_WINDOW(root) ? GTK_WINDOW(root) : nullptr;
     m_transitionDialog = std::make_unique<TransitionDialog>(window);
-
-    // Set callback to apply settings from dialog back to config
     m_transitionDialog->setCallback(
         [this](const TransitionDialog::TransitionSettings &settings) {
           auto &conf = bwp::config::ConfigManager::getInstance();
           conf.set("transitions.default_effect", settings.effectName);
           conf.set("transitions.duration_ms", settings.durationMs);
           conf.set("transitions.easing", settings.easingName);
-
-          // Update UI dropdowns to reflect new settings
-          // Find effect index
           const char *effects[] = {"Fade",
                                    "Slide",
                                    "Wipe",
@@ -1313,10 +1102,8 @@ void SettingsView::showTransitionPreviewDialog() {
               break;
             }
           }
-
           adw_spin_row_set_value(ADW_SPIN_ROW(m_transitionDurationSpin),
                                  settings.durationMs);
-
           const char *easings[] = {
               "linear",       "easeIn",       "easeOut",
               "easeInOut",    "easeInQuad",   "easeOutQuad",
@@ -1333,19 +1120,15 @@ void SettingsView::showTransitionPreviewDialog() {
           }
         });
   }
-
-  // Load current settings into dialog
   auto &conf = bwp::config::ConfigManager::getInstance();
   TransitionDialog::TransitionSettings current;
   current.effectName =
       conf.get<std::string>("transitions.default_effect", "Fade");
   current.durationMs = conf.get<int>("transitions.duration_ms", 500);
   current.easingName = conf.get<std::string>("transitions.easing", "easeInOut");
-
   m_transitionDialog->show(current);
   m_transitionDialog->presentTo(m_content);
 }
-
 GtkWidget *SettingsView::createControlsPage() {
   GtkWidget *page = adw_preferences_page_new();
   GtkWidget *group = adw_preferences_group_new();
@@ -1353,7 +1136,6 @@ GtkWidget *SettingsView::createControlsPage() {
                                   "Keyboard Shortcuts");
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
                            ADW_PREFERENCES_GROUP(group));
-
   auto addShortcut = [&](const char *title, const char *shortcut) {
     GtkWidget *row = adw_action_row_new();
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), title);
@@ -1362,75 +1144,57 @@ GtkWidget *SettingsView::createControlsPage() {
     adw_action_row_add_suffix(ADW_ACTION_ROW(row), label);
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), row);
   };
-
   addShortcut("Next Wallpaper", "Ctrl + Right");
   addShortcut("Previous Wallpaper", "Ctrl + Left");
   addShortcut("Pause/Resume", "Space");
   addShortcut("Hide Window", "Ctrl + W");
-
   return page;
 }
-
 GtkWidget *SettingsView::createAboutPage() {
   GtkWidget *page = adw_preferences_page_new();
   GtkWidget *group = adw_preferences_group_new();
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
                            ADW_PREFERENCES_GROUP(group));
-
   GtkWidget *logo = gtk_image_new_from_icon_name("betterwallpaper");
   gtk_image_set_pixel_size(GTK_IMAGE(logo), 64);
-
   GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
   gtk_widget_set_margin_top(box, 24);
   gtk_widget_set_margin_bottom(box, 24);
   gtk_widget_set_halign(box, GTK_ALIGN_CENTER);
   gtk_box_append(GTK_BOX(box), logo);
-
   GtkWidget *title = gtk_label_new("BetterWallpaper");
   gtk_widget_add_css_class(title, "title-2");
   gtk_box_append(GTK_BOX(box), title);
-
-  GtkWidget *version = gtk_label_new("Version 0.5.1 Beta");
+  GtkWidget *version = gtk_label_new("Version 0.5.5 Beta");
   gtk_widget_add_css_class(version, "dim-label");
   gtk_box_append(GTK_BOX(box), version);
-
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), box);
-
-  // GitHub Repository
   GtkWidget *ghRow = adw_action_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(ghRow),
                                 "GitHub Repository");
   GtkWidget *ghBtn = gtk_button_new_from_icon_name("external-link-symbolic");
   gtk_widget_set_valign(ghBtn, GTK_ALIGN_CENTER);
   gtk_widget_add_css_class(ghBtn, "flat");
-  
   g_signal_connect(ghBtn, "clicked", G_CALLBACK(+[](GtkButton *btn, gpointer) {
       GtkUriLauncher *launcher = gtk_uri_launcher_new("https://github.com/Misiix9/BetterWallpaper");
       gtk_uri_launcher_launch(launcher, GTK_WINDOW(gtk_widget_get_root(GTK_WIDGET(btn))), NULL, NULL, NULL);
       g_object_unref(launcher);
   }), nullptr);
-  
   adw_action_row_add_suffix(ADW_ACTION_ROW(ghRow), ghBtn);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), ghRow);
-
-  // AUR Package
   GtkWidget *aurRow = adw_action_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(aurRow),
                                 "AUR Package");
   GtkWidget *aurBtn = gtk_button_new_from_icon_name("external-link-symbolic");
   gtk_widget_set_valign(aurBtn, GTK_ALIGN_CENTER);
   gtk_widget_add_css_class(aurBtn, "flat");
-
   g_signal_connect(aurBtn, "clicked", G_CALLBACK(+[](GtkButton *btn, gpointer) {
       GtkUriLauncher *launcher = gtk_uri_launcher_new("https://aur.archlinux.org/packages/betterwallpaper-git");
       gtk_uri_launcher_launch(launcher, GTK_WINDOW(gtk_widget_get_root(GTK_WIDGET(btn))), NULL, NULL, NULL);
       g_object_unref(launcher);
   }), nullptr);
-
   adw_action_row_add_suffix(ADW_ACTION_ROW(aurRow), aurBtn);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), aurRow);
-
   return page;
 }
-
-} // namespace bwp::gui
+}  

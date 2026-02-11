@@ -7,33 +7,27 @@
 #include <chrono>
 #include <fstream>
 #include <iostream>
-
 namespace bwp::wallpaper {
-
 WallpaperLibrary &WallpaperLibrary::getInstance() {
   static WallpaperLibrary instance;
   return instance;
 }
-
 WallpaperLibrary::WallpaperLibrary() {
   LOG_SCOPE_AUTO();
   m_dbPath = getDatabasePath();
 }
-
 WallpaperLibrary::~WallpaperLibrary() {
   if (m_dirty) {
     save();
   }
 }
-
 void WallpaperLibrary::initialize() {
   LOG_SCOPE_AUTO();
   if (m_initialized.exchange(true)) {
-    return; // Already initialized, don't re-load and wipe in-memory state
+    return;  
   }
   load();
 }
-
 std::filesystem::path WallpaperLibrary::getDatabasePath() const {
   LOG_SCOPE_AUTO();
   const char *dataHome = std::getenv("XDG_DATA_HOME");
@@ -50,41 +44,32 @@ std::filesystem::path WallpaperLibrary::getDatabasePath() const {
   }
   return dataDir / "betterwallpaper" / "library.json";
 }
-
 void WallpaperLibrary::load() {
   LOG_SCOPE_AUTO();
   std::lock_guard<std::recursive_mutex> lock(m_mutex);
   if (!std::filesystem::exists(m_dbPath))
     return;
-
   try {
     std::string content = utils::FileUtils::readFile(m_dbPath);
     nlohmann::json j = nlohmann::json::parse(content);
-
     m_wallpapers.clear();
     for (const auto &item : j["wallpapers"]) {
-      // Deserialize WallpaperInfo
       WallpaperInfo info;
       info.id = item.value("id", "");
       info.path = item.value("path", "");
       info.title = item.value("title", "");
-      // Backfill title from filename if not set
       if (info.title.empty() && !info.path.empty()) {
         info.title = std::filesystem::path(info.path).stem().string();
         m_dirty = true;
       }
       info.type = static_cast<WallpaperType>(item.value("type", 0));
-      // ... load other fields
       info.source = item.value("source", std::string(""));
       info.rating = item.value("rating", 0);
       info.favorite = item.value("favorite", false);
       info.play_count = item.value("play_count", 0);
-
       if (item.contains("added")) {
-        // Warning: This expects seconds precision.
-        info.added = (long long)item["added"]; // It is a long long in struct
+        info.added = (long long)item["added"];  
       }
-      // Backfill timestamp for wallpapers that were saved without one
       if (info.added == 0) {
         info.added = static_cast<long long>(
             std::chrono::system_clock::to_time_t(
@@ -94,14 +79,11 @@ void WallpaperLibrary::load() {
       if (item.contains("last_used")) {
         info.last_used = (long long)item["last_used"];
       }
-
       if (item.contains("tags")) {
         for (const auto &tag : item["tags"]) {
           info.tags.push_back(tag);
         }
       }
-
-      // Load Settings
       if (item.contains("settings")) {
         const auto &s = item["settings"];
         info.settings.fps = s.value("fps", 0);
@@ -109,12 +91,9 @@ void WallpaperLibrary::load() {
         info.settings.muted = s.value("muted", false);
         info.settings.playback_speed = s.value("playback_speed", 1.0f);
         info.settings.scaling =
-            static_cast<ScalingMode>(s.value("scaling", 1)); // Default Fill
+            static_cast<ScalingMode>(s.value("scaling", 1));  
       }
-
-      // Progressive loading placeholder
       info.blurhash = item.value("blurhash", "");
-
       if (!info.id.empty()) {
         if (std::filesystem::exists(info.path)) {
           m_wallpapers[info.id] = info;
@@ -124,32 +103,12 @@ void WallpaperLibrary::load() {
         }
       }
     }
-
     LOG_INFO("Loaded " + std::to_string(m_wallpapers.size()) +
              " wallpapers from library");
-
-    // Perform robust deduplication
-    // We must release lock before calling removeDuplicates if it takes a lock,
-    // BUT we are already inside a method that took a lock.
-    // removeDuplicates should NOT take a lock if called internally,
-    // OR we should release here.
-    // However, removeDuplicates is now implemented to take a lock in its
-    // definition below. BUT we are holding m_mutex! This will deadlock if we
-    // call it naively. So we need to put it outside the lock block? No, load()
-    // finishes holding the lock. I will call removeDuplicatesInternal() here
-    // which does NOT take a lock.
-
-    // Actually, I can just unlock here?
-    // No, m_wallpapers access must be protected.
-    // Let's implement dedupe inline here to be safe and simple.
-
-    // Use member m_pathToId
     m_pathToId.clear();
     std::vector<std::string> idsToRemove;
-
     for (const auto &pair : m_wallpapers) {
       const auto &info = pair.second;
-
       std::string normPath = info.path;
       try {
         if (std::filesystem::exists(info.path)) {
@@ -157,13 +116,10 @@ void WallpaperLibrary::load() {
         }
       } catch (...) {
       }
-
       if (m_pathToId.count(normPath)) {
         std::string existingId = m_pathToId[normPath];
         const auto &existing = m_wallpapers[existingId];
-
         bool keepCurrent = false;
-        // Prefer Workshop/Steam source
         if ((info.source == "workshop" || info.source == "steam") &&
             (existing.source != "workshop" && existing.source != "steam")) {
           keepCurrent = true;
@@ -172,11 +128,9 @@ void WallpaperLibrary::load() {
                    (info.source != "workshop" && info.source != "steam")) {
           keepCurrent = false;
         } else {
-          // Heuristic: Shorter ID usually means custom folder name or simple ID
           if (info.id.length() < existing.id.length())
             keepCurrent = true;
         }
-
         if (keepCurrent) {
           idsToRemove.push_back(existingId);
           m_pathToId[normPath] = info.id;
@@ -184,11 +138,9 @@ void WallpaperLibrary::load() {
           idsToRemove.push_back(info.id);
         }
       } else {
-        // No duplicate found
         m_pathToId[normPath] = info.id;
       }
     }
-
     if (!idsToRemove.empty()) {
       LOG_INFO("Removing " + std::to_string(idsToRemove.size()) +
                " duplicate wallpapers.");
@@ -197,25 +149,19 @@ void WallpaperLibrary::load() {
       }
       m_dirty = true;
     }
-
   } catch (const std::exception &e) {
     LOG_ERROR(std::string("Failed to load library: ") + e.what());
   }
-
-  // Save dirty state (from backfilling titles/timestamps, deduplication, etc.)
-  // Safe to call now because we use a recursive_mutex
   if (m_dirty) {
     save();
   }
 }
-
 void WallpaperLibrary::save() {
   LOG_SCOPE_AUTO();
   std::lock_guard<std::recursive_mutex> lock(m_mutex);
   try {
     nlohmann::json j;
     j["wallpapers"] = nlohmann::json::array();
-
     for (const auto &pair : m_wallpapers) {
       const auto &info = pair.second;
       nlohmann::json item;
@@ -229,9 +175,7 @@ void WallpaperLibrary::save() {
       item["added"] = info.added;
       item["last_used"] = info.last_used;
       item["tags"] = info.tags;
-      item["source"] = info.source; // Make sure to save source!
-
-      // Save Settings
+      item["source"] = info.source;  
       nlohmann::json settings;
       settings["fps"] = info.settings.fps;
       settings["volume"] = info.settings.volume;
@@ -239,15 +183,11 @@ void WallpaperLibrary::save() {
       settings["playback_speed"] = info.settings.playback_speed;
       settings["scaling"] = static_cast<int>(info.settings.scaling);
       item["settings"] = settings;
-
-      // Progressive loading placeholder
       if (!info.blurhash.empty()) {
         item["blurhash"] = info.blurhash;
       }
-
       j["wallpapers"].push_back(item);
     }
-
     utils::FileUtils::createDirectories(m_dbPath.parent_path());
     utils::FileUtils::writeFile(m_dbPath, j.dump(4));
     m_dirty = false;
@@ -256,20 +196,16 @@ void WallpaperLibrary::save() {
     LOG_ERROR(std::string("Failed to save library: ") + e.what());
   }
 }
-
 void WallpaperLibrary::addWallpaper(const WallpaperInfo &info) {
   LOG_SCOPE_AUTO();
   {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
-
-    // Check for duplicates
     std::string normPath = info.path;
     try {
       if (std::filesystem::exists(info.path))
         normPath = std::filesystem::canonical(info.path).string();
     } catch (...) {
     }
-
     if (m_pathToId.count(normPath)) {
       std::string existingId = m_pathToId[normPath];
       if (existingId != info.id) {
@@ -277,7 +213,6 @@ void WallpaperLibrary::addWallpaper(const WallpaperInfo &info) {
                  " (Existing ID: " + existingId + ")");
         return;
       }
-      // Same path, same ID — merge scanner metadata but preserve user data
       auto &existing = m_wallpapers[existingId];
       if (!info.title.empty())
         existing.title = info.title;
@@ -287,34 +222,26 @@ void WallpaperLibrary::addWallpaper(const WallpaperInfo &info) {
         existing.source = info.source;
       if (!info.tags.empty())
         existing.tags = info.tags;
-      // Preserve: favorite, rating, play_count, added, last_used, settings, blurhash
       m_dirty = true;
       return;
     }
-
-    // New wallpaper — set timestamp if not already set
     WallpaperInfo newInfo = info;
     if (newInfo.added == 0) {
       newInfo.added = static_cast<long long>(
           std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
     }
-    // Set title from filename if not provided (for local wallpapers)
     if (newInfo.title.empty()) {
       newInfo.title = std::filesystem::path(newInfo.path).stem().string();
     }
-
     m_wallpapers[newInfo.id] = newInfo;
     m_pathToId[normPath] = newInfo.id;
     m_dirty = true;
   }
-  // Always save to ensure favorites/ratings and new wallpapers persist
   save();
-
   if (m_changeCallback) {
     m_changeCallback(info);
   }
 }
-
 void WallpaperLibrary::updateWallpaper(const WallpaperInfo &info) {
   LOG_SCOPE_AUTO();
   bool needsSave = false;
@@ -330,7 +257,6 @@ void WallpaperLibrary::updateWallpaper(const WallpaperInfo &info) {
       cbs = m_changeCallbacks;
     }
   }
-  // Call save and callbacks outside the lock to avoid deadlock
   if (needsSave) {
     save();
     if (cb) {
@@ -343,7 +269,6 @@ void WallpaperLibrary::updateWallpaper(const WallpaperInfo &info) {
     }
   }
 }
-
 void WallpaperLibrary::updateBlurhash(const std::string &id,
                                       const std::string &hash) {
   LOG_SCOPE_AUTO();
@@ -361,7 +286,6 @@ void WallpaperLibrary::updateBlurhash(const std::string &id,
     save();
   }
 }
-
 void WallpaperLibrary::removeWallpaper(const std::string &id) {
   LOG_SCOPE_AUTO();
   bool needsSave = false;
@@ -370,10 +294,6 @@ void WallpaperLibrary::removeWallpaper(const std::string &id) {
     if (m_wallpapers.count(id)) {
       std::string path = m_wallpapers[id].path;
       m_wallpapers.erase(id);
-
-      // Clean up path index
-      // Need to find which path mapped to this ID (reverse lookup or
-      // re-canonicalize) Canonicalizing again is safest
       try {
         if (std::filesystem::exists(path)) {
           std::string norm = std::filesystem::canonical(path).string();
@@ -381,7 +301,6 @@ void WallpaperLibrary::removeWallpaper(const std::string &id) {
             m_pathToId.erase(norm);
           }
         } else {
-          // Fallback: iterate (slow but rare)
           for (auto it = m_pathToId.begin(); it != m_pathToId.end();) {
             if (it->second == id)
               it = m_pathToId.erase(it);
@@ -391,25 +310,17 @@ void WallpaperLibrary::removeWallpaper(const std::string &id) {
         }
       } catch (...) {
       }
-
       m_dirty = true;
       needsSave = true;
     }
   }
-  // Call save outside the lock to avoid deadlock
   if (needsSave) {
     save();
   }
 }
-
 void WallpaperLibrary::removeDuplicates() {
-  // Public wrapper if needed, but logic is primarily in load()
-  // Re-run logic
   std::lock_guard<std::recursive_mutex> lock(m_mutex);
-  // Copy-paste of dedupe logic if we want it callable at runtime
-  // For now, load match is sufficient.
 }
-
 std::optional<WallpaperInfo>
 WallpaperLibrary::getWallpaper(const std::string &id) const {
   std::lock_guard<std::recursive_mutex> lock(m_mutex);
@@ -419,7 +330,6 @@ WallpaperLibrary::getWallpaper(const std::string &id) const {
   }
   return std::nullopt;
 }
-
 std::vector<WallpaperInfo> WallpaperLibrary::getAllWallpapers() const {
   LOG_SCOPE_AUTO();
   std::lock_guard<std::recursive_mutex> lock(m_mutex);
@@ -430,33 +340,27 @@ std::vector<WallpaperInfo> WallpaperLibrary::getAllWallpapers() const {
   }
   return result;
 }
-
 std::vector<WallpaperInfo>
 WallpaperLibrary::search(const std::string &query) const {
   LOG_SCOPE_AUTO();
   std::lock_guard<std::recursive_mutex> lock(m_mutex);
   std::vector<WallpaperInfo> result;
   std::string q = utils::StringUtils::toLower(utils::StringUtils::trim(query));
-
   for (const auto &pair : m_wallpapers) {
     const auto &info = pair.second;
     bool match = false;
     std::string filename = std::filesystem::path(info.path).filename().string();
-
     if (utils::StringUtils::toLower(filename).find(q) != std::string::npos)
       match = true;
-
     for (const auto &tag : info.tags) {
       if (utils::StringUtils::toLower(tag).find(q) != std::string::npos)
         match = true;
     }
-
     if (match)
       result.push_back(info);
   }
   return result;
 }
-
 std::vector<WallpaperInfo> WallpaperLibrary::filter(
     const std::function<bool(const WallpaperInfo &)> &predicate) const {
   std::lock_guard<std::recursive_mutex> lock(m_mutex);
@@ -468,17 +372,14 @@ std::vector<WallpaperInfo> WallpaperLibrary::filter(
   }
   return result;
 }
-
 void WallpaperLibrary::setChangeCallback(ChangeCallback cb) {
   std::lock_guard<std::recursive_mutex> lock(m_mutex);
   m_changeCallback = cb;
 }
-
 void WallpaperLibrary::addChangeCallback(ChangeCallback cb) {
   std::lock_guard<std::recursive_mutex> lock(m_mutex);
   m_changeCallbacks.push_back(std::move(cb));
 }
-
 std::vector<std::string> WallpaperLibrary::getAllTags() const {
   std::lock_guard<std::recursive_mutex> lock(m_mutex);
   std::vector<std::string> tags;
@@ -499,9 +400,7 @@ std::vector<std::string> WallpaperLibrary::getAllTags() const {
   std::sort(tags.begin(), tags.end());
   return tags;
 }
-
 std::filesystem::path WallpaperLibrary::getDataDirectory() const {
   return m_dbPath.parent_path();
 }
-
-} // namespace bwp::wallpaper
+}  

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(BetterWallpaper
-    VERSION 0.5.1
+    VERSION 0.5.5
     DESCRIPTION "Feature-rich wallpaper manager for Linux"
     LANGUAGES CXX C
 )
@@ -70,6 +70,7 @@ include(FetchContent)
 FetchContent_Declare(
     json
     URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 FetchContent_MakeAvailable(json)
 find_package(Threads REQUIRED)

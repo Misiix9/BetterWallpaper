@@ -5,104 +5,75 @@
 #include <algorithm>
 #include <fstream>
 #include <nlohmann/json.hpp>
-
 namespace bwp::wallpaper {
-
 #ifdef _WIN32
 #define G_SOURCE_REMOVE 0
-// Simple stub that runs immediately. Not thread safe properly but works for MVP
-// without main loop. Simple stub that runs immediately. Not thread safe
-// properly but works for MVP without main loop. Callback expected is gboolean
-// (*)(gpointer) which is int (*)(void*) We define it exactly as used or cast
-// it. using a void* func pointer is safest to accept anything
 inline void g_idle_add(void *func, void *data) {
   if (func) {
-    // Cast and call
     using CallbackType = int (*)(void *);
     ((CallbackType)func)(data);
   }
 }
 #endif
-
-// Helper structs for idle callbacks
 struct ProgressData {
   ScanProgress progress;
   LibraryScanner::ProgressCallback callback;
 };
-
 struct CompletionData {
   int totalFound;
   LibraryScanner::CompletionCallback callback;
 };
-
 struct FileFoundData {
   std::string path;
   LibraryScanner::ScanCallback callback;
 };
-
 LibraryScanner &LibraryScanner::getInstance() {
   static LibraryScanner instance;
   return instance;
 }
-
 LibraryScanner::LibraryScanner() {}
-
 LibraryScanner::~LibraryScanner() {
   cancelScan();
   if (m_scanThread.joinable()) {
     m_scanThread.join();
   }
 }
-
 void LibraryScanner::setCallback(ScanCallback callback) {
   std::lock_guard<std::mutex> lock(m_mutex);
   m_callback = callback;
 }
-
 void LibraryScanner::setProgressCallback(ProgressCallback callback) {
   std::lock_guard<std::mutex> lock(m_mutex);
   m_progressCallback = callback;
 }
-
 void LibraryScanner::setCompletionCallback(CompletionCallback callback) {
   std::lock_guard<std::mutex> lock(m_mutex);
   m_completionCallback = callback;
 }
-
 ScanProgress LibraryScanner::getProgress() const {
   std::lock_guard<std::mutex> lock(m_mutex);
   return m_progress;
 }
-
 void LibraryScanner::cancelScan() { m_cancelRequested = true; }
-
 void LibraryScanner::waitForCompletion() {
   if (m_scanThread.joinable()) {
     m_scanThread.join();
   }
 }
-
 void LibraryScanner::scan(const std::vector<std::string> &paths) {
   if (m_scanning)
     return;
-
-  // Reset state
   m_cancelRequested = false;
   m_scanning = true;
-
   {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_progress = ScanProgress{};
   }
-
   if (m_scanThread.joinable()) {
     m_scanThread.join();
   }
-
   m_scanThread = std::thread(&LibraryScanner::runScan, this, paths);
 }
-
-// Static idle callbacks for main thread execution
 gboolean LibraryScanner::idleProgress(gpointer data) {
   auto *pd = static_cast<ProgressData *>(data);
   if (pd && pd->callback) {
@@ -111,7 +82,6 @@ gboolean LibraryScanner::idleProgress(gpointer data) {
   delete pd;
   return G_SOURCE_REMOVE;
 }
-
 gboolean LibraryScanner::idleCompletion(gpointer data) {
   auto *cd = static_cast<CompletionData *>(data);
   if (cd && cd->callback) {
@@ -120,7 +90,6 @@ gboolean LibraryScanner::idleCompletion(gpointer data) {
   delete cd;
   return G_SOURCE_REMOVE;
 }
-
 gboolean LibraryScanner::idleFileFound(gpointer data) {
   auto *fd = static_cast<FileFoundData *>(data);
   if (fd && fd->callback) {
@@ -129,7 +98,6 @@ gboolean LibraryScanner::idleFileFound(gpointer data) {
   delete fd;
   return G_SOURCE_REMOVE;
 }
-
 void LibraryScanner::reportProgress() {
   std::lock_guard<std::mutex> lock(m_mutex);
   if (m_progressCallback) {
@@ -137,7 +105,6 @@ void LibraryScanner::reportProgress() {
     g_idle_add(idleProgress, data);
   }
 }
-
 void LibraryScanner::notifyCompletion() {
   std::lock_guard<std::mutex> lock(m_mutex);
   if (m_completionCallback) {
@@ -146,10 +113,8 @@ void LibraryScanner::notifyCompletion() {
     g_idle_add(idleCompletion, data);
   }
 }
-
 void LibraryScanner::runScan(std::vector<std::string> paths) {
   LOG_INFO("Starting library scan");
-
   const char* homeEnv = std::getenv("HOME");
   if (!homeEnv) {
     LOG_ERROR("HOME environment variable is not set — skipping Steam Workshop scan");
@@ -161,32 +126,24 @@ void LibraryScanner::runScan(std::vector<std::string> paths) {
         home + "/.local/share/Steam/steamapps/workshop/content/431960",
         home + "/.steam/steam/steamapps/workshop/content/431960"};
   }
-
   int totalFound = 0;
-
-  // Scan Workshop Paths
   for (const auto &wsPathStr : workshopPaths) {
     if (m_cancelRequested) {
       LOG_INFO("Scan cancelled by user");
       break;
     }
-
     std::filesystem::path wsPath(wsPathStr);
     if (!std::filesystem::exists(wsPath) ||
         !std::filesystem::is_directory(wsPath)) {
       continue;
     }
-
-    // De-duplication of workshop roots (e.g. .local vs .steam symlinks)
     std::string canonicalWsPath;
     try {
       canonicalWsPath = std::filesystem::canonical(wsPath).string();
     } catch (...) {
       canonicalWsPath = wsPathStr;
     }
-
     static std::vector<std::string> scannedRoots;
-    // Check if we already scanned this canonical root
     bool alreadyScanned = false;
     for (const auto &root : scannedRoots) {
       if (root == canonicalWsPath)
@@ -197,35 +154,25 @@ void LibraryScanner::runScan(std::vector<std::string> paths) {
       continue;
     }
     scannedRoots.push_back(canonicalWsPath);
-
     LOG_INFO("Scanning Workshop path: " + wsPath.string());
-
     int folderCount = 0;
     try {
       for (const auto &entry : std::filesystem::directory_iterator(wsPath)) {
         if (m_cancelRequested)
           break;
-
         try {
           if (!entry.is_directory())
             continue;
-
           folderCount++;
           std::string folderId = entry.path().filename().string();
-
-          // Update progress
           {
             std::lock_guard<std::mutex> lock(m_mutex);
             m_progress.filesScanned++;
             m_progress.currentPath = entry.path().string();
           }
-
-          // Report progress every 10 items
           if (folderCount % 10 == 0) {
             reportProgress();
           }
-
-          // Try to add this workshop item
           bool added = scanWorkshopItem(entry.path());
           if (added) {
             totalFound++;
@@ -242,26 +189,19 @@ void LibraryScanner::runScan(std::vector<std::string> paths) {
     } catch (const std::exception &e) {
       LOG_ERROR("Exception iterating workshop path: " + std::string(e.what()));
     }
-
     LOG_INFO("Processed " + std::to_string(folderCount) + " folders, found " +
              std::to_string(totalFound) + " items");
   }
-
   if (!m_cancelRequested) {
     LOG_INFO("Workshop scan complete. Total: " + std::to_string(totalFound));
-
-    // Scan User Paths (skip if workshop path)
     for (const auto &pathStr : paths) {
       if (m_cancelRequested)
         break;
-
       if (pathStr.find("431960") != std::string::npos)
         continue;
-
       std::filesystem::path path = utils::FileUtils::expandPath(pathStr);
       if (!std::filesystem::exists(path))
         continue;
-
       LOG_INFO("Scanning user path: " + path.string());
       try {
         if (std::filesystem::is_directory(path)) {
@@ -269,14 +209,12 @@ void LibraryScanner::runScan(std::vector<std::string> paths) {
                std::filesystem::recursive_directory_iterator(path)) {
             if (m_cancelRequested)
               break;
-
             if (entry.is_regular_file()) {
               {
                 std::lock_guard<std::mutex> lock(m_mutex);
                 m_progress.filesScanned++;
                 m_progress.currentPath = entry.path().string();
               }
-
               scanFile(entry.path());
             }
           }
@@ -286,32 +224,23 @@ void LibraryScanner::runScan(std::vector<std::string> paths) {
       }
     }
   }
-
-  // Mark as complete
   {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_progress.isComplete = true;
     m_progress.filesFound = totalFound;
   }
-
   m_scanning = false;
-
   auto &library = WallpaperLibrary::getInstance();
-  // Save library to persist any scanner metadata merges and new wallpaper entries
   library.save();
   auto allItems = library.getAllWallpapers();
   LOG_INFO("Scan finished. Library has " + std::to_string(allItems.size()) +
            " wallpapers");
-
-  // Notify completion on main thread
   notifyCompletion();
   reportProgress();
 }
-
 bool LibraryScanner::scanWorkshopItem(const std::filesystem::path &dir) {
   std::filesystem::path projectJson = dir / "project.json";
   std::string folderId = dir.filename().string();
-
   WallpaperInfo info;
   info.id = folderId;
   info.source = "workshop";
@@ -320,31 +249,22 @@ bool LibraryScanner::scanWorkshopItem(const std::filesystem::path &dir) {
   } catch (...) {
     info.workshop_id = 0;
   }
-
-  // First, find ANY valid media file in the folder
   std::string foundFile;
   std::string foundPreview;
-
   try {
     for (const auto &entry : std::filesystem::directory_iterator(dir)) {
       if (!entry.is_regular_file())
         continue;
-
       std::string filename = entry.path().filename().string();
       std::string ext = entry.path().extension().string();
       std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-
-      // Check for preview
       if (filename.find("preview") != std::string::npos) {
         foundPreview = entry.path().string();
       }
-
-      // Check for main file
       if (ext == ".mp4" || ext == ".webm" || ext == ".pkg" || ext == ".html") {
         foundFile = entry.path().string();
       } else if (foundFile.empty() && (ext == ".jpg" || ext == ".jpeg" ||
                                        ext == ".png" || ext == ".gif")) {
-        // Only use image if no video/scene found
         if (filename.find("preview") == std::string::npos) {
           foundFile = entry.path().string();
         }
@@ -354,8 +274,6 @@ bool LibraryScanner::scanWorkshopItem(const std::filesystem::path &dir) {
     LOG_ERROR("Error scanning folder " + folderId + ": " + e.what());
     return false;
   }
-
-  // Try to get title from project.json
   std::string title = folderId;
   if (std::filesystem::exists(projectJson)) {
     try {
@@ -363,8 +281,6 @@ bool LibraryScanner::scanWorkshopItem(const std::filesystem::path &dir) {
       if (f.is_open()) {
         nlohmann::json j = nlohmann::json::parse(f);
         title = j.value("title", folderId);
-
-        // If project.json has a file key, prefer that
         std::string jsonFile = j.value("file", "");
         if (!jsonFile.empty()) {
           std::filesystem::path fullPath = dir / jsonFile;
@@ -372,8 +288,6 @@ bool LibraryScanner::scanWorkshopItem(const std::filesystem::path &dir) {
             foundFile = fullPath.string();
           }
         }
-
-        // Get type
         std::string type = j.value("type", "");
         if (type == "scene")
           info.type = WallpaperType::WEScene;
@@ -381,11 +295,6 @@ bool LibraryScanner::scanWorkshopItem(const std::filesystem::path &dir) {
           info.type = WallpaperType::WEVideo;
         else if (type == "web")
           info.type = WallpaperType::WEWeb;
-
-        // Parse metadata if available (future proofing)
-        // info.settings.fps = j.value("fps", 60); // Example
-
-        // Tags
         if (j.contains("tags")) {
           auto tagsJson = j["tags"];
           if (tagsJson.is_array()) {
@@ -394,23 +303,17 @@ bool LibraryScanner::scanWorkshopItem(const std::filesystem::path &dir) {
         }
       }
     } catch (...) {
-      // JSON parse failed, use defaults
     }
   }
-
   if (foundFile.empty()) {
-    // No main file found, try preview as last resort
     if (!foundPreview.empty()) {
       foundFile = foundPreview;
     } else {
       return false;
     }
   }
-
   info.path = foundFile;
   info.title = title;
-
-  // Determine type from extension if not set
   if (info.type == WallpaperType::Unknown) {
     std::string ext = std::filesystem::path(foundFile).extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
@@ -423,63 +326,43 @@ bool LibraryScanner::scanWorkshopItem(const std::filesystem::path &dir) {
     else
       info.type = WallpaperType::StaticImage;
   }
-
   auto &library = WallpaperLibrary::getInstance();
   library.addWallpaper(info);
-
   {
     std::lock_guard<std::mutex> lock(m_mutex);
     if (m_callback)
       m_callback(info.path);
   }
-
   return true;
 }
-
 void LibraryScanner::scanFile(const std::filesystem::path &path) {
   std::string ext = path.extension().string();
   std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-
   bool isImage = (ext == ".jpg" || ext == ".jpeg" || ext == ".png" ||
                   ext == ".gif" || ext == ".bmp");
   bool isVideo =
       (ext == ".mp4" || ext == ".webm" || ext == ".mkv" || ext == ".avi");
   bool isScene = (ext == ".pkg");
   bool isWeb = (ext == ".html" || ext == ".htm");
-
   if (!isImage && !isVideo && !isScene && !isWeb)
     return;
-
   std::string id = path.string();
-
-  // Check if this path is already in the library under ANY ID
   auto &library = WallpaperLibrary::getInstance();
-
-  // Optimization: Check by path directly if we can, but library is map by ID.
-  // We'll iterate or trust ID = path.
-  // Wait, if it's a workshop item, ID is number. If we scan it here as file, ID
-  // is path. So we MUST check if this path belongs to an existing workshop
-  // item.
-
-  // Fast check: is this path inside a steam workshop directory?
   if (path.string().find("steamapps/workshop") != std::string::npos ||
       path.string().find("431960") != std::string::npos) {
-    return; // Skip, handled by workshop scanner
+    return;  
   }
-
   if (library.getWallpaper(id))
     return;
-
   WallpaperInfo info;
   info.id = id;
-  info.source = "local"; // Explicitly set local
+  info.source = "local";  
   info.path = path.string();
   try {
     info.size_bytes = std::filesystem::file_size(path);
   } catch (...) {
     info.size_bytes = 0;
   }
-
   if (isScene)
     info.type = WallpaperType::WEScene;
   else if (isVideo)
@@ -488,14 +371,11 @@ void LibraryScanner::scanFile(const std::filesystem::path &path) {
     info.type = WallpaperType::WEWeb;
   else
     info.type = WallpaperType::StaticImage;
-
   library.addWallpaper(info);
-
   {
     std::lock_guard<std::mutex> lock(m_mutex);
     if (m_callback)
       m_callback(path.string());
   }
 }
-
-} // namespace bwp::wallpaper
+}  

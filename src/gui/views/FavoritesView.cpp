@@ -1,11 +1,8 @@
 #include "FavoritesView.hpp"
 #include "../../core/wallpaper/WallpaperLibrary.hpp"
-
 namespace bwp::gui {
-
 FavoritesView::FavoritesView() {
   setupUi();
-  // Defer loading to after window is shown
   g_idle_add(
       [](gpointer data) -> gboolean {
         auto *self = static_cast<FavoritesView *>(data);
@@ -13,12 +10,9 @@ FavoritesView::FavoritesView() {
         return G_SOURCE_REMOVE;
       },
       this);
-
-  // Register for library changes so favorites refresh instantly
   auto &lib = bwp::wallpaper::WallpaperLibrary::getInstance();
   lib.addChangeCallback(
       [this](const bwp::wallpaper::WallpaperInfo &changedInfo) {
-        // Schedule refresh on the GTK main thread
         auto *info = new bwp::wallpaper::WallpaperInfo(changedInfo);
         g_idle_add(
             +[](gpointer data) -> gboolean {
@@ -28,19 +22,15 @@ FavoritesView::FavoritesView() {
                       data);
               auto *self = pair->first;
               auto *changed = pair->second;
-
               if (self->m_grid) {
                 if (changed->favorite) {
-                  // Wallpaper was favorited — add or update in grid
                   self->m_grid->updateWallpaperInStore(*changed);
                   self->m_grid->addWallpaper(*changed);
                   self->m_grid->notifyDataChanged();
                 } else {
-                  // Wallpaper was unfavorited — full reload to remove it
                   self->loadFavorites();
                 }
               }
-
               delete changed;
               delete pair;
               return G_SOURCE_REMOVE;
@@ -49,23 +39,16 @@ FavoritesView::FavoritesView() {
                 this, info));
       });
 }
-
 FavoritesView::~FavoritesView() {}
-
 void FavoritesView::setupUi() {
   m_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-
-  // Header
   GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
   gtk_widget_set_margin_start(header, 24);
   gtk_widget_set_margin_top(header, 24);
   gtk_widget_set_margin_bottom(header, 12);
-
   GtkWidget *title = gtk_label_new("Favorites");
   gtk_widget_add_css_class(title, "title-2");
   gtk_box_append(GTK_BOX(header), title);
-
-  // Hint text
   GtkWidget *hint =
       gtk_label_new("Click the ★ icon on any wallpaper to add it here");
   gtk_widget_add_css_class(hint, "dim-label");
@@ -73,19 +56,12 @@ void FavoritesView::setupUi() {
   gtk_widget_set_halign(hint, GTK_ALIGN_END);
   gtk_widget_set_margin_end(hint, 24);
   gtk_box_append(GTK_BOX(header), hint);
-
   gtk_box_append(GTK_BOX(m_box), header);
-
-  // Stack for switching between grid and empty state
   m_stack = gtk_stack_new();
   gtk_widget_set_vexpand(m_stack, TRUE);
   gtk_box_append(GTK_BOX(m_box), m_stack);
-
-  // Grid view
   m_grid = std::make_unique<WallpaperGrid>();
   gtk_stack_add_named(GTK_STACK(m_stack), m_grid->getWidget(), "grid");
-
-  // Empty state
   m_emptyState = adw_status_page_new();
   adw_status_page_set_icon_name(ADW_STATUS_PAGE(m_emptyState),
                                 "starred-symbolic");
@@ -93,23 +69,15 @@ void FavoritesView::setupUi() {
   adw_status_page_set_description(
       ADW_STATUS_PAGE(m_emptyState),
       "Star wallpapers in your Library to add them to Favorites");
-
-  // Add a button to go to library
   GtkWidget *goToLibBtn = gtk_button_new_with_label("Browse Library");
   gtk_widget_add_css_class(goToLibBtn, "suggested-action");
   gtk_widget_add_css_class(goToLibBtn, "pill");
   gtk_widget_set_halign(goToLibBtn, GTK_ALIGN_CENTER);
-
-  // Note: Button signal would need to be hooked up by parent (MainWindow)
-  // For now, just add it to status page
   adw_status_page_set_child(ADW_STATUS_PAGE(m_emptyState), goToLibBtn);
   m_goToLibraryButton = goToLibBtn;
-
   gtk_stack_add_named(GTK_STACK(m_stack), m_emptyState, "empty");
 }
-
 void FavoritesView::refresh() { loadFavorites(); }
-
 void FavoritesView::setGoToLibraryCallback(std::function<void()> callback) {
   m_goToLibraryCallback = callback;
   if (m_goToLibraryButton && callback) {
@@ -123,15 +91,12 @@ void FavoritesView::setGoToLibraryCallback(std::function<void()> callback) {
                      this);
   }
 }
-
 void FavoritesView::loadFavorites() {
   if (!m_grid)
     return;
   m_grid->clear();
-
   auto &lib = bwp::wallpaper::WallpaperLibrary::getInstance();
   auto wallpapers = lib.getAllWallpapers();
-
   int favoriteCount = 0;
   for (const auto &info : wallpapers) {
     if (info.favorite) {
@@ -139,13 +104,10 @@ void FavoritesView::loadFavorites() {
       favoriteCount++;
     }
   }
-
-  // Show empty state or grid based on count
   if (favoriteCount == 0) {
     gtk_stack_set_visible_child_name(GTK_STACK(m_stack), "empty");
   } else {
     gtk_stack_set_visible_child_name(GTK_STACK(m_stack), "grid");
   }
 }
-
-} // namespace bwp::gui
+}  

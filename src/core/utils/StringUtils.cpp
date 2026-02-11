@@ -2,37 +2,30 @@
 #include <algorithm>
 #include <iomanip>
 #include <sstream>
-
 namespace bwp::utils {
-
 std::string StringUtils::trim(const std::string &str) {
   auto start = str.begin();
   while (start != str.end() && std::isspace(*start)) {
     start++;
   }
-
   auto end = str.end();
   do {
     end--;
   } while (std::distance(start, end) > 0 && std::isspace(*end));
-
   return std::string(start, end + 1);
 }
-
 std::string StringUtils::toLower(const std::string &str) {
   std::string result = str;
   std::transform(result.begin(), result.end(), result.begin(),
                  [](unsigned char c) { return std::tolower(c); });
   return result;
 }
-
 std::string StringUtils::toUpper(const std::string &str) {
   std::string result = str;
   std::transform(result.begin(), result.end(), result.begin(),
                  [](unsigned char c) { return std::toupper(c); });
   return result;
 }
-
 std::vector<std::string> StringUtils::split(const std::string &str,
                                             char delimiter) {
   std::vector<std::string> tokens;
@@ -43,7 +36,6 @@ std::vector<std::string> StringUtils::split(const std::string &str,
   }
   return tokens;
 }
-
 std::string StringUtils::join(const std::vector<std::string> &parts,
                               const std::string &delimiter) {
   std::string result;
@@ -55,12 +47,10 @@ std::string StringUtils::join(const std::vector<std::string> &parts,
   }
   return result;
 }
-
 std::string StringUtils::urlEncode(const std::string &str) {
   std::ostringstream escaped;
   escaped.fill('0');
   escaped << std::hex;
-
   for (char c : str) {
     if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
       escaped << c;
@@ -72,7 +62,6 @@ std::string StringUtils::urlEncode(const std::string &str) {
   }
   return escaped.str();
 }
-
 std::string StringUtils::urlDecode(const std::string &str) {
   std::string ret;
   char ch;
@@ -90,27 +79,23 @@ std::string StringUtils::urlDecode(const std::string &str) {
         ret += ch;
         i = i + 2;
       } else {
-        // Invalid sequence
         ret += '%';
       }
     }
   }
   return ret;
 }
-
 bool StringUtils::startsWith(const std::string &str,
                              const std::string &prefix) {
   if (prefix.size() > str.size())
     return false;
   return std::equal(prefix.begin(), prefix.end(), str.begin());
 }
-
 bool StringUtils::endsWith(const std::string &str, const std::string &suffix) {
   if (suffix.size() > str.size())
     return false;
   return std::equal(suffix.rbegin(), suffix.rend(), str.rbegin());
 }
-
 std::string StringUtils::replaceAll(std::string str, const std::string &from,
                                     const std::string &to) {
   if (from.empty())
@@ -123,4 +108,48 @@ std::string StringUtils::replaceAll(std::string str, const std::string &from,
   return str;
 }
 
-} // namespace bwp::utils
+std::string StringUtils::base64Encode(const std::string &input) {
+  static const char table[] = 
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  std::string output;
+  output.reserve(((input.size() + 2) / 3) * 4);
+  
+  for (size_t i = 0; i < input.size(); i += 3) {
+    unsigned int n = static_cast<unsigned char>(input[i]) << 16;
+    if (i + 1 < input.size()) n |= static_cast<unsigned char>(input[i + 1]) << 8;
+    if (i + 2 < input.size()) n |= static_cast<unsigned char>(input[i + 2]);
+    
+    output.push_back(table[(n >> 18) & 0x3F]);
+    output.push_back(table[(n >> 12) & 0x3F]);
+    output.push_back((i + 1 < input.size()) ? table[(n >> 6) & 0x3F] : '=');
+    output.push_back((i + 2 < input.size()) ? table[n & 0x3F] : '=');
+  }
+  return output;
+}
+
+std::string StringUtils::base64Decode(const std::string &input) {
+  auto decodeChar = [](char c) -> unsigned char {
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '+') return 62;
+    if (c == '/') return 63;
+    return 0;
+  };
+  
+  std::string output;
+  output.reserve((input.size() / 4) * 3);
+  
+  for (size_t i = 0; i + 3 < input.size(); i += 4) {
+    unsigned int n = decodeChar(input[i]) << 18
+                   | decodeChar(input[i + 1]) << 12
+                   | decodeChar(input[i + 2]) << 6
+                   | decodeChar(input[i + 3]);
+    
+    output.push_back(static_cast<char>((n >> 16) & 0xFF));
+    if (input[i + 2] != '=') output.push_back(static_cast<char>((n >> 8) & 0xFF));
+    if (input[i + 3] != '=') output.push_back(static_cast<char>(n & 0xFF));
+  }
+  return output;
+}
+}  

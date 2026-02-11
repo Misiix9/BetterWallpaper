@@ -3,19 +3,53 @@ build/
 build-*/
 cmake-build-*/
 
-# IDE files
+# IDE / editor files
 .vscode/
 .idea/
+.cursor/
 *.swp
 *.swo
 *~
 .DS_Store
 
+# AI agent / copilot config (personal dev tooling)
+.agent/
+CLAUDE.md
+.github/copilot-instructions.md
+
+# Internal planning & documentation (not for distribution)
+plans/
+documentation/
+logs/
+
+# Generated / dev artifacts
+betterwallpaper.desktop
+.SRCINFO
+config.json
+MCP_SETUP_GUIDE.json
+build_log.txt
+answers.md
+plan.md
+plan2.md
+plan3.md
+prompt.md
+reproduce_monitor*
+HOWTO_WINDOWS.md
+
+# Local environment
+.venv/
+.cache/
+.dist/
+
 # Compiled objects
 *.o
 *.a
 *.so
+*.so.*
 *.dylib
+
+# Bundled libraries (local dev only)
+libGLEW.so*
 
 # CMake
 CMakeCache.txt
@@ -41,4 +75,6 @@ compile_commands.json
 
 # Temporary files
 *.tmp
-.cache/
+
+# Dev-only scripts
+scripts/hand_of_god.py

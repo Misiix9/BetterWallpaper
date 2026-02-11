@@ -101,6 +101,7 @@ else()
         utils/StringUtils.cpp
         utils/ProcessUtils.cpp
         utils/SafeProcess.cpp
+        utils/InteractiveProcess.cpp
         wallpaper/WallpaperManager.cpp
         wallpaper/WallpaperWindow.cpp
         wallpaper/renderers/StaticRenderer.cpp
@@ -127,7 +128,9 @@ else()
         hyprland/HyprlandManager.cpp
         
         # Steam
-        steam/SteamWorkshopClient.cpp
+        steam/SteamAPIClient.cpp
+        steam/SteamCMDWorker.cpp
+        steam/SteamService.cpp
         steam/DownloadQueue.cpp
         
         # Scheduler

@@ -2,9 +2,8 @@
 #include "Application.hpp"
 #include <iostream>
 #include <stdexcept>
-
 int main(int argc, char **argv) {
-  // Check for version flag
+  // check for version flag before firing up the logger or anything heavy
   for (int i = 1; i < argc; ++i) {
     if (std::string(argv[i]) == "-v" || std::string(argv[i]) == "--version") {
       std::cout << "BetterWallpaper v" << BWP_VERSION << std::endl;
@@ -12,20 +11,16 @@ int main(int argc, char **argv) {
     }
   }
 
-  // Initialize Logger
-  // Use current directory or a temp specific one for now to ensure visibility
-  // passed "local file" requirement.
   try {
     const char *envHome = std::getenv("HOME");
     std::filesystem::path logDir = std::filesystem::current_path();
+
+    // fallback to current dir if HOME isn't set (weird environment?)
     if (envHome) {
-      // Prefer a writable user directory if possible to avoid permission issues
-      // But user asked for "local file". Let's try CWD first, but safely.
-      // Actually, let's use the standard config location pattern to be safe,
-      // usually ~/.config/betterwallpaper
       std::filesystem::path home(envHome);
       logDir = home / ".config" / "betterwallpaper";
     }
+
     bwp::utils::Logger::init(logDir);
     LOG_SCOPE_FUNCTION("main");
 
@@ -34,12 +29,14 @@ int main(int argc, char **argv) {
     LOG_INFO("==========================================");
 
     auto *app = bwp::gui::Application::create();
+    
+    // actually run the gtk app
     int status = app->run(argc, argv);
-    delete app; // Ensure destructor runs for cleanup/persistence
+    
+    delete app;  
     return status;
   } catch (const std::exception &e) {
     std::cerr << "FATAL ERROR: " << e.what() << std::endl;
-    // Try to log if logger is initialized
     try {
       LOG_FATAL(std::string("Unhandled exception in main: ") + e.what());
     } catch (...) {

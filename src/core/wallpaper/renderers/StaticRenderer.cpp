@@ -1,24 +1,19 @@
 #include "StaticRenderer.hpp"
 #include "../../utils/Logger.hpp"
-#include <gdk/gdk.h> // For gdk_cairo_set_source_pixbuf
-
+#include <gdk/gdk.h>  
 namespace bwp::wallpaper {
-
 StaticRenderer::StaticRenderer() {}
-
 StaticRenderer::~StaticRenderer() {
   if (m_pixbuf) {
     g_object_unref(m_pixbuf);
   }
 }
-
 bool StaticRenderer::load(const std::string &path) {
   GError *error = nullptr;
   if (m_pixbuf) {
     g_object_unref(m_pixbuf);
     m_pixbuf = nullptr;
   }
-
   m_pixbuf = gdk_pixbuf_new_from_file(path.c_str(), &error);
   if (!m_pixbuf) {
     LOG_ERROR("Failed to load image " + path + ": " +
@@ -27,76 +22,55 @@ bool StaticRenderer::load(const std::string &path) {
       g_error_free(error);
     return false;
   }
-
   m_imgWidth = gdk_pixbuf_get_width(m_pixbuf);
   m_imgHeight = gdk_pixbuf_get_height(m_pixbuf);
   return true;
 }
-
 void StaticRenderer::setScalingMode(ScalingMode mode) { m_mode = mode; }
-
 void StaticRenderer::render(cairo_t *cr, int width, int height) {
   if (!m_pixbuf) {
-    // Clear with black
     cairo_set_source_rgb(cr, 0, 0, 0);
     cairo_paint(cr);
     return;
   }
-
   double scaleX = (double)width / m_imgWidth;
   double scaleY = (double)height / m_imgHeight;
   double scale = 1.0;
   double tx = 0, ty = 0;
-
-  // Clear background
   cairo_save(cr);
   cairo_set_source_rgb(cr, 0, 0, 0);
   cairo_paint(cr);
   cairo_restore(cr);
-
   switch (m_mode) {
   case ScalingMode::Stretch:
-    // Scale independently
-    break; // Use scaleX, scaleY below is different logic...
-    // cairo_scale logic needs single scaling usually or matrix
-    // GdkPixbuf usually we scale the pixbuf or use cairo transform.
-    // Using cairo transform is better.
+    break;  
     break;
-
-  case ScalingMode::Fill: // Crop to fill
+  case ScalingMode::Fill:  
     scale = std::max(scaleX, scaleY);
-    // Center crop
     tx = (width - m_imgWidth * scale) / 2.0;
     ty = (height - m_imgHeight * scale) / 2.0;
     scaleX = scaleY = scale;
     break;
-
-  case ScalingMode::Fit: // Letterbox
+  case ScalingMode::Fit:  
     scale = std::min(scaleX, scaleY);
     tx = (width - m_imgWidth * scale) / 2.0;
     ty = (height - m_imgHeight * scale) / 2.0;
     scaleX = scaleY = scale;
     break;
-
   case ScalingMode::Center:
     scaleX = scaleY = 1.0;
     tx = (width - m_imgWidth) / 2.0;
     ty = (height - m_imgHeight) / 2.0;
     break;
-
   case ScalingMode::Zoom:
-    scale = std::max(scaleX, scaleY) * 1.2; // Example zoom
+    scale = std::max(scaleX, scaleY) * 1.2;  
     tx = (width - m_imgWidth * scale) / 2.0;
     ty = (height - m_imgHeight * scale) / 2.0;
     scaleX = scaleY = scale;
     break;
-
   case ScalingMode::Tile:
-    // Pattern handling needed for Tile
-    // Logic differs from generic transform
     break;
   }
-
   if (m_mode == ScalingMode::Tile) {
     gdk_cairo_set_source_pixbuf(cr, m_pixbuf, 0, 0);
     cairo_pattern_t *pattern = cairo_get_source(cr);
@@ -111,5 +85,4 @@ void StaticRenderer::render(cairo_t *cr, int width, int height) {
     cairo_restore(cr);
   }
 }
-
-} // namespace bwp::wallpaper
+}  

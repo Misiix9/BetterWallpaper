@@ -3,49 +3,35 @@
 #include <gtk/gtk.h>
 #include <memory>
 #include <string>
-
 namespace bwp::gui {
-
 class WallpaperCard {
 public:
   WallpaperCard(const bwp::wallpaper::WallpaperInfo &info);
   ~WallpaperCard();
-
   GtkWidget *getWidget() const { return m_mainBox; }
-
-  void updateThumbnail(const std::string &path); // Load from file/cache
-
+  void updateThumbnail(const std::string &path);  
   void setFavorite(bool favorite);
   void setInfo(const bwp::wallpaper::WallpaperInfo &info);
   void updateMetadata(const bwp::wallpaper::WallpaperInfo &info);
   const bwp::wallpaper::WallpaperInfo &getInfo() const { return m_info; }
-
-  // Skeleton loading support
   void showSkeleton();
   void hideSkeleton();
-
-  // Lazy loading support — cancel pending loads when scrolled out of view
   void cancelThumbnailLoad();
   void releaseResources();
-
   void setHighlight(const std::string &query);
-
 private:
-
   GtkWidget *m_mainBox;
   GtkWidget *m_image;
   GtkWidget *m_titleLabel;
   GtkWidget *m_overlay;
   GtkWidget *m_favoriteBtn;
-  GtkWidget *m_skeletonOverlay; // Skeleton placeholder for loading state
-  GtkWidget *m_scanOverlay;     // Spinner container
-  GtkWidget *m_autoTagBadge;    // Icon
-  GtkWidget *m_typeBadge = nullptr; // Type indicator (Video/Web/Scene)
-
+  GtkWidget *m_skeletonOverlay;  
+  GtkWidget *m_scanOverlay;      
+  GtkWidget *m_autoTagBadge;     
+  GtkWidget *m_typeBadge = nullptr;  
   bwp::wallpaper::WallpaperInfo m_info;
   std::shared_ptr<bool> m_aliveToken;
   bool m_isLoading = true;
-  guint m_thumbnailSourceId = 0; // Debounce timer ID
+  guint m_thumbnailSourceId = 0;  
 };
-
-} // namespace bwp::gui
+}  

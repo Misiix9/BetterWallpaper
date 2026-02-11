@@ -4,26 +4,20 @@
 #include "../widgets/WallpaperGrid.hpp"
 #include <adwaita.h>
 #include <gtk/gtk.h>
-
 namespace bwp::gui {
-
 class LibraryView {
 public:
   LibraryView();
   ~LibraryView();
-
   GtkWidget *getWidget() const { return m_box; }
   void refresh();
-
 private:
   void setupUi();
   void loadWallpapers();
   void onAddWallpaper();
   void onSourceFilterChanged(const std::string &source);
-
   GtkWidget *m_box;
-  GtkWidget *m_toolbarView; // AdwToolbarView
-
+  GtkWidget *m_toolbarView;  
   std::unique_ptr<SearchBar> m_searchBar;
   std::unique_ptr<WallpaperGrid> m_grid;
   std::unique_ptr<PreviewPanel> m_previewPanel;
@@ -31,5 +25,4 @@ private:
   GtkWidget *m_filterCombo = nullptr;
   GtkStringList *m_tagList = nullptr;
 };
-
-} // namespace bwp::gui
+}  
