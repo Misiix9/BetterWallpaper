@@ -48,7 +48,7 @@ const char *const CURRENT_PROFILE = "current_profile";
 class SettingsSchema {
 public:
   static nlohmann::json getDefaults() {
-    return {{"version", "0.5.5"},
+    return {{"version", "0.5.8"},
             {"general",
              {{"autostart", true},
               {"autostart_method", "systemd"},

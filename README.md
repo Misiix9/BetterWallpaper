@@ -4,7 +4,7 @@
 
 **High-Performance Animated Wallpaper Manager for Linux**
 
-![Version](https://img.shields.io/badge/version-0.5.5%20Beta-blue?style=for-the-badge&logo=none)
+![Version](https://img.shields.io/badge/version-0.5.8%20Beta-blue?style=for-the-badge&logo=none)
 ![License](https://img.shields.io/badge/license-GPL3-green?style=for-the-badge&logo=none)
 ![Platform](https://img.shields.io/badge/platform-Wayland-orange?style=for-the-badge&logo=linux)
 [![AUR](https://img.shields.io/aur/version/betterwallpaper-git?style=for-the-badge&logo=arch-linux)](https://aur.archlinux.org/packages/betterwallpaper-git)
