@@ -39,16 +39,14 @@ namespace {
   }
   conf.set("wallpaper_history", history);
 }
-}  
+} // namespace
 
 WallpaperManager &WallpaperManager::getInstance() {
   static WallpaperManager instance;
   return instance;
 }
-WallpaperManager::WallpaperManager() {
-}
-WallpaperManager::~WallpaperManager() {
-}
+WallpaperManager::WallpaperManager() {}
+WallpaperManager::~WallpaperManager() {}
 
 void WallpaperManager::initialize() {
   monitor::MonitorManager::getInstance().setCallback(
@@ -107,16 +105,15 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
   }
   m_monitors[monitorName].currentPath = path;
   WindowsWallpaperSetter setter;
-  bool result =
-      setter.setWallpaper(path, monitorName);  
+  bool result = setter.setWallpaper(path, monitorName);
   if (result) {
     LOG_INFO("Windows wallpaper set successfully.");
     updateHistory(path);
     saveState();
   } else {
     LOG_ERROR("Failed to set Windows wallpaper.");
-    updateHistory(path);  
-    saveState();          
+    updateHistory(path);
+    saveState();
   }
   return result;
 #else
@@ -126,10 +123,8 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
   LOG_INFO("Currently have " + std::to_string(m_monitors.size()) + " monitors");
   {
     auto existing = m_monitors.find(monitorName);
-    if (existing != m_monitors.end() &&
-        existing->second.currentPath == path &&
-        existing->second.renderer &&
-        existing->second.renderer->isPlaying() &&
+    if (existing != m_monitors.end() && existing->second.currentPath == path &&
+        existing->second.renderer && existing->second.renderer->isPlaying() &&
         !path.empty()) {
       LOG_INFO("Wallpaper already set to " + path + " on " + monitorName +
                " — skipping re-application");
@@ -155,13 +150,33 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
   LOG_INFO("Found monitor " + monitorName);
   {
     auto &conf = bwp::config::ConfigManager::getInstance();
-    m_fpsLimit = conf.get<int>("performance.fps_limit", m_fpsLimit);
-    m_volumeLevel = conf.get<int>("defaults.audio_volume", m_volumeLevel);
-    bool audioEnabled = conf.get<bool>("defaults.audio_enabled", !m_globalMuted);
-    m_globalMuted = !audioEnabled;
-    m_noAudioProcessing = conf.get<bool>("defaults.no_audio_processing", m_noAudioProcessing);
-    m_disableMouse = conf.get<bool>("defaults.disable_mouse", m_disableMouse);
-    m_noAutomute = conf.get<bool>("defaults.no_automute", m_noAutomute);
+    // Prefer per-wallpaper resolved settings (written by PreviewPanel before
+    // IPC), falling back to global defaults
+    int perWpFps = conf.get<int>("wallpapers.current_settings.fps_limit", -999);
+    if (perWpFps != -999) {
+      m_fpsLimit = perWpFps;
+      m_volumeLevel =
+          conf.get<int>("wallpapers.current_settings.volume", m_volumeLevel);
+      m_globalMuted =
+          conf.get<bool>("wallpapers.current_settings.muted", m_globalMuted);
+      m_noAudioProcessing =
+          conf.get<bool>("wallpapers.current_settings.no_audio_processing",
+                         m_noAudioProcessing);
+      m_disableMouse = conf.get<bool>(
+          "wallpapers.current_settings.disable_mouse", m_disableMouse);
+      m_noAutomute = conf.get<bool>("wallpapers.current_settings.no_automute",
+                                    m_noAutomute);
+    } else {
+      m_fpsLimit = conf.get<int>("performance.fps_limit", m_fpsLimit);
+      m_volumeLevel = conf.get<int>("defaults.audio_volume", m_volumeLevel);
+      bool audioEnabled =
+          conf.get<bool>("defaults.audio_enabled", !m_globalMuted);
+      m_globalMuted = !audioEnabled;
+      m_noAudioProcessing =
+          conf.get<bool>("defaults.no_audio_processing", m_noAudioProcessing);
+      m_disableMouse = conf.get<bool>("defaults.disable_mouse", m_disableMouse);
+      m_noAutomute = conf.get<bool>("defaults.no_automute", m_noAutomute);
+    }
   }
   std::shared_ptr<WallpaperRenderer> renderer;
   auto &preloader = WallpaperPreloader::getInstance();
@@ -228,7 +243,7 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
   }
   auto newWindow = std::make_shared<WallpaperWindow>(monitorInfo);
   newWindow->setRenderer(renderer);
-  newWindow->setOpacity(0.0);  
+  newWindow->setOpacity(0.0);
   if (m_paused) {
     renderer->pause();
   }
@@ -239,7 +254,7 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
   newWindow->show();
   LOG_INFO("New wallpaper window created IN FRONT with opacity 0");
   auto &transitionManager = WallpaperTransitionManager::getInstance();
-  transitionManager.loadSettings();  
+  transitionManager.loadSettings();
   it->second.window = newWindow;
   it->second.renderer = renderer;
   it->second.currentPath = path;
@@ -348,12 +363,15 @@ bool WallpaperManager::setWallpaper(const std::vector<std::string> &monitors,
       // Stop old renderer after transition delay via main-loop timer
       // (avoids unjoined detached threads)
       auto *captured = new std::shared_ptr<WallpaperRenderer>(oldRenderer);
-      g_timeout_add(800, +[](gpointer data) -> gboolean {
-        auto *r = static_cast<std::shared_ptr<WallpaperRenderer>*>(data);
-        (*r)->stop();
-        delete r;
-        return G_SOURCE_REMOVE;
-      }, captured);
+      g_timeout_add(
+          800,
+          +[](gpointer data) -> gboolean {
+            auto *r = static_cast<std::shared_ptr<WallpaperRenderer> *>(data);
+            (*r)->stop();
+            delete r;
+            return G_SOURCE_REMOVE;
+          },
+          captured);
     }
   }
   if (m_paused) {
@@ -373,7 +391,7 @@ WallpaperManager::createRenderer(const std::string &path) {
     return std::make_shared<StaticRenderer>();
   } else if (mime.find("video/") != std::string::npos ||
              mime.find("gif") != std::string::npos) {
-    return std::make_shared<VideoRenderer>();  
+    return std::make_shared<VideoRenderer>();
   } else if (mime.find("x-wallpaper-engine") != std::string::npos) {
     return std::make_shared<WallpaperEngineRenderer>();
   }
@@ -384,7 +402,7 @@ WallpaperManager::createRenderer(const std::string &path) {
   if (ext == "pkg" || ext == "json" || ext == "html" || ext == "htm") {
     return std::make_shared<WallpaperEngineRenderer>();
   }
-  return std::make_shared<StaticRenderer>();  
+  return std::make_shared<StaticRenderer>();
 }
 void WallpaperManager::setPaused(bool paused) {
   std::lock_guard<std::recursive_mutex> lock(m_mutex);
@@ -607,7 +625,7 @@ void WallpaperManager::resourceMonitorLoop() {
               "). Wallpaper has been paused to save resources.",
           bwp::core::NotificationType::Warning);
       fallbackToStatic();
-      for (int i = 0; i < 300 && !m_stopMonitor; i++) {  
+      for (int i = 0; i < 300 && !m_stopMonitor; i++) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
       }
     }
@@ -634,13 +652,12 @@ void WallpaperManager::fallbackToStatic() {
           else if (std::filesystem::exists(dir / "preview.gif"))
             thumb = (dir / "preview.gif").string();
           else
-            thumb =
-                state.currentPath;  
+            thumb = state.currentPath;
           auto newRenderer = std::make_shared<StaticRenderer>();
           if (newRenderer->load(thumb)) {
             state.renderer = newRenderer;
             state.window->transitionTo(newRenderer);
-            newRenderer->render(nullptr, 0, 0);  
+            newRenderer->render(nullptr, 0, 0);
           }
           triggered = true;
         }
@@ -729,4 +746,4 @@ void WallpaperManager::setVolumeLevel(int volume) {
     }
   }
 }
-}  
+} // namespace bwp::wallpaper

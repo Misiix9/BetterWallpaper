@@ -30,6 +30,7 @@ add_executable(betterwallpaper
     widgets/ProfileEditDialog.cpp
     widgets/ScheduleDialog.cpp
     widgets/HyprlandWorkspacesView.cpp
+    widgets/DownloadIndicator.cpp
     models/WallpaperObject.cpp
     views/LibraryView.cpp
     views/MonitorsView.cpp

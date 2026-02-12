@@ -29,11 +29,11 @@ int main(int argc, char **argv) {
     LOG_INFO("==========================================");
 
     auto *app = bwp::gui::Application::create();
-    
+
     // actually run the gtk app
     int status = app->run(argc, argv);
-    
-    delete app;  
+
+    delete app;
     return status;
   } catch (const std::exception &e) {
     std::cerr << "FATAL ERROR: " << e.what() << std::endl;

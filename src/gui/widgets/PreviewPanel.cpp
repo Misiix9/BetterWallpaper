@@ -6,10 +6,10 @@
 #include "../../core/utils/Logger.hpp"
 #include "../../core/utils/ToastManager.hpp"
 #include "../../core/wallpaper/NativeWallpaperSetter.hpp"
+#include "../../core/wallpaper/ThumbnailCache.hpp"
 #include "../../core/wallpaper/WallpaperLibrary.hpp"
 #include "../../core/wallpaper/WallpaperManager.hpp"
 #include "../../core/wallpaper/WallpaperPreloader.hpp"
-#include "../../core/wallpaper/ThumbnailCache.hpp"
 #include "../dialogs/ErrorDialog.hpp"
 #include <algorithm>
 #include <cctype>
@@ -21,8 +21,7 @@
 #include <thread>
 namespace bwp::gui {
 static constexpr int PANEL_WIDTH = 300;
-static constexpr int PREVIEW_WIDTH =
-    260;  
+static constexpr int PREVIEW_WIDTH = 260;
 static constexpr int PREVIEW_HEIGHT = 146;
 PreviewPanel::PreviewPanel() {
   bwp::monitor::MonitorManager::getInstance().initialize();
@@ -53,7 +52,7 @@ void PreviewPanel::setupUi() {
                                  GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
   gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(m_scrolledWindow),
                                 m_imageStack);
-  setupGestures(m_scrolledWindow);  
+  setupGestures(m_scrolledWindow);
   gtk_widget_set_size_request(m_imageStack, PREVIEW_WIDTH, PREVIEW_HEIGHT);
   m_picture1 = gtk_picture_new();
   gtk_picture_set_content_fit(GTK_PICTURE(m_picture1), GTK_CONTENT_FIT_COVER);
@@ -131,24 +130,58 @@ void PreviewPanel::setupUi() {
       gtk_check_button_new_with_label("Disable Audio Processing");
   {
     auto &conf = bwp::config::ConfigManager::getInstance();
-    gtk_check_button_set_active(GTK_CHECK_BUTTON(m_noAudioProcCheck),
+    gtk_check_button_set_active(
+        GTK_CHECK_BUTTON(m_noAudioProcCheck),
         conf.get<bool>("defaults.no_audio_processing", true));
   }
+  g_signal_connect(m_noAudioProcCheck, "toggled",
+                   G_CALLBACK(+[](GtkCheckButton *btn, gpointer data) {
+                     auto *self = static_cast<PreviewPanel *>(data);
+                     if (!self->m_updatingWidgets &&
+                         !self->m_currentInfo.id.empty()) {
+                       self->m_currentInfo.settings.noAudioProcessing =
+                           gtk_check_button_get_active(btn) ? 1 : 0;
+                       self->saveCurrentSettings();
+                     }
+                   }),
+                   this);
   gtk_box_append(GTK_BOX(settingsBox), m_noAudioProcCheck);
   m_disableMouseCheck =
       gtk_check_button_new_with_label("Disable Mouse Interaction");
   {
     auto &conf = bwp::config::ConfigManager::getInstance();
     gtk_check_button_set_active(GTK_CHECK_BUTTON(m_disableMouseCheck),
-        conf.get<bool>("defaults.disable_mouse", true));
+                                conf.get<bool>("defaults.disable_mouse", true));
   }
+  g_signal_connect(m_disableMouseCheck, "toggled",
+                   G_CALLBACK(+[](GtkCheckButton *btn, gpointer data) {
+                     auto *self = static_cast<PreviewPanel *>(data);
+                     if (!self->m_updatingWidgets &&
+                         !self->m_currentInfo.id.empty()) {
+                       self->m_currentInfo.settings.disableMouse =
+                           gtk_check_button_get_active(btn) ? 1 : 0;
+                       self->saveCurrentSettings();
+                     }
+                   }),
+                   this);
   gtk_box_append(GTK_BOX(settingsBox), m_disableMouseCheck);
   m_noAutomuteCheck = gtk_check_button_new_with_label("No Auto-Mute");
   {
     auto &conf = bwp::config::ConfigManager::getInstance();
     gtk_check_button_set_active(GTK_CHECK_BUTTON(m_noAutomuteCheck),
-        conf.get<bool>("defaults.no_automute", false));
+                                conf.get<bool>("defaults.no_automute", false));
   }
+  g_signal_connect(m_noAutomuteCheck, "toggled",
+                   G_CALLBACK(+[](GtkCheckButton *btn, gpointer data) {
+                     auto *self = static_cast<PreviewPanel *>(data);
+                     if (!self->m_updatingWidgets &&
+                         !self->m_currentInfo.id.empty()) {
+                       self->m_currentInfo.settings.noAutomute =
+                           gtk_check_button_get_active(btn) ? 1 : 0;
+                       self->saveCurrentSettings();
+                     }
+                   }),
+                   this);
   gtk_box_append(GTK_BOX(settingsBox), m_noAutomuteCheck);
   GtkWidget *fpsBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
   gtk_box_append(GTK_BOX(fpsBox), gtk_label_new("FPS Limit:"));
@@ -156,7 +189,8 @@ void PreviewPanel::setupUi() {
   {
     auto &conf = bwp::config::ConfigManager::getInstance();
     int defaultFps = conf.get<int>("performance.fps_limit", 60);
-    if (defaultFps <= 0) defaultFps = 60; // 0 means unlimited, default to 60 for UI
+    if (defaultFps <= 0)
+      defaultFps = 60; // 0 means unlimited, default to 60 for UI
     gtk_spin_button_set_value(GTK_SPIN_BUTTON(m_fpsSpin), defaultFps);
   }
   g_signal_connect(m_fpsSpin, "value-changed",
@@ -179,7 +213,7 @@ void PreviewPanel::setupUi() {
   {
     auto &conf = bwp::config::ConfigManager::getInstance();
     gtk_range_set_value(GTK_RANGE(m_volumeScale),
-        conf.get<int>("defaults.audio_volume", 50));
+                        conf.get<int>("defaults.audio_volume", 50));
   }
   gtk_widget_set_size_request(m_volumeScale, 100, -1);
   g_signal_connect(m_volumeScale, "value-changed",
@@ -202,8 +236,8 @@ void PreviewPanel::setupUi() {
                    G_CALLBACK(+[](GObject *obj, GParamSpec *, gpointer data) {
                      auto *self = static_cast<PreviewPanel *>(data);
                      if (!self->m_currentInfo.id.empty()) {
-                       guint sel = gtk_drop_down_get_selected(
-                           GTK_DROP_DOWN(obj));
+                       guint sel =
+                           gtk_drop_down_get_selected(GTK_DROP_DOWN(obj));
                        self->m_currentInfo.settings.scaling =
                            static_cast<bwp::wallpaper::ScalingMode>(sel);
                        self->saveCurrentSettings();
@@ -214,7 +248,9 @@ void PreviewPanel::setupUi() {
   gtk_box_append(GTK_BOX(settingsBox), scalingBox);
   m_applyButton = gtk_button_new();
   GtkWidget *applyLabel = gtk_label_new(nullptr);
-  gtk_label_set_markup(GTK_LABEL(applyLabel), "<span color='black' weight='bold'>Apply Wallpaper</span>");
+  gtk_label_set_markup(
+      GTK_LABEL(applyLabel),
+      "<span color='black' weight='bold'>Apply Wallpaper</span>");
   gtk_button_set_child(GTK_BUTTON(m_applyButton), applyLabel);
   gtk_widget_add_css_class(m_applyButton, "suggested-action");
   gtk_widget_set_sensitive(m_applyButton, FALSE);
@@ -295,7 +331,7 @@ void PreviewPanel::setWallpaper(const bwp::wallpaper::WallpaperInfo &info) {
         snprintf(buf, 64, "%.1f KB", fsize / 1024.0);
       details += "\nSize: " + std::string(buf);
     }
-  } catch (const std::exception& e) {
+  } catch (const std::exception &e) {
     LOG_DEBUG("Failed to get file size for preview: " + std::string(e.what()));
   }
   if (info.type == bwp::wallpaper::WallpaperType::StaticImage) {
@@ -314,26 +350,49 @@ void PreviewPanel::setWallpaper(const bwp::wallpaper::WallpaperInfo &info) {
   gtk_label_set_text(GTK_LABEL(m_statusLabel), "");
   m_updatingWidgets = true;
   auto &conf = bwp::config::ConfigManager::getInstance();
+
+  // Muted: per-wallpaper override, else global
   bool muted = info.settings.muted;
   if (!muted) {
     bool audioEnabled = conf.get<bool>("defaults.audio_enabled", false);
     muted = !audioEnabled;
   }
   gtk_check_button_set_active(GTK_CHECK_BUTTON(m_silentCheck), muted);
+
+  // No Audio Processing: per-wallpaper if set, else global
+  bool noAudioProc = (info.settings.noAudioProcessing >= 0)
+                         ? (info.settings.noAudioProcessing != 0)
+                         : conf.get<bool>("defaults.no_audio_processing", true);
   gtk_check_button_set_active(GTK_CHECK_BUTTON(m_noAudioProcCheck),
-      conf.get<bool>("defaults.no_audio_processing", true));
+                              noAudioProc);
+
+  // Disable Mouse: per-wallpaper if set, else global
+  bool disableMouse = (info.settings.disableMouse >= 0)
+                          ? (info.settings.disableMouse != 0)
+                          : conf.get<bool>("defaults.disable_mouse", true);
   gtk_check_button_set_active(GTK_CHECK_BUTTON(m_disableMouseCheck),
-      conf.get<bool>("defaults.disable_mouse", true));
-  gtk_check_button_set_active(GTK_CHECK_BUTTON(m_noAutomuteCheck),
-      conf.get<bool>("defaults.no_automute", false));
-  int volume = info.settings.volume;
-  if (volume <= 0)
-    volume = conf.get<int>("defaults.audio_volume", 50);
+                              disableMouse);
+
+  // No Auto-mute: per-wallpaper if set, else global
+  bool noAutomute = (info.settings.noAutomute >= 0)
+                        ? (info.settings.noAutomute != 0)
+                        : conf.get<bool>("defaults.no_automute", false);
+  gtk_check_button_set_active(GTK_CHECK_BUTTON(m_noAutomuteCheck), noAutomute);
+
+  // Volume: per-wallpaper if set (>= 0), else global
+  int volume = (info.settings.volume >= 0)
+                   ? info.settings.volume
+                   : conf.get<int>("defaults.audio_volume", 50);
   gtk_range_set_value(GTK_RANGE(m_volumeScale), volume);
-  int fpsLimit = info.settings.fps;
+
+  // FPS: per-wallpaper if set (> 0), else global
+  int fpsLimit = (info.settings.fps > 0)
+                     ? info.settings.fps
+                     : conf.get<int>("performance.fps_limit", 60);
   if (fpsLimit <= 0)
-    fpsLimit = conf.get<int>("performance.fps_limit", 60);
+    fpsLimit = 60;
   gtk_spin_button_set_value(GTK_SPIN_BUTTON(m_fpsSpin), fpsLimit);
+
   gtk_drop_down_set_selected(GTK_DROP_DOWN(m_scalingDropdown),
                              static_cast<guint>(info.settings.scaling));
   m_updatingWidgets = false;
@@ -408,7 +467,7 @@ std::string PreviewPanel::getSettingsFlags() {
   if (gtk_check_button_get_active(GTK_CHECK_BUTTON(m_noAutomuteCheck)))
     flags += " --noautomute";
   int fps = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(m_fpsSpin));
-  if (fps != 60) {  
+  if (fps != 60) {
     flags += " --fps " + std::to_string(fps);
   }
   int vol = (int)gtk_range_get_value(GTK_RANGE(m_volumeScale));
@@ -428,21 +487,29 @@ void PreviewPanel::onApplyClicked() {
     LOG_ERROR("Cannot set wallpaper: path is empty");
     return;
   }
+  // Save per-wallpaper settings
+  saveCurrentSettings();
+
+  // Resolve final values: per-wallpaper if set, else global
   auto &conf = bwp::config::ConfigManager::getInstance();
   bool muted = gtk_check_button_get_active(GTK_CHECK_BUTTON(m_silentCheck));
-  conf.set("defaults.audio_enabled", !muted);
-  bool noAudioProc = gtk_check_button_get_active(GTK_CHECK_BUTTON(m_noAudioProcCheck));
-  conf.set("defaults.no_audio_processing", noAudioProc);
-  bool disableMouse = gtk_check_button_get_active(GTK_CHECK_BUTTON(m_disableMouseCheck));
-  conf.set("defaults.disable_mouse", disableMouse);
-  bool noAutomute = gtk_check_button_get_active(GTK_CHECK_BUTTON(m_noAutomuteCheck));
-  conf.set("defaults.no_automute", noAutomute);
+  bool noAudioProc =
+      gtk_check_button_get_active(GTK_CHECK_BUTTON(m_noAudioProcCheck));
+  bool disableMouse =
+      gtk_check_button_get_active(GTK_CHECK_BUTTON(m_disableMouseCheck));
+  bool noAutomute =
+      gtk_check_button_get_active(GTK_CHECK_BUTTON(m_noAutomuteCheck));
   int fps = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(m_fpsSpin));
-  if (fps > 0)
-    conf.set("performance.fps_limit", fps);
   int volume = static_cast<int>(gtk_range_get_value(GTK_RANGE(m_volumeScale)));
-  conf.set("defaults.audio_volume", volume);
-  conf.save();  
+
+  // Write resolved settings to a temp section the daemon will read
+  conf.set("wallpapers.current_settings.muted", muted);
+  conf.set("wallpapers.current_settings.no_audio_processing", noAudioProc);
+  conf.set("wallpapers.current_settings.disable_mouse", disableMouse);
+  conf.set("wallpapers.current_settings.no_automute", noAutomute);
+  conf.set("wallpapers.current_settings.fps_limit", fps);
+  conf.set("wallpapers.current_settings.volume", volume);
+  conf.save();
   updateMonitorList();
   guint selected = gtk_drop_down_get_selected(GTK_DROP_DOWN(m_monitorDropdown));
   bool applyAll = (selected == 0);
@@ -506,7 +573,7 @@ void PreviewPanel::onApplyClicked() {
           }
         }
         delete d;
-        return FALSE;  
+        return FALSE;
       },
       data);
 }
@@ -548,7 +615,7 @@ void PreviewPanel::updateRatingDisplay() {
     if (m_currentInfo.rating >= starValue) {
       gtk_button_set_icon_name(GTK_BUTTON(btn), "starred-symbolic");
       gtk_widget_add_css_class(btn, "rated-star");
-      gtk_widget_remove_css_class(btn, "suggested-action");  
+      gtk_widget_remove_css_class(btn, "suggested-action");
     } else {
       gtk_button_set_icon_name(GTK_BUTTON(btn), "non-starred-symbolic");
       gtk_widget_remove_css_class(btn, "rated-star");
@@ -566,29 +633,27 @@ void PreviewPanel::setupGestures(GtkWidget *widget) {
   auto *clickGesture = gtk_gesture_click_new();
   gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(clickGesture),
                                 GDK_BUTTON_PRIMARY);
-  g_signal_connect(
-      clickGesture, "pressed",
-      G_CALLBACK(+[](GtkGestureClick *, int n_press, double, double,
-                      gpointer data) {
-        if (n_press == 2) {
-          auto *self = static_cast<PreviewPanel *>(data);
-          self->resetZoom();
-        }
-      }),
-      this);
+  g_signal_connect(clickGesture, "pressed",
+                   G_CALLBACK(+[](GtkGestureClick *, int n_press, double,
+                                  double, gpointer data) {
+                     if (n_press == 2) {
+                       auto *self = static_cast<PreviewPanel *>(data);
+                       self->resetZoom();
+                     }
+                   }),
+                   this);
   gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(clickGesture));
-  auto *scrollController = gtk_event_controller_scroll_new(
-      GTK_EVENT_CONTROLLER_SCROLL_VERTICAL);
-  g_signal_connect(
-      scrollController, "scroll",
-      G_CALLBACK(+[](GtkEventControllerScroll *, double, double dy,
-                      gpointer data) -> gboolean {
-        auto *self = static_cast<PreviewPanel *>(data);
-        double newZoom = self->m_zoomLevel - dy * ZOOM_STEP;
-        self->applyZoom(newZoom);
-        return TRUE;  
-      }),
-      this);
+  auto *scrollController =
+      gtk_event_controller_scroll_new(GTK_EVENT_CONTROLLER_SCROLL_VERTICAL);
+  g_signal_connect(scrollController, "scroll",
+                   G_CALLBACK(+[](GtkEventControllerScroll *, double, double dy,
+                                  gpointer data) -> gboolean {
+                     auto *self = static_cast<PreviewPanel *>(data);
+                     double newZoom = self->m_zoomLevel - dy * ZOOM_STEP;
+                     self->applyZoom(newZoom);
+                     return TRUE;
+                   }),
+                   this);
   gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(scrollController));
   auto *dragGesture = gtk_gesture_drag_new();
   g_signal_connect(
@@ -614,8 +679,7 @@ void PreviewPanel::setupGestures(GtkWidget *widget) {
       this);
   gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(dragGesture));
 }
-void PreviewPanel::applyZoom(double newZoom, double  ,
-                             double  ) {
+void PreviewPanel::applyZoom(double newZoom, double, double) {
   newZoom = std::clamp(newZoom, ZOOM_MIN, ZOOM_MAX);
   if (std::abs(newZoom - m_zoomLevel) < 0.01)
     return;
@@ -661,8 +725,7 @@ void PreviewPanel::updateZoomIndicator() {
       },
       m_zoomIndicator);
 }
-void PreviewPanel::onPanBegin(GtkGestureDrag *, double  ,
-                              double  ) {
+void PreviewPanel::onPanBegin(GtkGestureDrag *, double, double) {
   GtkAdjustment *hadj = gtk_scrolled_window_get_hadjustment(
       GTK_SCROLLED_WINDOW(m_scrolledWindow));
   GtkAdjustment *vadj = gtk_scrolled_window_get_vadjustment(
@@ -676,7 +739,7 @@ void PreviewPanel::onPanBegin(GtkGestureDrag *, double  ,
 void PreviewPanel::onPanGesture(GtkGestureDrag *, double offset_x,
                                 double offset_y) {
   if (m_zoomLevel <= ZOOM_MIN)
-    return;  
+    return;
   GtkAdjustment *hadj = gtk_scrolled_window_get_hadjustment(
       GTK_SCROLLED_WINDOW(m_scrolledWindow));
   GtkAdjustment *vadj = gtk_scrolled_window_get_vadjustment(
@@ -684,4 +747,4 @@ void PreviewPanel::onPanGesture(GtkGestureDrag *, double offset_x,
   gtk_adjustment_set_value(hadj, m_dragStartX - offset_x);
   gtk_adjustment_set_value(vadj, m_dragStartY - offset_y);
 }
-}  
+} // namespace bwp::gui

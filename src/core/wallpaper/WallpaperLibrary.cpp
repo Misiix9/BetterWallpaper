@@ -24,7 +24,7 @@ WallpaperLibrary::~WallpaperLibrary() {
 void WallpaperLibrary::initialize() {
   LOG_SCOPE_AUTO();
   if (m_initialized.exchange(true)) {
-    return;  
+    return;
   }
   load();
 }
@@ -68,11 +68,11 @@ void WallpaperLibrary::load() {
       info.favorite = item.value("favorite", false);
       info.play_count = item.value("play_count", 0);
       if (item.contains("added")) {
-        info.added = (long long)item["added"];  
+        info.added = (long long)item["added"];
       }
       if (info.added == 0) {
-        info.added = static_cast<long long>(
-            std::chrono::system_clock::to_time_t(
+        info.added =
+            static_cast<long long>(std::chrono::system_clock::to_time_t(
                 std::chrono::system_clock::now()));
         m_dirty = true;
       }
@@ -86,12 +86,14 @@ void WallpaperLibrary::load() {
       }
       if (item.contains("settings")) {
         const auto &s = item["settings"];
-        info.settings.fps = s.value("fps", 0);
-        info.settings.volume = s.value("volume", 100);
+        info.settings.fps = s.value("fps", -1);
+        info.settings.volume = s.value("volume", -1);
         info.settings.muted = s.value("muted", false);
         info.settings.playback_speed = s.value("playback_speed", 1.0f);
-        info.settings.scaling =
-            static_cast<ScalingMode>(s.value("scaling", 1));  
+        info.settings.scaling = static_cast<ScalingMode>(s.value("scaling", 0));
+        info.settings.noAudioProcessing = s.value("no_audio_processing", -1);
+        info.settings.disableMouse = s.value("disable_mouse", -1);
+        info.settings.noAutomute = s.value("no_automute", -1);
       }
       info.blurhash = item.value("blurhash", "");
       if (!info.id.empty()) {
@@ -175,13 +177,16 @@ void WallpaperLibrary::save() {
       item["added"] = info.added;
       item["last_used"] = info.last_used;
       item["tags"] = info.tags;
-      item["source"] = info.source;  
+      item["source"] = info.source;
       nlohmann::json settings;
       settings["fps"] = info.settings.fps;
       settings["volume"] = info.settings.volume;
       settings["muted"] = info.settings.muted;
       settings["playback_speed"] = info.settings.playback_speed;
       settings["scaling"] = static_cast<int>(info.settings.scaling);
+      settings["no_audio_processing"] = info.settings.noAudioProcessing;
+      settings["disable_mouse"] = info.settings.disableMouse;
+      settings["no_automute"] = info.settings.noAutomute;
       item["settings"] = settings;
       if (!info.blurhash.empty()) {
         item["blurhash"] = info.blurhash;
@@ -227,8 +232,9 @@ void WallpaperLibrary::addWallpaper(const WallpaperInfo &info) {
     }
     WallpaperInfo newInfo = info;
     if (newInfo.added == 0) {
-      newInfo.added = static_cast<long long>(
-          std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
+      newInfo.added =
+          static_cast<long long>(std::chrono::system_clock::to_time_t(
+              std::chrono::system_clock::now()));
     }
     if (newInfo.title.empty()) {
       newInfo.title = std::filesystem::path(newInfo.path).stem().string();
@@ -422,4 +428,4 @@ std::vector<std::string> WallpaperLibrary::getAllTags() const {
 std::filesystem::path WallpaperLibrary::getDataDirectory() const {
   return m_dbPath.parent_path();
 }
-}  
+} // namespace bwp::wallpaper

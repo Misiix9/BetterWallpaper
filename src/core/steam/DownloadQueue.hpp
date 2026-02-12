@@ -8,15 +8,18 @@
 namespace bwp::steam {
 
 struct DownloadProgress {
-    std::string workshopId;
-    std::string title;
-    float percent = 0.0f;
-    std::string speed; 
+  std::string workshopId;
+  std::string title;
+  float percent = 0.0f;
+  std::string speed;
 };
 
 struct QueueItem {
   std::string workshopId;
   std::string title;
+  std::string thumbnailUrl;
+  std::string author;
+  int votesUp = 0;
   DownloadProgress progress;
   enum class Status {
     Pending,
@@ -36,7 +39,9 @@ public:
   using CompleteCallback = std::function<void(
       const std::string &workshopId, bool success, const std::string &path)>;
   static DownloadQueue &getInstance();
-  void addToQueue(const std::string &workshopId, const std::string &title = "");
+  void addToQueue(const std::string &workshopId, const std::string &title = "",
+                  const std::string &thumbnailUrl = "",
+                  const std::string &author = "", int votesUp = 0);
   void removeFromQueue(const std::string &workshopId);
   void clearQueue();
   void moveToFront(const std::string &workshopId);
@@ -59,6 +64,7 @@ public:
   }
   void loadFromConfig();
   void saveToConfig();
+
 private:
   DownloadQueue() = default;
   ~DownloadQueue() = default;
@@ -74,4 +80,4 @@ private:
   ProgressCallback m_progressCallback;
   CompleteCallback m_completeCallback;
 };
-}  
+} // namespace bwp::steam

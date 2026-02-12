@@ -13,15 +13,17 @@ class WallpaperPreloader {
 public:
   static WallpaperPreloader &getInstance();
   enum class PreloadState { None, Loading, Ready, Failed };
-  using PreloadCallback = std::function<void(const std::string &path,
-                                             PreloadState state)>;
+  using PreloadCallback =
+      std::function<void(const std::string &path, PreloadState state)>;
   void preload(const std::string &path, PreloadCallback callback = nullptr);
   PreloadState getState(const std::string &path) const;
   bool isReady(const std::string &path) const;
-  std::shared_ptr<WallpaperRenderer> getPreloadedRenderer(const std::string &path);
+  std::shared_ptr<WallpaperRenderer>
+  getPreloadedRenderer(const std::string &path);
   void clearPreload(const std::string &path = "");
   void cancelPreload(const std::string &path);
   void setMaxPreloads(size_t max);
+
 private:
   WallpaperPreloader();
   ~WallpaperPreloader();
@@ -35,6 +37,12 @@ private:
     std::atomic<bool> cancelled{false};
     PreloadCallback callback;
     int64_t preloadedAtMs = 0;
+
+    ~PreloadEntry() {
+      if (preloadThread.joinable()) {
+        preloadThread.detach();
+      }
+    }
   };
   void doPreload(const std::string &path);
   void evictOldPreloads();
@@ -43,4 +51,4 @@ private:
   std::unordered_map<std::string, std::shared_ptr<PreloadEntry>> m_preloads;
   size_t m_maxPreloads = 3;
 };
-}  
+} // namespace bwp::wallpaper

@@ -22,9 +22,10 @@ Application *Application::create() {
 Application *Application::getInstance() { return s_instance; }
 Application::Application() {
   m_app = adw_application_new("com.github.betterwallpaper",
-                              G_APPLICATION_NON_UNIQUE);
+                              G_APPLICATION_HANDLES_COMMAND_LINE);
   g_signal_connect(m_app, "activate", G_CALLBACK(onActivate), this);
   g_signal_connect(m_app, "startup", G_CALLBACK(onStartup), this);
+  g_signal_connect(m_app, "command-line", G_CALLBACK(onCommandLine), this);
 }
 Application::~Application() {
   bwp::wallpaper::WallpaperManager::getInstance().shutdown();
@@ -41,6 +42,47 @@ Application::~Application() {
 int Application::run(int argc, char **argv) {
   return g_application_run(G_APPLICATION(m_app), argc, argv);
 }
+int Application::onCommandLine(GApplication *app,
+                               GApplicationCommandLine *cmdline,
+                               gpointer user_data) {
+  // Ensure the application is activated (window created/shown)
+  g_application_activate(app);
+
+  // Application *self = static_cast<Application *>(user_data);
+  // Get arguments
+  int argc;
+  char **argv = g_application_command_line_get_arguments(cmdline, &argc);
+
+  // Find the MainWindow if it exists
+  GtkWindow *activeWindow =
+      gtk_application_get_active_window(GTK_APPLICATION(app));
+  MainWindow *mainWindow = nullptr;
+  if (activeWindow) {
+    mainWindow = static_cast<MainWindow *>(
+        g_object_get_data(G_OBJECT(activeWindow), "main-window"));
+  }
+
+  for (int i = 0; i < argc; ++i) {
+    std::string arg = argv[i];
+    if (arg == "--settings") {
+      bwp::utils::Logger::log(bwp::utils::LogLevel::INFO,
+                              "CLI: Opening Settings");
+      if (mainWindow) {
+        mainWindow->navigateTo("settings");
+        mainWindow->show();
+      }
+    } else if (arg == "--show" || arg == "--library") {
+      bwp::utils::Logger::log(bwp::utils::LogLevel::INFO,
+                              "CLI: Showing Library");
+      if (mainWindow) {
+        mainWindow->navigateTo("library");
+        mainWindow->show();
+      }
+    }
+  }
+  g_strfreev(argv);
+  return 0;
+}
 void Application::onActivate(GApplication *app, gpointer) {
   bool showWizard = bwp::config::ConfigManager::getInstance().get<bool>(
       "general.first_run", true);
@@ -48,7 +90,7 @@ void Application::onActivate(GApplication *app, gpointer) {
     bwp::utils::Logger::log(
         bwp::utils::LogLevel::INFO,
         "Launching Fluid Setup Wizard (main app hidden until complete)");
-    auto *wizard = new FluidSetupWizard(nullptr);  
+    auto *wizard = new FluidSetupWizard(nullptr);
     wizard->setOnComplete([app, wizard]() {
       bwp::utils::Logger::log(bwp::utils::LogLevel::INFO,
                               "Wizard complete - launching main application");
@@ -125,10 +167,10 @@ std::string Application::findStylesheetPath() {
         return canonicalPath.string();
       }
     } catch (const std::exception &e) {
-      (void)e;  
+      (void)e;
     }
   }
-  return "";  
+  return "";
 }
 void Application::loadStylesheet() {
   std::string cssPath = findStylesheetPath();
@@ -150,9 +192,9 @@ void Application::loadStylesheet() {
                             "Could not get default display for CSS loading");
     return;
   }
-  gtk_style_context_add_provider_for_display(
-      display, GTK_STYLE_PROVIDER(s_cssProvider),
-      GTK_STYLE_PROVIDER_PRIORITY_USER);
+  gtk_style_context_add_provider_for_display(display,
+                                             GTK_STYLE_PROVIDER(s_cssProvider),
+                                             GTK_STYLE_PROVIDER_PRIORITY_USER);
   bwp::utils::Logger::log(bwp::utils::LogLevel::INFO,
                           "Successfully loaded stylesheet from: " + cssPath);
   auto *mmDisplay = bwp::monitor::MonitorManager::getInstance().getDisplay();
@@ -265,4 +307,4 @@ bool Application::spawnProcess(const std::string &name,
   }
   return true;
 }
-}  
+} // namespace bwp::gui

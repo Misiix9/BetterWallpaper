@@ -8,7 +8,7 @@ namespace bwp::gui {
 static constexpr int CARD_WIDTH = 180;
 static constexpr int CARD_HEIGHT = 135;
 
-WorkshopCard::WorkshopCard(const bwp::steam::WorkshopItem& item)
+WorkshopCard::WorkshopCard(const bwp::steam::WorkshopItem &item)
     : m_item(item) {
   m_aliveToken = std::make_shared<bool>(true);
 
@@ -45,14 +45,15 @@ WorkshopCard::WorkshopCard(const bwp::steam::WorkshopItem& item)
   gtk_overlay_add_overlay(GTK_OVERLAY(m_overlay), m_skeletonOverlay);
 
   // Title + action button container at bottom (same layout as library)
-  GtkWidget* titleContainer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+  GtkWidget *titleContainer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
   gtk_widget_add_css_class(titleContainer, "card-title-overlay");
   gtk_widget_set_valign(titleContainer, GTK_ALIGN_END);
   gtk_widget_set_halign(titleContainer, GTK_ALIGN_FILL);
 
   // Title label
   std::string title = item.title;
-  if (title.empty()) title = "Workshop #" + item.id;
+  if (title.empty())
+    title = "Workshop #" + item.id;
   m_titleLabel = gtk_label_new(title.c_str());
   gtk_label_set_ellipsize(GTK_LABEL(m_titleLabel), PANGO_ELLIPSIZE_END);
   gtk_widget_set_halign(m_titleLabel, GTK_ALIGN_START);
@@ -62,19 +63,22 @@ WorkshopCard::WorkshopCard(const bwp::steam::WorkshopItem& item)
   // Action button: download or checkmark (same styling as library fav btn)
   m_actionBtn = gtk_button_new_from_icon_name("folder-download-symbolic");
   gtk_widget_add_css_class(m_actionBtn, "flat");
-  gtk_widget_add_css_class(m_actionBtn, "card-fav-btn"); // reuse same compact style
+  gtk_widget_add_css_class(m_actionBtn,
+                           "card-fav-btn"); // reuse same compact style
   gtk_widget_set_halign(m_actionBtn, GTK_ALIGN_END);
   gtk_widget_set_valign(m_actionBtn, GTK_ALIGN_CENTER);
   gtk_widget_set_tooltip_text(m_actionBtn, "Download");
 
   g_signal_connect(m_actionBtn, "clicked",
-      G_CALLBACK(+[](GtkButton*, gpointer data) {
-        auto* self = static_cast<WorkshopCard*>(data);
-        if (self->m_isDownloaded) return; // Already downloaded, ignore
-        if (self->m_downloadCb) {
-          self->m_downloadCb(self->m_item.id, self->m_item.title);
-        }
-      }), this);
+                   G_CALLBACK(+[](GtkButton *, gpointer data) {
+                     auto *self = static_cast<WorkshopCard *>(data);
+                     if (self->m_isDownloaded)
+                       return; // Already downloaded, ignore
+                     if (self->m_downloadCb) {
+                       self->m_downloadCb(self->m_item);
+                     }
+                   }),
+                   this);
 
   gtk_box_append(GTK_BOX(titleContainer), m_titleLabel);
   gtk_box_append(GTK_BOX(titleContainer), m_actionBtn);
@@ -88,9 +92,7 @@ WorkshopCard::WorkshopCard(const bwp::steam::WorkshopItem& item)
   }
 }
 
-WorkshopCard::~WorkshopCard() {
-  *m_aliveToken = false;
-}
+WorkshopCard::~WorkshopCard() { *m_aliveToken = false; }
 
 void WorkshopCard::setDownloaded(bool downloaded) {
   m_isDownloaded = downloaded;
@@ -100,7 +102,8 @@ void WorkshopCard::setDownloaded(bool downloaded) {
     gtk_widget_add_css_class(m_actionBtn, "success");
     gtk_widget_set_sensitive(m_actionBtn, FALSE);
   } else {
-    gtk_button_set_icon_name(GTK_BUTTON(m_actionBtn), "folder-download-symbolic");
+    gtk_button_set_icon_name(GTK_BUTTON(m_actionBtn),
+                             "folder-download-symbolic");
     gtk_widget_set_tooltip_text(m_actionBtn, "Download");
     gtk_widget_remove_css_class(m_actionBtn, "success");
     gtk_widget_set_sensitive(m_actionBtn, TRUE);
@@ -117,30 +120,32 @@ void WorkshopCard::releaseResources() {
   gtk_picture_set_paintable(GTK_PICTURE(m_image), nullptr);
 }
 
-void WorkshopCard::loadThumbnailAsync(const std::string& url) {
+void WorkshopCard::loadThumbnailAsync(const std::string &url) {
   struct ThumbData {
-    GtkWidget* image;
-    GtkWidget* skeleton;
+    GtkWidget *image;
+    GtkWidget *skeleton;
     std::string url;
     std::shared_ptr<bool> alive;
   };
 
   auto alive = m_aliveToken;
   // Store alive token reference so it gets invalidated on widget destruction
-  g_object_set_data_full(G_OBJECT(m_image), "alive-token",
-      new std::shared_ptr<bool>(alive),
-      [](gpointer p) { delete static_cast<std::shared_ptr<bool>*>(p); });
+  g_object_set_data_full(
+      G_OBJECT(m_image), "alive-token", new std::shared_ptr<bool>(alive),
+      [](gpointer p) { delete static_cast<std::shared_ptr<bool> *>(p); });
 
-  auto* td = new ThumbData{m_image, m_skeletonOverlay, url, alive};
+  auto *td = new ThumbData{m_image, m_skeletonOverlay, url, alive};
   std::thread([td]() {
-    CURL* curl = curl_easy_init();
+    CURL *curl = curl_easy_init();
     std::string imgData;
     if (curl) {
       curl_easy_setopt(curl, CURLOPT_URL, td->url.c_str());
-      curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
-          +[](void* contents, size_t size, size_t nmemb, void* userp) -> size_t {
-            static_cast<std::string*>(userp)->append(
-                static_cast<char*>(contents), size * nmemb);
+      curl_easy_setopt(
+          curl, CURLOPT_WRITEFUNCTION,
+          +[](void *contents, size_t size, size_t nmemb,
+              void *userp) -> size_t {
+            static_cast<std::string *>(userp)->append(
+                static_cast<char *>(contents), size * nmemb);
             return size * nmemb;
           });
       curl_easy_setopt(curl, CURLOPT_WRITEDATA, &imgData);
@@ -155,9 +160,9 @@ void WorkshopCard::loadThumbnailAsync(const std::string& url) {
       }
     }
 
-    GBytes* bytes = g_bytes_new(imgData.data(), imgData.size());
-    GInputStream* stream = g_memory_input_stream_new_from_bytes(bytes);
-    GdkPixbuf* pixbuf = gdk_pixbuf_new_from_stream(stream, nullptr, nullptr);
+    GBytes *bytes = g_bytes_new(imgData.data(), imgData.size());
+    GInputStream *stream = g_memory_input_stream_new_from_bytes(bytes);
+    GdkPixbuf *pixbuf = gdk_pixbuf_new_from_stream(stream, nullptr, nullptr);
     g_object_unref(stream);
     g_bytes_unref(bytes);
 
@@ -168,8 +173,8 @@ void WorkshopCard::loadThumbnailAsync(const std::string& url) {
 
     // Scale pixbuf to CARD_WIDTH x CARD_HEIGHT so GtkPicture reports
     // exactly that as its natural size (prevents FlowBox stretching)
-    GdkPixbuf* scaled = gdk_pixbuf_scale_simple(
-        pixbuf, 180, 135, GDK_INTERP_BILINEAR);
+    GdkPixbuf *scaled =
+        gdk_pixbuf_scale_simple(pixbuf, 180, 135, GDK_INTERP_BILINEAR);
     g_object_unref(pixbuf);
     if (!scaled) {
       delete td;
@@ -177,27 +182,30 @@ void WorkshopCard::loadThumbnailAsync(const std::string& url) {
     }
 
     struct IdleData {
-      GdkPixbuf* pixbuf;
-      GtkWidget* image;
-      GtkWidget* skeleton;
+      GdkPixbuf *pixbuf;
+      GtkWidget *image;
+      GtkWidget *skeleton;
       std::shared_ptr<bool> alive;
     };
-    auto* id = new IdleData{scaled, td->image, td->skeleton, td->alive};
+    auto *id = new IdleData{scaled, td->image, td->skeleton, td->alive};
     delete td;
 
-    g_idle_add(+[](gpointer data) -> gboolean {
-      auto* d = static_cast<IdleData*>(data);
-      if (*d->alive) {
-        GdkTexture* texture = gdk_texture_new_for_pixbuf(d->pixbuf);
-        gtk_picture_set_paintable(GTK_PICTURE(d->image), GDK_PAINTABLE(texture));
-        gtk_widget_remove_css_class(d->image, "no-thumbnail");
-        gtk_widget_set_visible(d->skeleton, FALSE);
-        g_object_unref(texture);
-      }
-      g_object_unref(d->pixbuf);
-      delete d;
-      return G_SOURCE_REMOVE;
-    }, id);
+    g_idle_add(
+        +[](gpointer data) -> gboolean {
+          auto *d = static_cast<IdleData *>(data);
+          if (*d->alive) {
+            GdkTexture *texture = gdk_texture_new_for_pixbuf(d->pixbuf);
+            gtk_picture_set_paintable(GTK_PICTURE(d->image),
+                                      GDK_PAINTABLE(texture));
+            gtk_widget_remove_css_class(d->image, "no-thumbnail");
+            gtk_widget_set_visible(d->skeleton, FALSE);
+            g_object_unref(texture);
+          }
+          g_object_unref(d->pixbuf);
+          delete d;
+          return G_SOURCE_REMOVE;
+        },
+        id);
   }).detach();
 }
 

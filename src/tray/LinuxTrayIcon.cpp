@@ -8,9 +8,9 @@
 namespace bwp::tray {
 
 LinuxTrayIcon::LinuxTrayIcon() {
-  m_indicator = app_indicator_new(
-      "betterwallpaper-tray", "preferences-desktop-wallpaper",
-      APP_INDICATOR_CATEGORY_APPLICATION_STATUS);
+  m_indicator =
+      app_indicator_new("betterwallpaper-tray", "preferences-desktop-wallpaper",
+                        APP_INDICATOR_CATEGORY_APPLICATION_STATUS);
 
   app_indicator_set_status(m_indicator, APP_INDICATOR_STATUS_ACTIVE);
   app_indicator_set_title(m_indicator, "BetterWallpaper");
@@ -153,8 +153,7 @@ void LinuxTrayIcon::refreshMenuState() {
     std::string wallpaperDisplay = "No wallpaper";
     if (j.contains("monitors") && j["monitors"].is_array() &&
         !j["monitors"].empty()) {
-      std::string path =
-          j["monitors"][0].value("wallpaper", std::string{});
+      std::string path = j["monitors"][0].value("wallpaper", std::string{});
       if (!path.empty()) {
         // Show just the filename, truncated
         auto pos = path.rfind('/');
@@ -221,8 +220,7 @@ void LinuxTrayIcon::refreshMenuState() {
 
   } catch (const nlohmann::json::exception &e) {
     LOG_ERROR("Tray: Failed to parse daemon status: " + std::string(e.what()));
-    gtk_menu_item_set_label(GTK_MENU_ITEM(m_currentLabel),
-                            "Status error");
+    gtk_menu_item_set_label(GTK_MENU_ITEM(m_currentLabel), "Status error");
   }
 }
 
@@ -235,21 +233,24 @@ void LinuxTrayIcon::onMenuShow(GtkWidget *, gpointer user_data) {
 
 void LinuxTrayIcon::onNext(GtkMenuItem *, gpointer user_data) {
   auto *self = static_cast<LinuxTrayIcon *>(user_data);
-  if (!self->ensureConnected()) return;
+  if (!self->ensureConnected())
+    return;
   LOG_INFO("Tray: Next Wallpaper requested");
   self->m_client.nextWallpaper("");
 }
 
 void LinuxTrayIcon::onPrevious(GtkMenuItem *, gpointer user_data) {
   auto *self = static_cast<LinuxTrayIcon *>(user_data);
-  if (!self->ensureConnected()) return;
+  if (!self->ensureConnected())
+    return;
   LOG_INFO("Tray: Previous Wallpaper requested");
   self->m_client.previousWallpaper("");
 }
 
 void LinuxTrayIcon::onPause(GtkMenuItem *, gpointer user_data) {
   auto *self = static_cast<LinuxTrayIcon *>(user_data);
-  if (!self->ensureConnected()) return;
+  if (!self->ensureConnected())
+    return;
   // Read the current label to decide action
   const gchar *label =
       gtk_menu_item_get_label(GTK_MENU_ITEM(self->m_pauseItem));
@@ -263,17 +264,18 @@ void LinuxTrayIcon::onPause(GtkMenuItem *, gpointer user_data) {
 }
 
 void LinuxTrayIcon::onShow(GtkMenuItem *, gpointer) {
-  utils::SafeProcess::execDetached({"betterwallpaper"});
+  utils::SafeProcess::execDetached({"betterwallpaper", "--show"});
 }
 
 void LinuxTrayIcon::onSettings(GtkMenuItem *, gpointer) {
   // #29: Launch GUI directly (no --settings flag)
-  utils::SafeProcess::execDetached({"betterwallpaper"});
+  utils::SafeProcess::execDetached({"betterwallpaper", "--settings"});
 }
 
 void LinuxTrayIcon::onVolumeUp(GtkMenuItem *, gpointer user_data) {
   auto *self = static_cast<LinuxTrayIcon *>(user_data);
-  if (!self->ensureConnected()) return;
+  if (!self->ensureConnected())
+    return;
   int newVol = std::min(100, self->m_cachedVolume + 10);
   LOG_INFO("Tray: Volume Up " + std::to_string(self->m_cachedVolume) + " -> " +
            std::to_string(newVol));
@@ -283,7 +285,8 @@ void LinuxTrayIcon::onVolumeUp(GtkMenuItem *, gpointer user_data) {
 
 void LinuxTrayIcon::onVolumeDown(GtkMenuItem *, gpointer user_data) {
   auto *self = static_cast<LinuxTrayIcon *>(user_data);
-  if (!self->ensureConnected()) return;
+  if (!self->ensureConnected())
+    return;
   int newVol = std::max(0, self->m_cachedVolume - 10);
   LOG_INFO("Tray: Volume Down " + std::to_string(self->m_cachedVolume) +
            " -> " + std::to_string(newVol));
@@ -294,8 +297,10 @@ void LinuxTrayIcon::onVolumeDown(GtkMenuItem *, gpointer user_data) {
 void LinuxTrayIcon::onMute(GtkMenuItem *item, gpointer user_data) {
   auto *self = static_cast<LinuxTrayIcon *>(user_data);
   // Skip if we're programmatically updating the checkbox
-  if (self->m_updatingMute) return;
-  if (!self->ensureConnected()) return;
+  if (self->m_updatingMute)
+    return;
+  if (!self->ensureConnected())
+    return;
   bool active = gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM(item));
   LOG_INFO("Tray: Mute toggled: " + std::string(active ? "True" : "False"));
   self->m_client.setMuted("", active);

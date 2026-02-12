@@ -4,7 +4,7 @@
 #include <cstring>
 #include <filesystem>
 #include <gio/gio.h>
-#include <gtk/gtk.h>  
+#include <gtk/gtk.h>
 #include <memory>
 #include <string>
 #include <vector>
@@ -13,15 +13,21 @@ class Application : public AdwApplication {
 public:
   static Application *create();
   static Application *getInstance();
+
 public:
   ~Application();
+
 protected:
   Application();
+
 public:
   int run(int argc, char **argv);
+
 private:
   static void onActivate(GApplication *app, gpointer user_data);
   static void onStartup(GApplication *app, gpointer user_data);
+  static int onCommandLine(GApplication *app, GApplicationCommandLine *cmdline,
+                           gpointer user_data);
   static std::string findStylesheetPath();
   static void loadStylesheet();
   static void setupCssHotReload();
@@ -37,4 +43,4 @@ private:
   static bool spawnProcess(const std::string &name,
                            const std::string &relativePath);
 };
-}  
+} // namespace bwp::gui

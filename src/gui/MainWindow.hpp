@@ -4,6 +4,7 @@
 #include "views/LibraryView.hpp"
 #include "views/MonitorsView.hpp"
 #include "views/WorkshopView.hpp"
+#include "widgets/DownloadIndicator.hpp"
 #include "widgets/HyprlandWorkspacesView.hpp"
 #include "widgets/Sidebar.hpp"
 #include <adwaita.h>
@@ -22,7 +23,12 @@ public:
   MainWindow(AdwApplication *app);
   ~MainWindow();
   void show();
+  void navigateTo(const std::string &page);
   GtkWindow *getGtkWindow() const { return GTK_WINDOW(m_window); }
+  DownloadIndicator *getDownloadIndicator() const {
+    return m_downloadIndicator.get();
+  }
+
 private:
   void setupUi();
   void loadWindowState();
@@ -36,7 +42,7 @@ private:
   static gboolean onCloseRequest(GtkWindow *window, gpointer user_data);
   GtkWidget *m_window;
   GtkWidget *m_toastOverlay;
-  GtkWidget *m_splitView;  
+  GtkWidget *m_splitView;
   GtkWidget *m_contentStack;
   std::unique_ptr<Sidebar> m_sidebar;
   std::unique_ptr<LibraryView> m_libraryView;
@@ -56,5 +62,7 @@ private:
   bool m_profilesViewAdded = false;
   bool m_scheduleViewAdded = false;
   bool m_hyprlandViewAdded = false;
+
+  std::unique_ptr<DownloadIndicator> m_downloadIndicator;
 };
-}  
+} // namespace bwp::gui

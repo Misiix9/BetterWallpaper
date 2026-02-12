@@ -3,8 +3,8 @@
 #include "../../core/slideshow/SlideshowManager.hpp"
 #include "../../core/wallpaper/FolderManager.hpp"
 #include <adwaita.h>
-#include <iostream>
 #include <cstdlib>
+#include <iostream>
 #include <string>
 namespace bwp::gui {
 Sidebar::Sidebar() {
@@ -74,8 +74,7 @@ void Sidebar::refresh() {
   addRow("settings", "emblem-system-symbolic", "Settings");
   g_signal_handlers_unblock_by_func(m_listBox, (gpointer)onRowActivated, this);
 }
-Sidebar::~Sidebar() {
-}
+Sidebar::~Sidebar() {}
 void Sidebar::addRow(const std::string &id, const std::string &iconName,
                      const std::string &title) {
   GtkWidget *row = gtk_list_box_row_new();
@@ -89,7 +88,7 @@ void Sidebar::addRow(const std::string &id, const std::string &iconName,
   gtk_widget_set_hexpand(label, TRUE);
   gtk_widget_set_halign(label, GTK_ALIGN_START);
   GtkWidget *badge = gtk_label_new("");
-  gtk_widget_add_css_class(badge, "badge");  
+  gtk_widget_add_css_class(badge, "badge");
   gtk_widget_set_visible(badge, FALSE);
   m_badges[id] = badge;
   gtk_box_append(GTK_BOX(box), icon);
@@ -123,7 +122,7 @@ void Sidebar::addRow(const std::string &id, const std::string &iconName,
             gtk_box_append(GTK_BOX(hbox), gtk_label_new("Play Slideshow"));
             gtk_button_set_child(GTK_BUTTON(playBtn), hbox);
             gtk_widget_add_css_class(playBtn, "flat");
-            std::string folderId = fid->substr(7);  
+            std::string folderId = fid->substr(7);
             std::string *fIdArg = new std::string(folderId);
             g_object_set_data_full(
                 G_OBJECT(playBtn), "fid", fIdArg,
@@ -189,4 +188,12 @@ void Sidebar::onRowActivated(GtkListBox *, GtkListBoxRow *row,
 void Sidebar::setCallback(NavigationCallback callback) {
   m_callback = callback;
 }
-}  
+void Sidebar::select(const std::string &id) {
+  for (auto const &[row, rId] : m_rowIds) {
+    if (rId == id) {
+      gtk_list_box_select_row(GTK_LIST_BOX(m_listBox), row);
+      return;
+    }
+  }
+}
+} // namespace bwp::gui

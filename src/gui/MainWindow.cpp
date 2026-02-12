@@ -41,61 +41,91 @@ MainWindow::MainWindow(AdwApplication *app) {
   gtk_window_set_default_size(GTK_WINDOW(m_window), w, h);
   gtk_widget_set_size_request(m_window, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT);
   g_signal_connect(m_window, "close-request", G_CALLBACK(onCloseRequest), this);
+  // Store MainWindow pointer on the GtkWindow so other widgets can access it
+  g_object_set_data(G_OBJECT(m_window), "main-window", this);
   setupUi();
 
   // global toast handler
   bwp::core::utils::ToastManager::getInstance().setExtendedCallback(
       [this](const bwp::core::utils::ToastRequest &request) {
         auto *req = new bwp::core::utils::ToastRequest(request);
-        g_idle_add(+[](gpointer data) -> gboolean {
-          auto *r = static_cast<bwp::core::utils::ToastRequest *>(data);
-          auto *app = g_application_get_default();
-          if (!app) { delete r; return FALSE; }
-          auto *win = gtk_application_get_active_window(GTK_APPLICATION(app));
-          if (!win) { delete r; return FALSE; }
-          GtkWidget *content = adw_application_window_get_content(ADW_APPLICATION_WINDOW(win));
-          if (!content || !ADW_IS_TOAST_OVERLAY(content)) { delete r; return FALSE; }
-          std::string prefix;
-          std::string textColor;
-          switch (r->type) {
-            case bwp::core::utils::ToastType::Success: prefix = "✓ "; textColor = "#86EFAC"; break;
-            case bwp::core::utils::ToastType::Error:   prefix = "✗ "; textColor = "#FCA5A5"; break;
-            case bwp::core::utils::ToastType::Warning: prefix = "⚠ "; textColor = "#FCD34D"; break;
-            default: break;
-          }
-          // libadwaita asserts title != NULL even if custom title is used
-          AdwToast *toast = adw_toast_new(" ");  
-          adw_toast_set_timeout(toast, r->durationMs > 0 ? (r->durationMs / 1000) : 0);
-          GtkWidget *toastLabel = gtk_label_new(nullptr);
-          std::string fullMsg = prefix + r->message;
-          if (!textColor.empty()) {
-            char *escaped = g_markup_escape_text(fullMsg.c_str(), -1);
-            std::string markup = "<span color='" + textColor + "'>" + escaped + "</span>";
-            gtk_label_set_markup(GTK_LABEL(toastLabel), markup.c_str());
-            g_free(escaped);
-          } else {
-            gtk_label_set_text(GTK_LABEL(toastLabel), fullMsg.c_str());
-          }
-          gtk_label_set_ellipsize(GTK_LABEL(toastLabel), PANGO_ELLIPSIZE_END);
-          adw_toast_set_custom_title(toast, toastLabel);
-          if (!r->actions.empty()) {
-            adw_toast_set_button_label(toast, r->actions[0].label.c_str());
-            auto *cb = new std::function<void()>(r->actions[0].callback);
-            g_signal_connect_data(toast, "button-clicked",
-                G_CALLBACK(+[](AdwToast*, gpointer data) {
-                  auto *fn = static_cast<std::function<void()>*>(data);
-                  if (fn && *fn) (*fn)();
-                }),
-                cb,
-                +[](gpointer data, GClosure*) {
-                  delete static_cast<std::function<void()>*>(data);
-                },
-                G_CONNECT_DEFAULT);
-          }
-          adw_toast_overlay_add_toast(ADW_TOAST_OVERLAY(content), toast);
-          delete r;
-          return FALSE;
-        }, req);
+        g_idle_add(
+            +[](gpointer data) -> gboolean {
+              auto *r = static_cast<bwp::core::utils::ToastRequest *>(data);
+              auto *app = g_application_get_default();
+              if (!app) {
+                delete r;
+                return FALSE;
+              }
+              auto *win =
+                  gtk_application_get_active_window(GTK_APPLICATION(app));
+              if (!win) {
+                delete r;
+                return FALSE;
+              }
+              GtkWidget *content = adw_application_window_get_content(
+                  ADW_APPLICATION_WINDOW(win));
+              if (!content || !ADW_IS_TOAST_OVERLAY(content)) {
+                delete r;
+                return FALSE;
+              }
+              std::string prefix;
+              std::string textColor;
+              switch (r->type) {
+              case bwp::core::utils::ToastType::Success:
+                prefix = "✓ ";
+                textColor = "#86EFAC";
+                break;
+              case bwp::core::utils::ToastType::Error:
+                prefix = "✗ ";
+                textColor = "#FCA5A5";
+                break;
+              case bwp::core::utils::ToastType::Warning:
+                prefix = "⚠ ";
+                textColor = "#FCD34D";
+                break;
+              default:
+                break;
+              }
+              // libadwaita asserts title != NULL even if custom title is used
+              AdwToast *toast = adw_toast_new(" ");
+              adw_toast_set_timeout(
+                  toast, r->durationMs > 0 ? (r->durationMs / 1000) : 0);
+              GtkWidget *toastLabel = gtk_label_new(nullptr);
+              std::string fullMsg = prefix + r->message;
+              if (!textColor.empty()) {
+                char *escaped = g_markup_escape_text(fullMsg.c_str(), -1);
+                std::string markup =
+                    "<span color='" + textColor + "'>" + escaped + "</span>";
+                gtk_label_set_markup(GTK_LABEL(toastLabel), markup.c_str());
+                g_free(escaped);
+              } else {
+                gtk_label_set_text(GTK_LABEL(toastLabel), fullMsg.c_str());
+              }
+              gtk_label_set_ellipsize(GTK_LABEL(toastLabel),
+                                      PANGO_ELLIPSIZE_END);
+              adw_toast_set_custom_title(toast, toastLabel);
+              if (!r->actions.empty()) {
+                adw_toast_set_button_label(toast, r->actions[0].label.c_str());
+                auto *cb = new std::function<void()>(r->actions[0].callback);
+                g_signal_connect_data(
+                    toast, "button-clicked",
+                    G_CALLBACK(+[](AdwToast *, gpointer data) {
+                      auto *fn = static_cast<std::function<void()> *>(data);
+                      if (fn && *fn)
+                        (*fn)();
+                    }),
+                    cb,
+                    +[](gpointer data, GClosure *) {
+                      delete static_cast<std::function<void()> *>(data);
+                    },
+                    G_CONNECT_DEFAULT);
+              }
+              adw_toast_overlay_add_toast(ADW_TOAST_OVERLAY(content), toast);
+              delete r;
+              return FALSE;
+            },
+            req);
       });
   bwp::input::InputManager::getInstance().setup(GTK_WINDOW(m_window));
   bwp::core::PowerManager::getInstance().addCallback([this](bool onBattery) {
@@ -146,6 +176,52 @@ void MainWindow::show() {
   LOG_SCOPE_AUTO();
   gtk_window_present(GTK_WINDOW(m_window));
 }
+void MainWindow::navigateTo(const std::string &page) {
+  LOG_INFO("Navigating to page: " + page);
+  if (m_sidebar) {
+    m_sidebar->select(page);
+    // The sidebar selection triggers the callback, which switches the view.
+    // However, if the page is already selected, the callback might not fire
+    // (depending on GtkListBox behavior). So we manually trigger the view
+    // switch logic here just in case, or we rely on sidebar->select triggering
+    // row-activated. Sidebar::select calls gtk_list_box_select_row which emits
+    // row-activated. But wait, gtk_list_box_select_row emits row-activated only
+    // if the selection actually changes. If we are already on that page, we
+    // should ensure the window is presented (handled by Application) and maybe
+    // refresh if needed. For now, let's assume sidebar selection is enough.
+    // Actually, let's FORCE the view switch by calling the callback manually if
+    // needed, but the callback is internal context. Let's just trust
+    // Sidebar::select for now or extract the switch logic. Better: let's
+    // extract the switch logic to a private method 'switchToPage' and call it.
+    // Refactoring m_sidebar->setCallback lambda to a member function would be
+    // cleaner, but for now: We can just duplicate the simplified switch logic
+    // or call the lambda if we stored it? See setupUi for how the lambda is
+    // defined. Actually, `gtk_list_box_select_row` DOES emits `row-activated`
+    // signal even if same row is selected? No, usually only on change. Let's
+    // modify Sidebar::select to force emit or just call the logic. To be safe
+    // and simple: valid pages are "settings", "library", "workshop",
+    // "monitors".
+    if (page == "library") {
+      adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(m_contentStack),
+                                            "library");
+    } else if (page == "monitors") {
+      adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(m_contentStack),
+                                            "monitors");
+    } else if (page == "workshop") {
+      ensureWorkshopView();
+      adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(m_contentStack),
+                                            "workshop");
+    } else if (page == "settings") {
+      ensureSettingsView();
+      adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(m_contentStack),
+                                            "settings");
+    } else if (page == "favorites") {
+      ensureFavoritesView();
+      adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(m_contentStack),
+                                            "favorites");
+    }
+  }
+}
 void MainWindow::setupUi() {
   LOG_SCOPE_AUTO();
   m_toastOverlay = adw_toast_overlay_new();
@@ -158,7 +234,41 @@ void MainWindow::setupUi() {
   m_contentStack = adw_view_stack_new();
   gtk_widget_set_hexpand(m_contentStack, TRUE);
   gtk_widget_set_vexpand(m_contentStack, TRUE);
-  gtk_box_append(GTK_BOX(rootBox), m_contentStack);
+
+  // Wrap content stack in an overlay so DownloadIndicator can float on top
+  GtkWidget *contentOverlay = gtk_overlay_new();
+  gtk_overlay_set_child(GTK_OVERLAY(contentOverlay), m_contentStack);
+
+  m_downloadIndicator = std::make_unique<DownloadIndicator>();
+  gtk_overlay_add_overlay(GTK_OVERLAY(contentOverlay),
+                          m_downloadIndicator->getWidget());
+
+  // Connect DownloadQueue to Indicator
+  auto &dq = bwp::steam::DownloadQueue::getInstance();
+  dq.setQueueChangeCallback(
+      [this](const std::vector<bwp::steam::QueueItem> &queue) {
+        // Run on main thread
+        std::vector<bwp::steam::QueueItem> copy = queue;
+        g_idle_add(
+            +[](gpointer data) -> gboolean {
+              auto *pkg = static_cast<std::pair<
+                  MainWindow *, std::vector<bwp::steam::QueueItem>> *>(data);
+              if (pkg->first->m_downloadIndicator) {
+                pkg->first->m_downloadIndicator->updateFromQueue(pkg->second);
+              }
+              delete pkg;
+              return FALSE;
+            },
+            new std::pair<MainWindow *, std::vector<bwp::steam::QueueItem>>(
+                this, copy));
+      });
+
+  // Connect Retry Logic
+  m_downloadIndicator->onRetry([](const std::string &id) {
+    bwp::steam::DownloadQueue::getInstance().addToQueue(id, "");
+  });
+
+  gtk_box_append(GTK_BOX(rootBox), contentOverlay);
   m_sidebar->setCallback([this](const std::string &page) {
     if (page == "library") {
       adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(m_contentStack),
@@ -289,11 +399,11 @@ void MainWindow::loadWindowState() {
   if (isFloating) {
     gtk_window_set_resizable(GTK_WINDOW(m_window), FALSE);
     gtk_window_set_default_size(GTK_WINDOW(m_window), width, height);
-    gtk_widget_set_size_request(m_window, width, height);  
+    gtk_widget_set_size_request(m_window, width, height);
   } else {
     gtk_window_set_resizable(GTK_WINDOW(m_window), TRUE);
-    gtk_window_set_default_size(GTK_WINDOW(m_window), width, height);  
-    gtk_widget_set_size_request(m_window, -1, -1);  
+    gtk_window_set_default_size(GTK_WINDOW(m_window), width, height);
+    gtk_widget_set_size_request(m_window, -1, -1);
   }
   if (config.get<bool>("window.maximized") && !isFloating) {
     gtk_window_maximize(GTK_WINDOW(m_window));
@@ -322,4 +432,4 @@ gboolean MainWindow::onCloseRequest(GtkWindow *, gpointer user_data) {
     self->saveWindowState();
   return FALSE;
 }
-}  
+} // namespace bwp::gui

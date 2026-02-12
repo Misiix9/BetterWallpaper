@@ -1,7 +1,7 @@
 #include "DownloadQueue.hpp"
-#include "SteamService.hpp"
 #include "../config/ConfigManager.hpp"
 #include "../utils/Logger.hpp"
+#include "SteamService.hpp"
 #include <algorithm>
 namespace bwp::steam {
 DownloadQueue &DownloadQueue::getInstance() {
@@ -9,19 +9,34 @@ DownloadQueue &DownloadQueue::getInstance() {
   return instance;
 }
 void DownloadQueue::addToQueue(const std::string &workshopId,
-                               const std::string &title) {
+                               const std::string &title,
+                               const std::string &thumbnailUrl,
+                               const std::string &author, int votesUp) {
   bool shouldProcess = false;
   {
     std::lock_guard<std::mutex> lock(m_mutex);
-    for (const auto &item : m_queue) {
+    for (auto &item : m_queue) {
       if (item.workshopId == workshopId) {
-        LOG_WARN("Item already in queue: " + workshopId);
+        if (item.status == QueueItem::Status::Failed) {
+          item.status = QueueItem::Status::Pending;
+          item.errorMessage = "";
+          item.progress.percent = 0.0f;
+          LOG_INFO("Retrying failed item: " + workshopId);
+          notifyQueueChange();
+          saveToConfig();
+          shouldProcess = !m_processing && !m_paused;
+        } else {
+          LOG_WARN("Item already in queue: " + workshopId);
+        }
         return;
       }
     }
     QueueItem item;
     item.workshopId = workshopId;
     item.title = title.empty() ? ("Workshop Item " + workshopId) : title;
+    item.thumbnailUrl = thumbnailUrl;
+    item.author = author;
+    item.votesUp = votesUp;
     item.status = QueueItem::Status::Pending;
     item.progress.workshopId = workshopId;
     item.progress.title = item.title;
@@ -73,7 +88,7 @@ void DownloadQueue::moveToFront(const std::string &workshopId) {
       QueueItem item = *it;
       m_queue.erase(it);
       auto insertPos = m_queue.begin();
-      ++insertPos;  
+      ++insertPos;
       m_queue.insert(insertPos, item);
     } else {
       QueueItem item = *it;
@@ -136,9 +151,12 @@ QueueItem *DownloadQueue::getCurrentItem() {
 void DownloadQueue::processNext() {
   if (m_paused)
     return;
-  
+
   std::string workshopId;
   std::string cachedTitle;
+  std::string cachedThumbnail;
+  std::string cachedAuthor;
+  int cachedVotes = 0;
   {
     std::lock_guard<std::mutex> lock(m_mutex);
     for (auto &item : m_queue) {
@@ -147,6 +165,9 @@ void DownloadQueue::processNext() {
         m_processing = true;
         workshopId = item.workshopId;
         cachedTitle = item.title;
+        cachedThumbnail = item.thumbnailUrl;
+        cachedAuthor = item.author;
+        cachedVotes = item.votesUp;
         notifyQueueChange();
         break;
       }
@@ -158,14 +179,14 @@ void DownloadQueue::processNext() {
   }
   // Mutex released — safe to call blocking download
   SteamService::getInstance().downloadWallpaper(
-      workshopId,
+      workshopId, cachedTitle, cachedThumbnail, cachedAuthor, cachedVotes,
       [this, workshopId, cachedTitle](float percent) {
         std::lock_guard<std::mutex> lock(m_mutex);
         DownloadProgress prog;
         prog.workshopId = workshopId;
         prog.title = cachedTitle;
         prog.percent = percent * 100.0f;
-        
+
         for (auto &item : m_queue) {
           if (item.workshopId == workshopId) {
             item.progress = prog;
@@ -214,6 +235,9 @@ void DownloadQueue::loadFromConfig() {
     QueueItem item;
     item.workshopId = j.value("workshopId", "");
     item.title = j.value("title", "");
+    item.thumbnailUrl = j.value("thumbnailUrl", "");
+    item.author = j.value("author", "");
+    item.votesUp = j.value("votesUp", 0);
     int statusInt = j.value("status", 0);
     item.status = static_cast<QueueItem::Status>(statusInt);
     if (item.status == QueueItem::Status::Downloading) {
@@ -230,10 +254,13 @@ void DownloadQueue::saveToConfig() {
     nlohmann::json j;
     j["workshopId"] = item.workshopId;
     j["title"] = item.title;
+    j["thumbnailUrl"] = item.thumbnailUrl;
+    j["author"] = item.author;
+    j["votesUp"] = item.votesUp;
     j["status"] = static_cast<int>(item.status);
     queueJson.push_back(j);
   }
   auto &conf = bwp::config::ConfigManager::getInstance();
   conf.set("download_queue", queueJson);
 }
-}  
+} // namespace bwp::steam
