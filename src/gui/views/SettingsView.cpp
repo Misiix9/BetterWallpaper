@@ -1263,7 +1263,8 @@ GtkWidget *SettingsView::createAboutPage() {
   GtkWidget *title = gtk_label_new("BetterWallpaper");
   gtk_widget_add_css_class(title, "title-2");
   gtk_box_append(GTK_BOX(box), title);
-  GtkWidget *version = gtk_label_new("Version 0.5.8 Beta");
+  std::string verStr = "Version " + std::string(BWP_VERSION) + " Beta release";
+  GtkWidget *version = gtk_label_new(verStr.c_str());
   gtk_widget_add_css_class(version, "dim-label");
   gtk_box_append(GTK_BOX(box), version);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), box);
