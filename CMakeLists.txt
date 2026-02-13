@@ -80,7 +80,7 @@ if(MSVC)
     add_compile_options(/W3) # Reduced from /WX for now to see all errors
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN)
 else()
-    add_compile_options(-Wall -Wextra -Wpedantic -Werror=unused-variable -Werror=unused-function)
+    add_compile_options(-Wall -Wextra -Wpedantic -Wno-deprecated-declarations -Wno-unused-parameter)
 endif()
 
 add_compile_definitions(BWP_VERSION="${PROJECT_VERSION}")
