@@ -2,11 +2,8 @@
 #include "../../core/config/ConfigManager.hpp"
 #include "../../core/ipc/LinuxIPCClient.hpp"
 #include "../../core/monitor/MonitorManager.hpp"
-#include "../../core/slideshow/SlideshowManager.hpp"
 #include "../../core/utils/Logger.hpp"
 #include "../../core/utils/ToastManager.hpp"
-#include "../../core/wallpaper/NativeWallpaperSetter.hpp"
-#include "../../core/wallpaper/ThumbnailCache.hpp"
 #include "../../core/wallpaper/WallpaperLibrary.hpp"
 #include "../../core/wallpaper/WallpaperManager.hpp"
 #include "../../core/wallpaper/WallpaperPreloader.hpp"
@@ -17,8 +14,6 @@
 #include <cstdlib>
 #include <filesystem>
 #include <gdk-pixbuf/gdk-pixbuf.h>
-#include <iostream>
-#include <thread>
 namespace bwp::gui {
 static constexpr int PANEL_WIDTH = 300;
 static constexpr int PREVIEW_WIDTH = 260;
@@ -396,17 +391,44 @@ void PreviewPanel::setWallpaper(const bwp::wallpaper::WallpaperInfo &info) {
   gtk_drop_down_set_selected(GTK_DROP_DOWN(m_scalingDropdown),
                              static_cast<guint>(info.settings.scaling));
   m_updatingWidgets = false;
-  LOG_INFO("Starting preload for selected wallpaper: " + info.path);
-  bwp::wallpaper::WallpaperPreloader::getInstance().preload(
-      info.path, [](const std::string &path,
-                    bwp::wallpaper::WallpaperPreloader::PreloadState state) {
-        if (state == bwp::wallpaper::WallpaperPreloader::PreloadState::Ready) {
-          LOG_INFO("Wallpaper preloaded and ready: " + path);
-        } else if (state ==
-                   bwp::wallpaper::WallpaperPreloader::PreloadState::Failed) {
-          LOG_WARN("Wallpaper preload failed: " + path);
+  m_updatingWidgets = false;
+
+  // Debounce the heavy preload operation
+  if (m_preloadSourceId > 0) {
+    g_source_remove(m_preloadSourceId);
+    m_preloadSourceId = 0;
+  }
+
+  if (!m_lastPreloadPath.empty() && m_lastPreloadPath != info.path) {
+    bwp::wallpaper::WallpaperPreloader::getInstance().cancelPreload(
+        m_lastPreloadPath);
+  }
+  m_lastPreloadPath = info.path;
+
+  m_preloadSourceId = g_timeout_add(
+      250,
+      +[](gpointer data) -> gboolean {
+        auto *self = static_cast<PreviewPanel *>(data);
+        std::string path = self->m_lastPreloadPath;
+        self->m_preloadSourceId = 0;
+
+        if (!path.empty()) {
+          LOG_INFO("Starting preload for selected wallpaper: " + path);
+          bwp::wallpaper::WallpaperPreloader::getInstance().preload(
+              path, [](const std::string &path,
+                       bwp::wallpaper::WallpaperPreloader::PreloadState state) {
+                if (state ==
+                    bwp::wallpaper::WallpaperPreloader::PreloadState::Ready) {
+                  LOG_INFO("Wallpaper preloaded and ready: " + path);
+                } else if (state == bwp::wallpaper::WallpaperPreloader::
+                                        PreloadState::Failed) {
+                  LOG_WARN("Wallpaper preload failed: " + path);
+                }
+              });
         }
-      });
+        return G_SOURCE_REMOVE;
+      },
+      this);
 }
 void PreviewPanel::loadThumbnail(const std::string &path) {
   if (!std::filesystem::exists(path))

@@ -1,7 +1,6 @@
 #pragma once
 #include "../../core/wallpaper/WallpaperInfo.hpp"
 #include <gtk/gtk.h>
-#include <memory>
 #include <string>
 #include <vector>
 namespace bwp::gui {
@@ -12,6 +11,7 @@ public:
   GtkWidget *getWidget() const { return m_box; }
   void setWallpaper(const bwp::wallpaper::WallpaperInfo &info);
   void clear();
+
 private:
   void setupUi();
   void onApplyClicked();
@@ -42,9 +42,9 @@ private:
   GtkWidget *m_scalingDropdown;
   std::vector<std::string> m_monitorNames;
   bwp::wallpaper::WallpaperInfo m_currentInfo;
-  bool m_updatingWidgets = false;  
+  bool m_updatingWidgets = false;
   GtkWidget *m_scrolledWindow;
-  GtkWidget *m_zoomIndicator = nullptr;  
+  GtkWidget *m_zoomIndicator = nullptr;
   double m_zoomLevel = 1.0;
   double m_dragStartX = 0;
   double m_dragStartY = 0;
@@ -57,5 +57,8 @@ private:
   void updateZoomIndicator();
   void onPanGesture(GtkGestureDrag *gesture, double offset_x, double offset_y);
   void onPanBegin(GtkGestureDrag *gesture, double start_x, double start_y);
+
+  guint m_preloadSourceId = 0;
+  std::string m_lastPreloadPath;
 };
-}  
+} // namespace bwp::gui

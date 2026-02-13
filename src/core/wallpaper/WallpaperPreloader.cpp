@@ -87,6 +87,11 @@ void WallpaperPreloader::doPreload(const std::string &path) {
     return;
   }
   WallpaperType type = detectType(path);
+
+  if (entry->cancelled) {
+    return;
+  }
+
   std::shared_ptr<WallpaperRenderer> renderer;
   try {
     switch (type) {
@@ -103,7 +108,7 @@ void WallpaperPreloader::doPreload(const std::string &path) {
       LOG_DEBUG("Preloading video: " + path);
       auto videoRenderer = std::make_shared<VideoRenderer>();
       if (videoRenderer->load(path)) {
-        videoRenderer->pause();  
+        videoRenderer->pause();
         renderer = videoRenderer;
         LOG_INFO("Video preloaded (paused): " + path);
       }
@@ -144,8 +149,7 @@ void WallpaperPreloader::doPreload(const std::string &path) {
     auto it = m_preloads.find(path);
     if (it != m_preloads.end() && !it->second->cancelled) {
       it->second->renderer = renderer;
-      it->second->state =
-          renderer ? PreloadState::Ready : PreloadState::Failed;
+      it->second->state = renderer ? PreloadState::Ready : PreloadState::Failed;
       PreloadCallback callback = it->second->callback;
       PreloadState state = it->second->state;
       if (callback) {
@@ -259,6 +263,6 @@ WallpaperType WallpaperPreloader::detectType(const std::string &path) const {
   if (ext == "pkg" || ext == "json" || ext == "html" || ext == "htm") {
     return WallpaperType::WEScene;
   }
-  return WallpaperType::StaticImage;  
+  return WallpaperType::StaticImage;
 }
-}  
+} // namespace bwp::wallpaper
