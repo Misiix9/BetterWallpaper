@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=BetterWallpaper
+Comment=Manage and set animated wallpapers
+Exec=/home/onxy/.local/bin/betterwallpaper
+Icon=betterwallpaper
+Terminal=false
+Categories=Utility;GTK;
+Keywords=wallpaper;background;animated;live;
+StartupNotify=true
