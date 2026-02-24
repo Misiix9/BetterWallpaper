@@ -27,6 +27,15 @@ static constexpr int DEFAULT_WINDOW_HEIGHT =
 MainWindow::MainWindow(AdwApplication *app) {
   LOG_SCOPE_AUTO();
   m_window = GTK_WIDGET(adw_application_window_new(GTK_APPLICATION(app)));
+
+  // Manage lifetime: delete wrapper when widget is destroyed
+  g_signal_connect(m_window, "destroy",
+                   G_CALLBACK(+[](GtkWidget *, gpointer data) {
+                     auto *self = static_cast<MainWindow *>(data);
+                     delete self;
+                   }),
+                   this);
+
   gtk_window_set_title(GTK_WINDOW(m_window), bwp::constants::APP_NAME);
   loadWindowState();
   int w, h;
@@ -43,6 +52,11 @@ MainWindow::MainWindow(AdwApplication *app) {
   g_signal_connect(m_window, "close-request", G_CALLBACK(onCloseRequest), this);
   // Store MainWindow pointer on the GtkWindow so other widgets can access it
   g_object_set_data(G_OBJECT(m_window), "main-window", this);
+  // Self-delete when GTK destroys the window (prevents C++ object leak)
+  g_object_weak_ref(
+      G_OBJECT(m_window),
+      [](gpointer data, GObject *) { delete static_cast<MainWindow *>(data); },
+      this);
   setupUi();
 
   // global toast handler
@@ -151,12 +165,18 @@ MainWindow::MainWindow(AdwApplication *app) {
     if (wp) {
       auto &monMgr = bwp::monitor::MonitorManager::getInstance();
       auto monitors = monMgr.getMonitors();
-      std::string targetMonitor =
-          monitors.empty() ? "HDMI-A-1" : monitors[0].name;
+      if (monitors.empty()) {
+        LOG_WARN("Slideshow: no monitors detected, cannot apply");
+        return;
+      }
       bwp::ipc::LinuxIPCClient ipcClient;
       if (ipcClient.connect()) {
-        LOG_INFO("Slideshow: sending IPC SetWallpaper for " + wp->path);
-        ipcClient.setWallpaper(wp->path, targetMonitor);
+        // Apply to ALL monitors so every screen gets the new wallpaper
+        for (const auto &mon : monitors) {
+          LOG_INFO("Slideshow: sending IPC SetWallpaper on " + mon.name +
+                   ": " + wp->path);
+          ipcClient.setWallpaper(wp->path, mon.name);
+        }
       } else {
         LOG_ERROR("Slideshow: failed to connect to daemon via IPC");
       }
@@ -171,7 +191,9 @@ MainWindow::MainWindow(AdwApplication *app) {
       m_sidebar->updateBadge("favorites", favCount);
   });
 }
-MainWindow::~MainWindow() { saveWindowState(); }
+MainWindow::~MainWindow() {
+  // saveWindowState(); // Called in onCloseRequest. Avoiding access during destruction.
+}
 void MainWindow::show() {
   LOG_SCOPE_AUTO();
   gtk_window_present(GTK_WINDOW(m_window));

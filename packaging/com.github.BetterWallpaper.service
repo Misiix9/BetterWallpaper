@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=com.github.BetterWallpaper
+Exec=/usr/bin/betterwallpaper-daemon
+SystemdService=betterwallpaper-daemon.service

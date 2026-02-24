@@ -19,7 +19,7 @@ ConfigManager::ConfigManager() {
 }
 std::filesystem::path ConfigManager::getConfigPath() const {
   LOG_SCOPE_AUTO();
-  
+
   // adhere to XDG Base Directory spec where possible
   const char *configHome = std::getenv("XDG_CONFIG_HOME");
   std::filesystem::path configDir;
@@ -31,7 +31,7 @@ std::filesystem::path ConfigManager::getConfigPath() const {
       configDir = std::filesystem::path(home) / ".config";
     } else {
       // fallback relative (windows or weird linux setup?)
-      return "config.json";  
+      return "config.json";
     }
   }
   return configDir / "betterwallpaper" / "config.json";
@@ -44,10 +44,11 @@ bool ConfigManager::load() {
   try {
     std::string content = utils::FileUtils::readFile(m_configPath);
     m_config = nlohmann::json::parse(content);
-    
+
     // LOG_INFO("Loaded configuration: " + m_config.dump(4));
-    
-    // ensure we always have valid defaults even if user config is partial (migration)
+
+    // ensure we always have valid defaults even if user config is partial
+    // (migration)
     nlohmann::json defaults = SettingsSchema::getDefaults();
     defaults.update(m_config);
     m_config = defaults;
@@ -72,18 +73,26 @@ void ConfigManager::resetToDefaults() {
   std::lock_guard<std::mutex> lock(m_mutex);
   m_config = SettingsSchema::getDefaults();
 }
-void ConfigManager::startWatching(Callback callback) { m_callback = callback; }
+void ConfigManager::startWatching(Callback callback) {
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_callback = callback;
+}
 int ConfigManager::addListener(Callback callback) {
+  std::lock_guard<std::mutex> lock(m_mutex);
   int id = m_nextListenerId++;
   m_listeners[id] = std::move(callback);
   return id;
 }
 void ConfigManager::removeListener(int id) {
+  std::lock_guard<std::mutex> lock(m_mutex);
   m_listeners.erase(id);
 }
 void ConfigManager::scheduleSave(int delayMs) {
 #ifndef _WIN32
   m_dirty = true;
+  // Atomically swap out the old timer and install the new one.
+  // g_timeout_add / g_source_remove must be called from the main thread,
+  // so this is safe because scheduleSave is always called from GTK context.
   guint oldTimer = m_saveTimerId.exchange(0);
   if (oldTimer > 0) {
     g_source_remove(oldTimer);
@@ -92,8 +101,7 @@ void ConfigManager::scheduleSave(int delayMs) {
       delayMs,
       [](gpointer userData) -> gboolean {
         ConfigManager *self = static_cast<ConfigManager *>(userData);
-        if (self->m_dirty) {
-          self->m_dirty = false;
+        if (self->m_dirty.exchange(false)) {
           self->save();
           LOG_DEBUG("Config saved (debounced)");
         }
@@ -101,7 +109,7 @@ void ConfigManager::scheduleSave(int delayMs) {
         return G_SOURCE_REMOVE;
       },
       this);
-  m_saveTimerId = newTimer;
+  m_saveTimerId.store(newTimer);
 #else
   save();
 #endif
@@ -131,4 +139,4 @@ const nlohmann::json *ConfigManager::getValuePtr(const std::string &key) const {
   }
   return current;
 }
-}  
+} // namespace bwp::config

@@ -2,8 +2,11 @@
 #include "../../utils/Logger.hpp"
 #include <algorithm>
 #include <cmath>
+#include <dirent.h>
 #include <filesystem>
+#include <fstream>
 #include <signal.h>
+#include <sstream>
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
@@ -11,6 +14,113 @@
 namespace bwp::wallpaper {
 WallpaperEngineRenderer::WallpaperEngineRenderer() {}
 WallpaperEngineRenderer::~WallpaperEngineRenderer() { terminateProcess(); }
+
+void WallpaperEngineRenderer::killAllExistingProcesses() {
+  LOG_INFO("Killing ALL lingering linux-wallpaperengine processes");
+  pid_t myPid = getpid();
+  DIR *procDir = opendir("/proc");
+  if (!procDir)
+    return;
+  int killed = 0;
+  struct dirent *entry;
+  while ((entry = readdir(procDir)) != nullptr) {
+    // Only look at numeric directory names (PIDs)
+    if (entry->d_type != DT_DIR)
+      continue;
+    bool allDigits = true;
+    for (const char *p = entry->d_name; *p; ++p) {
+      if (*p < '0' || *p > '9') {
+        allDigits = false;
+        break;
+      }
+    }
+    if (!allDigits)
+      continue;
+    pid_t pid = static_cast<pid_t>(std::stoi(entry->d_name));
+    if (pid == myPid)
+      continue;
+    std::string cmdlinePath = std::string("/proc/") + entry->d_name + "/cmdline";
+    std::ifstream cmdFile(cmdlinePath, std::ios::binary);
+    if (!cmdFile)
+      continue;
+    std::string cmdline;
+    std::getline(cmdFile, cmdline, '\0'); // first arg = binary name
+    if (cmdline.find("linux-wallpaperengine") == std::string::npos)
+      continue;
+    LOG_INFO("Killing orphaned WE process PID " + std::to_string(pid));
+    kill(pid, SIGTERM);
+    killed++;
+  }
+  closedir(procDir);
+  if (killed > 0) {
+    // Give processes time to exit gracefully
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    LOG_INFO("Killed " + std::to_string(killed) + " orphaned WE processes");
+  }
+}
+
+void WallpaperEngineRenderer::killExistingProcessesForMonitors(
+    const std::vector<std::string> &monitors) {
+  if (monitors.empty())
+    return;
+  pid_t myPid = getpid();
+  DIR *procDir = opendir("/proc");
+  if (!procDir)
+    return;
+  int killed = 0;
+  struct dirent *entry;
+  while ((entry = readdir(procDir)) != nullptr) {
+    if (entry->d_type != DT_DIR)
+      continue;
+    bool allDigits = true;
+    for (const char *p = entry->d_name; *p; ++p) {
+      if (*p < '0' || *p > '9') {
+        allDigits = false;
+        break;
+      }
+    }
+    if (!allDigits)
+      continue;
+    pid_t pid = static_cast<pid_t>(std::stoi(entry->d_name));
+    if (pid == myPid)
+      continue;
+    // Read entire cmdline (NUL-separated args)
+    std::string cmdlinePath = std::string("/proc/") + entry->d_name + "/cmdline";
+    std::ifstream cmdFile(cmdlinePath, std::ios::binary);
+    if (!cmdFile)
+      continue;
+    std::string raw((std::istreambuf_iterator<char>(cmdFile)),
+                    std::istreambuf_iterator<char>());
+    if (raw.find("linux-wallpaperengine") == std::string::npos)
+      continue;
+    // Check if any target monitor appears after --screen-root
+    // cmdline is NUL-separated: convert to space-separated for matching
+    std::string cmdline = raw;
+    std::replace(cmdline.begin(), cmdline.end(), '\0', ' ');
+    bool targetsOurMonitor = false;
+    for (const auto &mon : monitors) {
+      // Look for "--screen-root <monitor>" in the command line
+      std::string pattern = "--screen-root " + mon;
+      if (cmdline.find(pattern) != std::string::npos) {
+        targetsOurMonitor = true;
+        break;
+      }
+    }
+    if (!targetsOurMonitor)
+      continue;
+    LOG_INFO("Killing existing WE process PID " + std::to_string(pid) +
+             " targeting monitored output");
+    kill(pid, SIGTERM);
+    killed++;
+  }
+  closedir(procDir);
+  if (killed > 0) {
+    // Give processes time to exit gracefully, then SIGKILL stragglers
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    LOG_INFO("Killed " + std::to_string(killed) +
+             " existing WE processes for target monitors");
+  }
+}
 bool WallpaperEngineRenderer::load(const std::string &path) {
   LOG_SCOPE_AUTO();
   if (path.empty()) {
@@ -23,8 +133,7 @@ bool WallpaperEngineRenderer::load(const std::string &path) {
   play();
   return true;
 }
-void WallpaperEngineRenderer::render(cairo_t *cr, int  ,
-                                     int  ) {
+void WallpaperEngineRenderer::render(cairo_t *cr, int, int) {
   cairo_set_source_rgba(cr, 0, 0, 0, 0);
   cairo_set_source_rgba(cr, 0, 0, 0, 0);
   cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
@@ -35,7 +144,7 @@ void WallpaperEngineRenderer::setScalingMode(ScalingMode mode) {
   LOG_SCOPE_AUTO();
   m_mode = mode;
   if (m_pid != -1) {
-    play();  
+    play();
   }
 }
 void WallpaperEngineRenderer::setMonitor(const std::string &monitor) {
@@ -47,7 +156,7 @@ void WallpaperEngineRenderer::setMonitors(
     const std::vector<std::string> &monitors) {
   m_monitors = monitors;
   if (!monitors.empty()) {
-    m_monitor = monitors[0];  
+    m_monitor = monitors[0];
   }
 }
 void WallpaperEngineRenderer::launchProcess() {
@@ -61,12 +170,17 @@ void WallpaperEngineRenderer::launchProcess() {
       std::chrono::duration_cast<std::chrono::seconds>(now - m_lastLaunchTime)
           .count();
   if (elapsed > 60) {
-    m_crashCount = 0;  
+    m_crashCount = 0;
   }
   m_lastLaunchTime = now;
+  m_startTime = now; // Track when we started launching
   std::string bin = "linux-wallpaperengine";
   std::vector<std::string> args;
   args.push_back(bin);
+  // Add --set-property camerafade=false to disable linux-wallpaperengine's
+  // internal fade
+  args.push_back("--set-property");
+  args.push_back("camerafade=false");
   std::string arg = m_pkPath;
   if (m_pkPath.find(".html") != std::string::npos ||
       m_pkPath.find(".htm") != std::string::npos) {
@@ -123,15 +237,22 @@ void WallpaperEngineRenderer::launchProcess() {
   for (const auto &a : args)
     cmdLog += a + " ";
   LOG_INFO(cmdLog);
+
+  // Kill any existing WE processes targeting the same monitor(s)
+  // This prevents zombie processes from previous daemon sessions
+  killExistingProcessesForMonitors(m_monitors.empty()
+      ? std::vector<std::string>{m_monitor}
+      : m_monitors);
+
   pid_t pid = fork();
   if (pid == 0) {
     std::string exeDir;
-    std::string workingDir = ".";  
+    std::string workingDir = ".";
     try {
       exeDir =
           std::filesystem::canonical("/proc/self/exe").parent_path().string();
     } catch (...) {
-      exeDir = ".";  
+      exeDir = ".";
     }
     if (std::filesystem::exists(
             "/opt/linux-wallpaperengine/linux-wallpaperengine")) {
@@ -139,7 +260,7 @@ void WallpaperEngineRenderer::launchProcess() {
       workingDir = "/opt/linux-wallpaperengine";
     }
     int chdirRes = chdir(workingDir.c_str());
-    (void)chdirRes;  
+    (void)chdirRes;
     const char *currentLd = getenv("LD_LIBRARY_PATH");
     std::string newLd = exeDir;
     newLd += ":" + exeDir + "/..";
@@ -220,7 +341,7 @@ void WallpaperEngineRenderer::play() {
 }
 void WallpaperEngineRenderer::monitorProcess() {
   LOG_SCOPE_AUTO();
-  const int MAX_CRASH_COUNT = 3;  
+  const int MAX_CRASH_COUNT = 3;
   while (!m_stopWatcher) {
     if (m_pid > 0) {
       int status;
@@ -270,6 +391,13 @@ void WallpaperEngineRenderer::pause() {
     m_isPlaying = false;
   }
 }
+void WallpaperEngineRenderer::prepareForReplacement() {
+  LOG_INFO("Disabling auto-restart for renderer (PID: " +
+           std::to_string(m_pid) + ") — replacement incoming");
+  m_stopWatcher = true;
+  m_cv.notify_all();
+}
+
 void WallpaperEngineRenderer::detach() {
   LOG_SCOPE_AUTO();
   if (m_pid != -1) {
@@ -296,7 +424,7 @@ void WallpaperEngineRenderer::terminateProcess() {
   LOG_SCOPE_AUTO();
   m_stopWatcher = true;
   m_cv.notify_all();
-  pid_t pidToReap = m_pid;  
+  pid_t pidToReap = m_pid;
   if (pidToReap != -1 && !m_detached) {
     kill(pidToReap, SIGTERM);
   }
@@ -305,7 +433,7 @@ void WallpaperEngineRenderer::terminateProcess() {
   }
   if (pidToReap != -1 && !m_detached) {
     int status = 0;
-    for (int i = 0; i < 20; ++i) {  
+    for (int i = 0; i < 20; ++i) {
       pid_t res = waitpid(pidToReap, &status, WNOHANG);
       if (res == pidToReap || res == -1) {
         break;
@@ -316,7 +444,7 @@ void WallpaperEngineRenderer::terminateProcess() {
       LOG_WARN("Process " + std::to_string(pidToReap) +
                " did not exit after SIGTERM, sending SIGKILL");
       kill(pidToReap, SIGKILL);
-      waitpid(pidToReap, &status, 0);  
+      waitpid(pidToReap, &status, 0);
     }
   }
   m_pid = -1;
@@ -326,8 +454,7 @@ void WallpaperEngineRenderer::setVolume(float volume) {
   int vol = static_cast<int>(volume * 100.0f);
   setVolumeLevel(vol);
 }
-void WallpaperEngineRenderer::setPlaybackSpeed(float  ) {
-}
+void WallpaperEngineRenderer::setPlaybackSpeed(float) {}
 void WallpaperEngineRenderer::setFpsLimit(int fps) {
   if (m_fpsLimit != fps) {
     m_fpsLimit = fps;
@@ -338,9 +465,7 @@ void WallpaperEngineRenderer::setFpsLimit(int fps) {
     }
   }
 }
-void WallpaperEngineRenderer::setMuted(bool muted) {
-  m_muted = muted;
-}
+void WallpaperEngineRenderer::setMuted(bool muted) { m_muted = muted; }
 void WallpaperEngineRenderer::setNoAudioProcessing(bool enabled) {
   m_noAudioProcessing = enabled;
 }
@@ -354,9 +479,7 @@ void WallpaperEngineRenderer::setVolumeLevel(int volume) {
   volume = std::clamp(volume, 0, 100);
   m_volumeLevel = volume;
 }
-void WallpaperEngineRenderer::setAudioData(
-    const std::vector<float> &  ) {
-}
+void WallpaperEngineRenderer::setAudioData(const std::vector<float> &) {}
 WallpaperType WallpaperEngineRenderer::getType() const {
   if (m_pkPath.find(".html") != std::string::npos ||
       m_pkPath.find(".htm") != std::string::npos)
@@ -366,4 +489,14 @@ WallpaperType WallpaperEngineRenderer::getType() const {
     return WallpaperType::WEVideo;
   return WallpaperType::WEScene;
 }
-}  
+bool WallpaperEngineRenderer::isReady() const {
+  if (m_pid <= 0)
+    return false;
+  auto now = std::chrono::steady_clock::now();
+  auto elapsed =
+      std::chrono::duration_cast<std::chrono::milliseconds>(now - m_startTime)
+          .count();
+  // Wait at least 1000ms for process to initialize and render first frame
+  return elapsed > 1000;
+}
+} // namespace bwp::wallpaper

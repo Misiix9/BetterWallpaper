@@ -13,6 +13,7 @@ static Application *s_instance = nullptr;
 GtkCssProvider *Application::s_cssProvider = nullptr;
 GFileMonitor *Application::s_cssMonitor = nullptr;
 std::string Application::s_currentCssPath;
+bool Application::s_startMinimized = false;
 Application *Application::create() {
   if (!s_instance) {
     s_instance = new Application();
@@ -28,6 +29,8 @@ Application::Application() {
   g_signal_connect(m_app, "command-line", G_CALLBACK(onCommandLine), this);
 }
 Application::~Application() {
+  // Ensure config is saved before shutdown (handles pending debounced saves)
+  bwp::config::ConfigManager::getInstance().save();
   bwp::wallpaper::WallpaperManager::getInstance().shutdown();
   if (s_cssMonitor) {
     g_object_unref(s_cssMonitor);
@@ -45,15 +48,29 @@ int Application::run(int argc, char **argv) {
 int Application::onCommandLine(GApplication *app,
                                GApplicationCommandLine *cmdline,
                                gpointer user_data) {
-  // Ensure the application is activated (window created/shown)
-  g_application_activate(app);
-
-  // Application *self = static_cast<Application *>(user_data);
-  // Get arguments
   int argc;
   char **argv = g_application_command_line_get_arguments(cmdline, &argc);
 
-  // Find the MainWindow if it exists
+  // Scan for --minimized flag BEFORE activating
+  bool hasMinimized = false;
+  for (int i = 0; i < argc; ++i) {
+    if (std::string(argv[i]) == "--minimized") {
+      hasMinimized = true;
+      break;
+    }
+  }
+
+  if (hasMinimized) {
+    LOG_INFO("Starting minimized — daemon and tray only, no GUI window");
+    s_startMinimized = true;
+    // Hold the application so it stays alive without a window
+    g_application_hold(app);
+  } else {
+    // Normal activation — create and show window
+    g_application_activate(app);
+  }
+
+  // Handle other CLI commands
   GtkWindow *activeWindow =
       gtk_application_get_active_window(GTK_APPLICATION(app));
   MainWindow *mainWindow = nullptr;
@@ -65,15 +82,13 @@ int Application::onCommandLine(GApplication *app,
   for (int i = 0; i < argc; ++i) {
     std::string arg = argv[i];
     if (arg == "--settings") {
-      bwp::utils::Logger::log(bwp::utils::LogLevel::INFO,
-                              "CLI: Opening Settings");
+      LOG_INFO("CLI: Opening Settings");
       if (mainWindow) {
         mainWindow->navigateTo("settings");
         mainWindow->show();
       }
     } else if (arg == "--show" || arg == "--library") {
-      bwp::utils::Logger::log(bwp::utils::LogLevel::INFO,
-                              "CLI: Showing Library");
+      LOG_INFO("CLI: Showing Library");
       if (mainWindow) {
         mainWindow->navigateTo("library");
         mainWindow->show();
@@ -84,26 +99,48 @@ int Application::onCommandLine(GApplication *app,
   return 0;
 }
 void Application::onActivate(GApplication *app, gpointer) {
+  // We only check s_startMinimized (CLI flag).
+  // "Start Minimized" config only controls whether the flag is added to
+  // autostart. If user launches manually, we always show window (unless they
+  // passed --minimized manually).
+
   bool showWizard = bwp::config::ConfigManager::getInstance().get<bool>(
       "general.first_run", true);
+
   if (showWizard) {
-    bwp::utils::Logger::log(
-        bwp::utils::LogLevel::INFO,
-        "Launching Fluid Setup Wizard (main app hidden until complete)");
+    LOG_INFO("Launching Fluid Setup Wizard (main app hidden until complete)");
     auto *wizard = new FluidSetupWizard(nullptr);
     wizard->setOnComplete([app, wizard]() {
-      bwp::utils::Logger::log(bwp::utils::LogLevel::INFO,
-                              "Wizard complete - launching main application");
+      LOG_INFO("Wizard complete - launching main application");
       auto *window = new MainWindow(ADW_APPLICATION(app));
       window->show();
       delete wizard;
     });
     wizard->show();
   } else {
-    bwp::utils::Logger::log(bwp::utils::LogLevel::INFO,
-                            "Activating application, creating MainWindow...");
-    auto *window = new MainWindow(ADW_APPLICATION(app));
-    window->show();
+    // If minimized, we still create the window (so it exists) but don't show
+    // it? Or we show it? Adwaita docs say: "Note that if your application is
+    // not started by D-Bus, on_activate() is called."
+
+    // If we are starting minimized, we do NOT want to show the window.
+    if (s_startMinimized) {
+      LOG_INFO("Application activated in minimized mode - Window will remain "
+               "hidden.");
+      // We still need to create the window to have it ready?
+      // Or we can just create it and not show it.
+      // MainWindow *window = new MainWindow(ADW_APPLICATION(app));
+      // We don't need to create it yet. The tray icon can open it later.
+      // But we need to keep the app alive.
+      // onCommandLine already called g_application_hold(app) if minimized.
+
+      // Ensure background services are running (redundant if onStartup called,
+      // but safe)
+      ensureBackgroundServices();
+    } else {
+      LOG_INFO("Activating application, creating MainWindow...");
+      auto *window = new MainWindow(ADW_APPLICATION(app));
+      window->show();
+    }
   }
 }
 void Application::onStartup(GApplication *, gpointer) {
@@ -269,8 +306,17 @@ void Application::ensureBackgroundServices() {
   spawnProcess("betterwallpaper-daemon", "../daemon/betterwallpaper-daemon");
   spawnProcess("betterwallpaper-tray", "../tray/betterwallpaper-tray");
 }
+bool Application::isProcessRunning(const std::string &name) {
+  std::string cmd = "pgrep -x " + name + " > /dev/null 2>&1";
+  return (std::system(cmd.c_str()) == 0);
+}
 bool Application::spawnProcess(const std::string &name,
                                const std::string &relativePath) {
+  // Don't spawn if already running
+  if (isProcessRunning(name)) {
+    LOG_INFO(name + " is already running, skipping spawn");
+    return true;
+  }
   std::filesystem::path exePath;
   try {
     exePath = std::filesystem::canonical("/proc/self/exe").parent_path();
@@ -303,6 +349,8 @@ bool Application::spawnProcess(const std::string &name,
       g_error_free(err);
     }
   } catch (...) {
+    bwp::utils::Logger::log(bwp::utils::LogLevel::ERR,
+                            "Exception in spawnProcess for " + name);
     return false;
   }
   return true;

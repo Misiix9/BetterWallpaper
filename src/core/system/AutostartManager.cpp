@@ -35,7 +35,8 @@ AutostartMethod AutostartManager::stringToMethod(const std::string &str) {
 std::vector<AutostartMethod> AutostartManager::getAvailableMethods() {
   std::vector<AutostartMethod> methods;
   methods.push_back(AutostartMethod::XDGAutostart);
-  auto statusResult = bwp::utils::SafeProcess::exec({"systemctl", "--user", "status"});
+  auto statusResult =
+      bwp::utils::SafeProcess::exec({"systemctl", "--user", "status"});
   if (statusResult.exitCode == 0) {
     methods.push_back(AutostartMethod::SystemdUser);
   }
@@ -138,7 +139,8 @@ bool AutostartManager::enableSystemdUser() {
   file << "[Install]\n";
   file << "WantedBy=default.target\n";
   file.close();
-  auto enableResult = bwp::utils::SafeProcess::exec({"systemctl", "--user", "enable", "betterwallpaper.service"});
+  auto enableResult = bwp::utils::SafeProcess::exec(
+      {"systemctl", "--user", "enable", "betterwallpaper.service"});
   if (enableResult.exitCode != 0) {
     LOG_WARN("Failed to enable systemd service");
   }
@@ -154,7 +156,8 @@ bool AutostartManager::disableXDGAutostart() {
   return true;
 }
 bool AutostartManager::disableSystemdUser() {
-  bwp::utils::SafeProcess::exec({"systemctl", "--user", "disable", "betterwallpaper.service"});
+  bwp::utils::SafeProcess::exec(
+      {"systemctl", "--user", "disable", "betterwallpaper.service"});
   std::string path = getSystemdServicePath();
   if (fs::exists(path)) {
     fs::remove(path);
@@ -206,11 +209,11 @@ void AutostartManager::loadSettings() {
   auto &conf = bwp::config::ConfigManager::getInstance();
   std::string methodStr = conf.get<std::string>("autostart.method");
   m_currentMethod = stringToMethod(methodStr);
-  m_startMinimized = conf.get<bool>("autostart.start_minimized");
+  m_startMinimized = conf.get<bool>("general.start_minimized");
 }
 void AutostartManager::saveSettings() {
   auto &conf = bwp::config::ConfigManager::getInstance();
   conf.set("autostart.method", methodToString(m_currentMethod));
-  conf.set("autostart.start_minimized", m_startMinimized);
+  conf.set("general.start_minimized", m_startMinimized);
 }
-}  
+} // namespace bwp::core

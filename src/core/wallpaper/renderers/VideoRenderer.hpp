@@ -36,9 +36,11 @@ public:
   void stop() override;
   void setVolume(float volume) override;
   void setPlaybackSpeed(float speed) override;
-  bool isPlaying() const override { return !m_paused; }
+  bool isPlaying() const override { return m_mpv && !m_paused; }
+  bool isReady() const override { return isPlaying(); }
   bool hasAudio() const override { return true; }
   WallpaperType getType() const override { return WallpaperType::Video; }
+
 private:
   mpv_handle *m_mpv = nullptr;
   mpv_render_context *m_mpv_ctx = nullptr;
@@ -49,4 +51,4 @@ private:
   int m_bufHeight = 0;
 };
 #endif
-}  
+} // namespace bwp::wallpaper

@@ -184,6 +184,12 @@ public:
       return easeOutQuad;
     if (name == "easeInOut" || name == "ease-in-out")
       return easeInOutQuad;
+    if (name == "easeInQuad")
+      return easeInQuad;
+    if (name == "easeOutQuad")
+      return easeOutQuad;
+    if (name == "easeInOutQuad")
+      return easeInOutQuad;
     if (name == "easeInCubic")
       return easeInCubic;
     if (name == "easeOutCubic")
@@ -230,9 +236,10 @@ public:
   }
   static std::vector<std::string> getAvailableNames() {
     return {"linear",         "easeIn",          "easeOut",
-            "easeInOut",      "easeInCubic",     "easeOutCubic",
+            "easeInOut",      "easeInQuad",      "easeOutQuad",
+            "easeInOutQuad",  "easeInCubic",     "easeOutCubic",
             "easeInOutCubic", "easeInSine",      "easeOutSine",
-            "easeInOutSine",  "easeInExpo",      "easeOutExpo",
+            "easeInOutSine",  "easeInExpo",     "easeOutExpo",
             "easeInOutExpo",  "easeInCirc",      "easeOutCirc",
             "easeInOutCirc",  "easeInBack",      "easeOutBack",
             "easeInOutBack",  "easeInElastic",   "easeOutElastic",

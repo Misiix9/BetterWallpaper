@@ -7,6 +7,7 @@
 #include "../../core/wallpaper/WallpaperLibrary.hpp"
 #include "../../core/wallpaper/WallpaperManager.hpp"
 #include "../../core/wallpaper/WallpaperPreloader.hpp"
+#include "../Application.hpp"
 #include "../dialogs/ErrorDialog.hpp"
 #include <algorithm>
 #include <cctype>
@@ -14,6 +15,9 @@
 #include <cstdlib>
 #include <filesystem>
 #include <gdk-pixbuf/gdk-pixbuf.h>
+#include <mutex>
+#include <thread>
+#include <vector>
 namespace bwp::gui {
 static constexpr int PANEL_WIDTH = 300;
 static constexpr int PREVIEW_WIDTH = 260;
@@ -180,12 +184,14 @@ void PreviewPanel::setupUi() {
   gtk_box_append(GTK_BOX(settingsBox), m_noAutomuteCheck);
   GtkWidget *fpsBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
   gtk_box_append(GTK_BOX(fpsBox), gtk_label_new("FPS Limit:"));
-  m_fpsSpin = gtk_spin_button_new_with_range(1, 144, 1);
+  m_fpsSpin = gtk_spin_button_new_with_range(1, 240, 1);
   {
     auto &conf = bwp::config::ConfigManager::getInstance();
     int defaultFps = conf.get<int>("performance.fps_limit", 60);
     if (defaultFps <= 0)
       defaultFps = 60; // 0 means unlimited, default to 60 for UI
+    if (defaultFps > 240)
+      defaultFps = 240;
     gtk_spin_button_set_value(GTK_SPIN_BUTTON(m_fpsSpin), defaultFps);
   }
   g_signal_connect(m_fpsSpin, "value-changed",
@@ -380,12 +386,14 @@ void PreviewPanel::setWallpaper(const bwp::wallpaper::WallpaperInfo &info) {
                    : conf.get<int>("defaults.audio_volume", 50);
   gtk_range_set_value(GTK_RANGE(m_volumeScale), volume);
 
-  // FPS: per-wallpaper if set (> 0), else global
+  // FPS: per-wallpaper if set (> 0), else global; clamp to 1–240
   int fpsLimit = (info.settings.fps > 0)
                      ? info.settings.fps
                      : conf.get<int>("performance.fps_limit", 60);
   if (fpsLimit <= 0)
     fpsLimit = 60;
+  if (fpsLimit > 240)
+    fpsLimit = 240;
   gtk_spin_button_set_value(GTK_SPIN_BUTTON(m_fpsSpin), fpsLimit);
 
   gtk_drop_down_set_selected(GTK_DROP_DOWN(m_scalingDropdown),
@@ -459,6 +467,9 @@ void PreviewPanel::loadThumbnail(const std::string &path) {
   if (texture) {
     const char *visible =
         gtk_stack_get_visible_child_name(GTK_STACK(m_imageStack));
+    const char *defaultPage = "page1";
+    if (!visible)
+      visible = defaultPage;
     GtkWidget *target =
         (std::string(visible) == "page1") ? m_picture2 : m_picture1;
     const char *targetName =
@@ -532,72 +543,111 @@ void PreviewPanel::onApplyClicked() {
   conf.set("wallpapers.current_settings.fps_limit", fps);
   conf.set("wallpapers.current_settings.volume", volume);
   conf.save();
-  updateMonitorList();
+
+  // Read monitor selection BEFORE updateMonitorList(); replacing the dropdown
+  // model resets selection to 0 (All Monitors) in GTK4.
   guint selected = gtk_drop_down_get_selected(GTK_DROP_DOWN(m_monitorDropdown));
-  bool applyAll = (selected == 0);
-  std::string selectedMonitor = m_monitorNames.empty() ? "" : m_monitorNames[0];
-  if (!applyAll && !m_monitorNames.empty()) {
-    size_t monitorIdx = selected - 1;
-    if (monitorIdx < m_monitorNames.size()) {
-      selectedMonitor = m_monitorNames[monitorIdx];
-    } else {
-      selectedMonitor = m_monitorNames[0];
-    }
+  const bool applyAll = (selected == 0);
+  std::string singleMonitorName;
+  if (!applyAll && !m_monitorNames.empty() && selected > 0) {
+    size_t monitorIdx = static_cast<size_t>(selected - 1);
+    if (monitorIdx < m_monitorNames.size())
+      singleMonitorName = m_monitorNames[monitorIdx];
+    else
+      singleMonitorName = m_monitorNames[0];
+  } else if (!applyAll && !m_monitorNames.empty()) {
+    singleMonitorName = m_monitorNames[0];
   }
+  updateMonitorList();
+
   gtk_label_set_text(GTK_LABEL(m_statusLabel), "");
   std::vector<std::string> targets;
   if (applyAll) {
     if (m_monitorNames.empty()) {
       LOG_WARN("No monitors detected, cannot apply wallpaper");
-    } else
-      targets = m_monitorNames;
+      return;
+    }
+    targets = m_monitorNames;
   } else {
-    targets.push_back(selectedMonitor);
+    if (!singleMonitorName.empty())
+      targets.push_back(singleMonitorName);
+    else if (!m_monitorNames.empty())
+      targets.push_back(m_monitorNames[0]);
+    else {
+      LOG_WARN("No monitor selected and no monitor list");
+      return;
+    }
   }
-  LOG_INFO("Apply clicked. Target count: " + std::to_string(targets.size()));
+  LOG_INFO("Apply clicked. Target count: " + std::to_string(targets.size()) +
+           " (one process per monitor)");
   for (const auto &t : targets) {
     LOG_INFO("Target Monitor: " + t);
   }
-  struct ApplyData {
-    PreviewPanel *panel;
+
+  // Data for background IPC probe and main-thread apply
+  struct ApplyContext {
     std::vector<std::string> targets;
     std::string path;
+    PreviewPanel *panel;
+    bool ipc_available = false;
   };
-  ApplyData *data = new ApplyData{this, targets, m_currentInfo.path};
-  g_idle_add(
-      +[](gpointer user_data) -> gboolean {
-        ApplyData *d = static_cast<ApplyData *>(user_data);
-        bwp::ipc::LinuxIPCClient ipcClient;
-        bool success = true;
-        if (!ipcClient.connect()) {
-          LOG_ERROR("Failed to connect to daemon via IPC");
-          success = false;
-        } else {
-          for (const auto &mon : d->targets) {
-            LOG_INFO("Sending IPC SetWallpaper for " + mon + ": " + d->path);
-            if (!ipcClient.setWallpaper(d->path, mon)) {
-              LOG_ERROR("IPC SetWallpaper failed for monitor: " + mon);
-              success = false;
+  ApplyContext *ctx = new ApplyContext{targets, m_currentInfo.path, this, false};
+
+  // Probe IPC in background; all setWallpaper calls run on main thread so we
+  // only touch the selected monitor(s) and never call GTK/WallpaperManager from
+  // worker threads. Each monitor gets its own renderer/process.
+  std::thread([ctx]() {
+    bwp::ipc::LinuxIPCClient probe;
+    ctx->ipc_available = probe.connect();
+    if (!ctx->ipc_available) {
+      LOG_INFO("IPC unavailable, attempting to (re)start daemon...");
+      bwp::gui::Application::ensureBackgroundServices();
+      g_usleep(1000000);
+      bwp::ipc::LinuxIPCClient retry;
+      ctx->ipc_available = retry.connect();
+    }
+    g_idle_add(
+        +[](gpointer user_data) -> gboolean {
+          ApplyContext *c = static_cast<ApplyContext *>(user_data);
+          bwp::wallpaper::WallpaperManager::getInstance().initialize();
+          int okCount = 0;
+          for (const auto &mon : c->targets) {
+            bool ok = false;
+            if (c->ipc_available) {
+              bwp::ipc::LinuxIPCClient client;
+              if (client.connect()) {
+                ok = client.setWallpaper(c->path, mon);
+                if (ok)
+                  LOG_INFO("Applied via IPC for monitor: " + mon);
+              }
+            }
+            if (!ok) {
+              ok = bwp::wallpaper::WallpaperManager::getInstance().setWallpaper(
+                  mon, c->path);
+              if (ok)
+                LOG_INFO("Applied directly for monitor: " + mon);
+            }
+            if (ok)
+              okCount++;
+          }
+          if (okCount == static_cast<int>(c->targets.size())) {
+            bwp::core::utils::ToastManager::getInstance().showSuccess(
+                "Wallpaper applied successfully");
+          } else {
+            bwp::core::utils::ToastManager::getInstance().showError(
+                "Failed to set wallpaper: " + c->path);
+            GtkRoot *root =
+                gtk_widget_get_root(GTK_WIDGET(c->panel->m_applyButton));
+            if (root && GTK_IS_WINDOW(root)) {
+              ErrorDialog::show(GTK_WINDOW(root), "Failed to set wallpaper",
+                                "Could not apply " + c->path);
             }
           }
-        }
-        if (success) {
-          bwp::core::utils::ToastManager::getInstance().showSuccess(
-              "Wallpaper applied successfully");
-        } else {
-          bwp::core::utils::ToastManager::getInstance().showError(
-              "Failed to set wallpaper: " + d->path);
-          GtkRoot *root =
-              gtk_widget_get_root(GTK_WIDGET(d->panel->m_applyButton));
-          if (root && GTK_IS_WINDOW(root)) {
-            ErrorDialog::show(GTK_WINDOW(root), "Failed to set wallpaper",
-                              "Could not apply " + d->path);
-          }
-        }
-        delete d;
-        return FALSE;
-      },
-      data);
+          delete c;
+          return G_SOURCE_REMOVE;
+        },
+        ctx);
+  }).detach();
 }
 void PreviewPanel::setupRating() {
   m_ratingBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);

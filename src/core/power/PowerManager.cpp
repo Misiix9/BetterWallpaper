@@ -26,9 +26,7 @@ void PowerManager::stopMonitoring() {
     m_timerId = 0;
   }
 }
-bool PowerManager::isOnBattery() const {
-  return const_cast<PowerManager *>(this)->readBatteryState();
-}
+bool PowerManager::isOnBattery() const { return readBatteryState(); }
 void PowerManager::addCallback(Callback cb) {
   std::lock_guard<std::mutex> lock(m_cbMutex);
   m_callbacks.push_back(cb);
@@ -46,24 +44,29 @@ void PowerManager::checkBattery() {
     }
   }
 }
-bool PowerManager::readBatteryState() {
-  if (!std::filesystem::exists("/sys/class/power_supply")) {
-    return false;  
-  }
-  for (const auto &entry :
-       std::filesystem::directory_iterator("/sys/class/power_supply")) {
-    std::string name = entry.path().filename().string();
-    if (name.find("BAT") != std::string::npos) {
-      std::ifstream statusFile(entry.path() / "status");
-      if (statusFile.is_open()) {
-        std::string status;
-        std::getline(statusFile, status);
-        if (status == "Discharging") {
-          return true;
+bool PowerManager::readBatteryState() const {
+  try {
+    if (!std::filesystem::exists("/sys/class/power_supply")) {
+      return false;
+    }
+    for (const auto &entry :
+         std::filesystem::directory_iterator("/sys/class/power_supply")) {
+      std::string name = entry.path().filename().string();
+      if (name.find("BAT") != std::string::npos) {
+        std::ifstream statusFile(entry.path() / "status");
+        if (statusFile.is_open()) {
+          std::string status;
+          std::getline(statusFile, status);
+          if (status == "Discharging") {
+            return true;
+          }
         }
       }
     }
+  } catch (const std::exception &e) {
+    bwp::utils::Logger::log(bwp::utils::LogLevel::WARN,
+                            std::string("readBatteryState error: ") + e.what());
   }
   return false;
 }
-}  
+} // namespace bwp::core

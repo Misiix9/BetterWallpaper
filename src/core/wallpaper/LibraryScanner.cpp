@@ -61,10 +61,11 @@ void LibraryScanner::waitForCompletion() {
   }
 }
 void LibraryScanner::scan(const std::vector<std::string> &paths) {
-  if (m_scanning)
+  // Atomically check-and-set to prevent double-scan race
+  bool expected = false;
+  if (!m_scanning.compare_exchange_strong(expected, true))
     return;
   m_cancelRequested = false;
-  m_scanning = true;
   {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_progress = ScanProgress{};
@@ -115,9 +116,10 @@ void LibraryScanner::notifyCompletion() {
 }
 void LibraryScanner::runScan(std::vector<std::string> paths) {
   LOG_INFO("Starting library scan");
-  const char* homeEnv = std::getenv("HOME");
+  const char *homeEnv = std::getenv("HOME");
   if (!homeEnv) {
-    LOG_ERROR("HOME environment variable is not set — skipping Steam Workshop scan");
+    LOG_ERROR(
+        "HOME environment variable is not set — skipping Steam Workshop scan");
   }
   std::string home = homeEnv ? homeEnv : "";
   std::vector<std::string> workshopPaths;
@@ -141,7 +143,7 @@ void LibraryScanner::runScan(std::vector<std::string> paths) {
     std::string canonicalWsPath;
     try {
       canonicalWsPath = std::filesystem::canonical(wsPath).string();
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
       LOG_DEBUG("Failed to canonicalize path: " + wsPathStr + " - " + e.what());
       canonicalWsPath = wsPathStr;
     }
@@ -207,7 +209,9 @@ void LibraryScanner::runScan(std::vector<std::string> paths) {
       try {
         if (std::filesystem::is_directory(path)) {
           for (const auto &entry :
-               std::filesystem::recursive_directory_iterator(path)) {
+               std::filesystem::recursive_directory_iterator(
+                   path, std::filesystem::directory_options::
+                             skip_permission_denied)) {
             if (m_cancelRequested)
               break;
             if (entry.is_regular_file()) {
@@ -247,8 +251,9 @@ bool LibraryScanner::scanWorkshopItem(const std::filesystem::path &dir) {
   info.source = "workshop";
   try {
     info.workshop_id = std::stoull(folderId);
-  } catch (const std::exception& e) {
-    LOG_DEBUG("Failed to parse workshop ID from folder: " + folderId + " - " + e.what());
+  } catch (const std::exception &e) {
+    LOG_DEBUG("Failed to parse workshop ID from folder: " + folderId + " - " +
+              e.what());
     info.workshop_id = 0;
   }
   std::string foundFile;
@@ -304,8 +309,9 @@ bool LibraryScanner::scanWorkshopItem(const std::filesystem::path &dir) {
           }
         }
       }
-    } catch (const std::exception& e) {
-      LOG_DEBUG("Failed to parse project.json metadata: " + std::string(e.what()));
+    } catch (const std::exception &e) {
+      LOG_DEBUG("Failed to parse project.json metadata: " +
+                std::string(e.what()));
     }
   }
   if (foundFile.empty()) {
@@ -322,10 +328,13 @@ bool LibraryScanner::scanWorkshopItem(const std::filesystem::path &dir) {
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
     if (ext == ".pkg")
       info.type = WallpaperType::WEScene;
-    else if (ext == ".mp4" || ext == ".webm")
+    else if (ext == ".mp4" || ext == ".webm" || ext == ".mkv" ||
+             ext == ".avi")
       info.type = WallpaperType::Video;
     else if (ext == ".html" || ext == ".htm")
       info.type = WallpaperType::WEWeb;
+    else if (ext == ".gif")
+      info.type = WallpaperType::AnimatedImage;
     else
       info.type = WallpaperType::StaticImage;
   }
@@ -353,28 +362,30 @@ void LibraryScanner::scanFile(const std::filesystem::path &path) {
   auto &library = WallpaperLibrary::getInstance();
   if (path.string().find("steamapps/workshop") != std::string::npos ||
       path.string().find("431960") != std::string::npos) {
-    return;  
+    return;
   }
   if (library.getWallpaper(id))
     return;
   WallpaperInfo info;
   info.id = id;
-  info.source = "local";  
+  info.source = "local";
   info.path = path.string();
   try {
     info.size_bytes = std::filesystem::file_size(path);
-  } catch (const std::exception& e) {
+  } catch (const std::exception &e) {
     LOG_DEBUG("Failed to get file size: " + path.string() + " - " + e.what());
     info.size_bytes = 0;
   }
-  if (isScene)
-    info.type = WallpaperType::WEScene;
-  else if (isVideo)
-    info.type = WallpaperType::Video;
-  else if (isWeb)
-    info.type = WallpaperType::WEWeb;
-  else
-    info.type = WallpaperType::StaticImage;
+  // Treat all as WE Video for consistent transition behavior.
+  // if (isScene)
+  //   info.type = WallpaperType::WEScene;
+  // else if (isVideo)
+  //   info.type = WallpaperType::Video;
+  // else if (isWeb)
+  //   info.type = WallpaperType::WEWeb;
+  // else
+  //   info.type = WallpaperType::StaticImage;
+  info.type = WallpaperType::WEVideo;
   library.addWallpaper(info);
   {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -382,4 +393,4 @@ void LibraryScanner::scanFile(const std::filesystem::path &path) {
       m_callback(path.string());
   }
 }
-}  
+} // namespace bwp::wallpaper

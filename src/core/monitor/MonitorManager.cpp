@@ -38,7 +38,7 @@ MonitorManager::~MonitorManager() {
 #ifndef _WIN32
   if (m_registry)
     wl_registry_destroy(m_registry);
-  m_monitors.clear();  
+  m_monitors.clear();
   if (m_display)
     wl_display_disconnect(m_display);
 #endif
@@ -88,23 +88,36 @@ void MonitorManager::processPending() {
 }
 #ifndef _WIN32
 void MonitorManager::addMonitor(uint32_t id, wl_output *output) {
-  std::lock_guard<std::mutex> lock(m_mutex);
-  auto monitor = std::make_shared<WaylandMonitor>(id, output);
-  m_monitors[id] = monitor;
-  LOG_INFO("Monitor detected with ID " + std::to_string(id));
-  if (m_callback) {
-    m_callback(monitor->getInfo(), true);
+  MonitorInfo info;
+  std::function<void(const MonitorInfo &, bool)> cb;
+  {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    auto monitor = std::make_shared<WaylandMonitor>(id, output);
+    m_monitors[id] = monitor;
+    LOG_INFO("Monitor detected with ID " + std::to_string(id));
+    info = monitor->getInfo();
+    cb = m_callback;
+  }
+  if (cb) {
+    cb(info, true);
   }
 }
 void MonitorManager::removeMonitor(uint32_t id) {
-  std::lock_guard<std::mutex> lock(m_mutex);
-  if (m_monitors.count(id)) {
-    MonitorInfo info = m_monitors[id]->getInfo();
-    m_monitors.erase(id);
-    LOG_INFO("Monitor removed with ID " + std::to_string(id));
-    if (m_callback) {
-      m_callback(info, false);
+  MonitorInfo info;
+  std::function<void(const MonitorInfo &, bool)> cb;
+  bool found = false;
+  {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (m_monitors.count(id)) {
+      info = m_monitors[id]->getInfo();
+      m_monitors.erase(id);
+      LOG_INFO("Monitor removed with ID " + std::to_string(id));
+      cb = m_callback;
+      found = true;
     }
+  }
+  if (found && cb) {
+    cb(info, false);
   }
 }
 #else
@@ -146,4 +159,4 @@ void MonitorManager::setCallback(MonitorCallback callback) {
   std::lock_guard<std::mutex> lock(m_mutex);
   m_callback = callback;
 }
-}  
+} // namespace bwp::monitor

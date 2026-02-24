@@ -36,6 +36,7 @@ public:
   }
   void loadFromConfig();
   void saveToConfig();
+
 private:
   SlideshowManager() = default;
   ~SlideshowManager();
@@ -45,15 +46,14 @@ private:
   void applyCurrentWallpaper();
   void shufflePlaylist();
   std::vector<std::string> m_playlist;
-  std::vector<std::string> m_shuffledIndices;
   int m_currentIndex = 0;
-  int m_intervalSeconds = 300;  
+  int m_intervalSeconds = 300;
   std::atomic<bool> m_running{false};
   std::atomic<bool> m_paused{false};
   std::atomic<bool> m_shuffle{false};
-  std::atomic<bool> m_loading{false};   
+  std::atomic<bool> m_loading{false};
   guint m_timerId = 0;
   WallpaperChangeCallback m_changeCallback;
   mutable std::recursive_mutex m_mutex;
 };
-}  
+} // namespace bwp::core

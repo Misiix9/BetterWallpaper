@@ -1,21 +1,11 @@
 #include "TransitionDialog.hpp"
-#include "../../core/transition/effects/AdvancedEffects.hpp"
-#include "../../core/transition/effects/BasicEffects.hpp"
+#include "../../core/transition/EffectFactory.hpp"
+#include "../../core/transition/Easing.hpp"
 #include "../../core/utils/Logger.hpp"
 #include <cmath>
 namespace bwp::gui {
 TransitionDialog::TransitionDialog(GtkWindow *parent) {
-  m_effectNames = {"Fade",
-                   "Slide",
-                   "Wipe",
-                   "Expanding Circle",
-                   "Expanding Square",
-                   "Dissolve",
-                   "Zoom",
-                   "Morph",
-                   "Angled Wipe",
-                   "Pixelate",
-                   "Blinds"};
+  m_effectNames = bwp::transition::getAvailableEffectNames();
   m_easingNames = bwp::transition::Easing::getAvailableNames();
   m_dialog = GTK_WIDGET(adw_dialog_new());
   adw_dialog_set_title(ADW_DIALOG(m_dialog), "Transition Settings");
@@ -257,33 +247,7 @@ TransitionDialog::getCurrentSettings() const {
 }
 std::shared_ptr<bwp::transition::TransitionEffect>
 TransitionDialog::createEffect(const std::string &name) const {
-  if (name == "Fade") {
-    return std::make_shared<bwp::transition::FadeEffect>();
-  } else if (name == "Slide") {
-    return std::make_shared<bwp::transition::SlideEffect>();
-  } else if (name == "Wipe") {
-    return std::make_shared<bwp::transition::WipeEffect>();
-  } else if (name == "Expanding Circle") {
-    return std::make_shared<bwp::transition::ExpandingCircleEffect>();
-  } else if (name == "Expanding Square") {
-    return std::make_shared<bwp::transition::ExpandingSquareEffect>();
-  } else if (name == "Dissolve") {
-    return std::make_shared<bwp::transition::DissolveEffect>();
-  } else if (name == "Zoom") {
-    return std::make_shared<bwp::transition::ZoomEffect>();
-  } else if (name == "Morph") {
-    return std::make_shared<bwp::transition::MorphEffect>();
-  } else if (name == "Angled Wipe") {
-    auto effect = std::make_shared<bwp::transition::AngledWipeEffect>();
-    effect->setAngle(45);
-    effect->setSoftEdge(true);
-    return effect;
-  } else if (name == "Pixelate") {
-    return std::make_shared<bwp::transition::PixelateEffect>();
-  } else if (name == "Blinds") {
-    return std::make_shared<bwp::transition::BlindsEffect>();
-  }
-  return std::make_shared<bwp::transition::FadeEffect>();
+  return bwp::transition::createEffectByName(name);
 }
 void TransitionDialog::onApply() {
   if (m_callback) {

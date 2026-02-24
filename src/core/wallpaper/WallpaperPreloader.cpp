@@ -246,23 +246,26 @@ void WallpaperPreloader::evictOldPreloads() {
   }
 }
 WallpaperType WallpaperPreloader::detectType(const std::string &path) const {
-  std::string mime = utils::FileUtils::getMimeType(path);
-  if (mime.find("image/") != std::string::npos &&
-      mime.find("gif") == std::string::npos) {
-    return WallpaperType::StaticImage;
-  } else if (mime.find("video/") != std::string::npos ||
-             mime.find("gif") != std::string::npos) {
-    return WallpaperType::Video;
-  } else if (mime.find("x-wallpaper-engine") != std::string::npos) {
-    return WallpaperType::WEScene;
-  }
-  std::string ext = utils::FileUtils::getExtension(path);
-  if (ext == "mp4" || ext == "webm" || ext == "mkv" || ext == "gif") {
-    return WallpaperType::Video;
-  }
-  if (ext == "pkg" || ext == "json" || ext == "html" || ext == "htm") {
-    return WallpaperType::WEScene;
-  }
-  return WallpaperType::StaticImage;
+  (void)path;
+  // Treat all as WE Video for consistent transition behavior.
+  // std::string mime = utils::FileUtils::getMimeType(path);
+  // if (mime.find("image/") != std::string::npos &&
+  //     mime.find("gif") == std::string::npos) {
+  //   return WallpaperType::StaticImage;
+  // } else if (mime.find("video/") != std::string::npos ||
+  //            mime.find("gif") != std::string::npos) {
+  //   return WallpaperType::Video;
+  // } else if (mime.find("x-wallpaper-engine") != std::string::npos) {
+  //   return WallpaperType::WEScene;
+  // }
+  // std::string ext = utils::FileUtils::getExtension(path);
+  // if (ext == "mp4" || ext == "webm" || ext == "mkv" || ext == "gif") {
+  //   return WallpaperType::Video;
+  // }
+  // if (ext == "pkg" || ext == "json" || ext == "html" || ext == "htm") {
+  //   return WallpaperType::WEScene;
+  // }
+  // return WallpaperType::StaticImage;
+  return WallpaperType::WEVideo;
 }
 } // namespace bwp::wallpaper

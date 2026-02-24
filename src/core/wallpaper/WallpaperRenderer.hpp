@@ -13,18 +13,22 @@ public:
   virtual bool load(const std::string &path) = 0;
   virtual void render(cairo_t *cr, int width, int height) = 0;
   virtual void setScalingMode(ScalingMode mode) = 0;
-  virtual void setMonitor(const std::string &  ) {}
-  virtual void setMonitors(const std::vector<std::string> &  ) {}
-  virtual void update(double  ) {}  
+  virtual void setMonitor(const std::string &) {}
+  virtual void setMonitors(const std::vector<std::string> &) {}
+  virtual void update(double) {}
   virtual void play() {}
   virtual void pause() {}
   virtual void stop() {}
-  virtual void setVolume(float  ) {}
-  virtual void setPlaybackSpeed(float  ) {}
-  virtual void setMuted(bool  ) {}
-  virtual void setAudioData(const std::vector<float> &  ) {}
+  /// Hint that this renderer is about to be replaced by a new one.
+  /// Disables crash-recovery so the old process isn't respawned.
+  virtual void prepareForReplacement() {}
+  virtual void setVolume(float) {}
+  virtual void setPlaybackSpeed(float) {}
+  virtual void setMuted(bool) {}
+  virtual void setAudioData(const std::vector<float> &) {}
   virtual bool isPlaying() const { return false; }
+  virtual bool isReady() const { return true; }
   virtual bool hasAudio() const { return false; }
   virtual WallpaperType getType() const = 0;
 };
-}  
+} // namespace bwp::wallpaper

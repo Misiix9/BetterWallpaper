@@ -69,7 +69,7 @@ void ProfilesView::setupUi() {
   gtk_flow_box_set_max_children_per_line(GTK_FLOW_BOX(m_flowBox), 3);
   gtk_flow_box_set_column_spacing(GTK_FLOW_BOX(m_flowBox), 16);
   gtk_flow_box_set_row_spacing(GTK_FLOW_BOX(m_flowBox), 16);
-  gtk_widget_set_visible(m_flowBox, FALSE);  
+  gtk_widget_set_visible(m_flowBox, FALSE);
   gtk_box_append(GTK_BOX(box), m_flowBox);
   gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(m_content), box);
 }
@@ -147,8 +147,8 @@ GtkWidget *ProfilesView::createProfileCard(const std::string &id,
   gtk_widget_set_margin_end(actionsBox, 12);
   gtk_widget_set_margin_top(actionsBox, 8);
   gtk_widget_set_margin_bottom(actionsBox, 12);
-  std::string *idCopy = new std::string(id);
   if (!isActive) {
+    std::string *idCopy = new std::string(id);
     GtkWidget *activateBtn = gtk_button_new_with_label("Activate");
     gtk_widget_add_css_class(activateBtn, "suggested-action");
     g_object_set_data_full(
@@ -296,4 +296,4 @@ void ProfilesView::onDuplicateProfile(const std::string &profileId) {
   conf.set("profiles.list", profiles);
   loadProfiles();
 }
-}  
+} // namespace bwp::gui

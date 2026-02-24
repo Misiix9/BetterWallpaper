@@ -35,7 +35,8 @@ void SlideEffect::render(cairo_t *cr, cairo_surface_t *from,
     y_offset = -height * (1.0 - progress);
     break;
   }
-  cairo_set_source_rgb(cr, 0, 0, 0);
+  // Use "from" as background so we never show black (user expects no black frame).
+  cairo_set_source_surface(cr, from, 0, 0);
   cairo_paint(cr);
   cairo_save(cr);
   double from_x = 0, from_y = 0;
@@ -70,12 +71,15 @@ void WipeEffect::render(cairo_t *cr, cairo_surface_t *from, cairo_surface_t *to,
   cairo_set_source_surface(cr, from, 0, 0);
   cairo_paint(cr);
   cairo_save(cr);
-  cairo_rectangle(cr, 0, 0, width * progress,
-                  height);  
   if (params.direction == Direction::Right) {
-    cairo_rectangle(cr, 0, 0, width * progress, height);
+    cairo_rectangle(cr, width * (1.0 - progress), 0, width * progress, height);
   } else if (params.direction == Direction::Left) {
-    cairo_rectangle(cr, width * (1.0 - progress), 0, width, height);
+    cairo_rectangle(cr, 0, 0, width * progress, height);
+  } else if (params.direction == Direction::Down) {
+    cairo_rectangle(cr, 0, height * (1.0 - progress), width, height * progress);
+  } else {
+    // Up: reveal from top
+    cairo_rectangle(cr, 0, 0, width, height * progress);
   }
   cairo_clip(cr);
   cairo_set_source_surface(cr, to, 0, 0);

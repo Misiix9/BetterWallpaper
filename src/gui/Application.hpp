@@ -22,6 +22,7 @@ protected:
 
 public:
   int run(int argc, char **argv);
+  static void ensureBackgroundServices();
 
 private:
   static void onActivate(GApplication *app, gpointer user_data);
@@ -39,7 +40,8 @@ private:
   static GtkCssProvider *s_cssProvider;
   static GFileMonitor *s_cssMonitor;
   static std::string s_currentCssPath;
-  static void ensureBackgroundServices();
+  static bool s_startMinimized;
+  static bool isProcessRunning(const std::string &name);
   static bool spawnProcess(const std::string &name,
                            const std::string &relativePath);
 };

@@ -12,17 +12,35 @@ WallpaperTransitionManager::WallpaperTransitionManager() { loadSettings(); }
 void WallpaperTransitionManager::loadSettings() {
   auto &conf = bwp::config::ConfigManager::getInstance();
   std::lock_guard<std::mutex> lock(m_mutex);
-  m_settings.enabled = conf.get<bool>("transitions.enabled", true);
-  m_settings.effectName =
-      conf.get<std::string>("transitions.default_effect", "Fade");
+
+  // Default to true
+  m_settings.enabled = true;
+  try {
+    // Try to read the whole object to check for existence
+    auto transObj = conf.get<nlohmann::json>("transitions");
+    if (transObj.is_object() && transObj.contains("enabled")) {
+      m_settings.enabled = transObj["enabled"].get<bool>();
+    } else {
+      // Key missing, force true
+      m_settings.enabled = true;
+      // Optional: write back to config?
+      // conf.set("transitions.enabled", true);
+    }
+  } catch (...) {
+    // If "transitions" object misses, default to true
+    m_settings.enabled = true;
+  }
+
   m_settings.durationMs = conf.get<int>("transitions.duration_ms", 500);
   m_settings.easingName =
       conf.get<std::string>("transitions.easing", "easeInOut");
+  m_settings.effectName =
+      conf.get<std::string>("transitions.default_effect", "Fade");
+
   LOG_INFO("Transition settings loaded: enabled=" +
            std::string(m_settings.enabled ? "true" : "false") +
            ", effect=" + m_settings.effectName +
-           ", duration=" + std::to_string(m_settings.durationMs) +
-           "ms, easing=" + m_settings.easingName);
+           ", duration=" + std::to_string(m_settings.durationMs) + "ms");
 }
 WallpaperTransitionManager::TransitionSettings
 WallpaperTransitionManager::getSettings() const {
@@ -57,13 +75,16 @@ void WallpaperTransitionManager::startTransition(
   TransitionState state;
   state.active = true;
   state.progress = 0.0;
-  state.startTimeMs =
-      std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now().time_since_epoch())
-          .count();
+  state.startTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::steady_clock::now().time_since_epoch())
+                          .count();
   state.oldWindow = oldWindow;
   state.newWindow = newWindow;
   state.onComplete = onComplete;
+  state.isWaitingForReady = true; // Start by waiting
+  state.readyWaitStartTimeMs = state.startTimeMs;
+  state.isOverlapDelaying = false;
+  state.overlapStartTimeMs = 0;
   if (newWindow) {
     newWindow->setOpacity(0.0);
     newWindow->show();
@@ -110,10 +131,9 @@ void WallpaperTransitionManager::startExternalTransition(
   TransitionState state;
   state.active = true;
   state.progress = 0.0;
-  state.startTimeMs =
-      std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now().time_since_epoch())
-          .count();
+  state.startTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::steady_clock::now().time_since_epoch())
+                          .count();
   state.oldPid = oldPid;
   state.newPid = newPid;
   state.onComplete = onComplete;
@@ -154,23 +174,72 @@ gboolean WallpaperTransitionManager::onAnimationTick(gpointer data) {
   int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                       std::chrono::steady_clock::now().time_since_epoch())
                       .count();
-  int64_t elapsedMs = nowMs - state.startTimeMs;
-  double rawProgress =
-      static_cast<double>(elapsedMs) / manager->m_settings.durationMs;
-  rawProgress = std::min(1.0, std::max(0.0, rawProgress));
-  auto easingFunc =
-      bwp::transition::Easing::getByName(manager->m_settings.easingName);
-  double easedProgress = easingFunc(rawProgress);
-  state.progress = easedProgress;
-  if (state.newWindow) {
-    state.newWindow->setOpacity(easedProgress);
+
+  // Phase 0: Wait for Ready
+  if (state.isWaitingForReady) {
+    bool isReady = false;
+    if (state.newWindow) {
+      if (auto renderer = state.newWindow->getRenderer()) {
+        isReady = renderer->isReady();
+      } else {
+        isReady = true; // No renderer? Just proceed.
+      }
+    } else {
+      isReady = true; // No new window? Just proceed.
+    }
+
+    // Timeout safety (5 seconds)
+    if (nowMs - state.readyWaitStartTimeMs > 5000) {
+      LOG_WARN("Timed out waiting for renderer ready, forcing transition");
+      isReady = true;
+    }
+
+    if (!isReady) {
+      return G_SOURCE_CONTINUE; // Keep waiting, don't advance fade
+    }
+
+    // Ready to start fade
+    state.isWaitingForReady = false;
+    state.startTimeMs = nowMs; // Reset start time for fade animation
+    LOG_INFO("Renderer ready, starting fade transition");
   }
-  if (rawProgress >= 1.0) {
-    std::string monName = monitorName;  
-    lock.unlock();
-    manager->finishTransition(monName, true);
-    return G_SOURCE_REMOVE;
+
+  // Phase 1: Fade Animation
+  if (!state.isOverlapDelaying) {
+    int64_t elapsedMs = nowMs - state.startTimeMs;
+    double rawProgress =
+        static_cast<double>(elapsedMs) / manager->m_settings.durationMs;
+    rawProgress = std::min(1.0, std::max(0.0, rawProgress));
+    auto easingFunc =
+        bwp::transition::Easing::getByName(manager->m_settings.easingName);
+    double easedProgress = easingFunc(rawProgress);
+    state.progress = easedProgress;
+    if (state.newWindow) {
+      state.newWindow->setOpacity(easedProgress);
+    }
+    if (rawProgress >= 1.0) {
+      // Fade complete, enter Overlap Delay
+      state.isOverlapDelaying = true;
+      state.overlapStartTimeMs = nowMs;
+      if (state.newWindow)
+        state.newWindow->setOpacity(1.0); // Ensure full opacity
+      LOG_INFO("Fade complete, starting 0.8s overlap delay");
+    }
+    return G_SOURCE_CONTINUE;
   }
+
+  // Phase 2: Overlap Delay (~0.8 seconds)
+  if (state.isOverlapDelaying) {
+    if (nowMs - state.overlapStartTimeMs >= 800) {
+      // Delay complete
+      std::string monName = monitorName;
+      lock.unlock();
+      manager->finishTransition(monName, true);
+      return G_SOURCE_REMOVE;
+    }
+    return G_SOURCE_CONTINUE;
+  }
+
   return G_SOURCE_CONTINUE;
 }
 void WallpaperTransitionManager::applyWindowOpacity(
@@ -191,8 +260,8 @@ void WallpaperTransitionManager::cancelTransition(
     LOG_INFO("Transition canceled for monitor: " + monitorName);
   }
 }
-void WallpaperTransitionManager::finishTransition(const std::string &monitorName,
-                                                  bool success) {
+void WallpaperTransitionManager::finishTransition(
+    const std::string &monitorName, bool success) {
   CompletionCallback callback;
   std::shared_ptr<WallpaperWindow> oldWindow;
   pid_t oldPid = 0;
@@ -223,6 +292,11 @@ void WallpaperTransitionManager::finishTransition(const std::string &monitorName
   if (callback) {
     callback(success);
   }
+  // Clean up transition state to release shared_ptrs to old windows/renderers
+  {
+    std::lock_guard<std::mutex> lock2(m_mutex);
+    m_transitions.erase(monitorName);
+  }
 }
 bool WallpaperTransitionManager::isTransitioning(
     const std::string &monitorName) const {
@@ -230,8 +304,8 @@ bool WallpaperTransitionManager::isTransitioning(
   auto it = m_transitions.find(monitorName);
   return it != m_transitions.end() && it->second.active;
 }
-double WallpaperTransitionManager::getProgress(
-    const std::string &monitorName) const {
+double
+WallpaperTransitionManager::getProgress(const std::string &monitorName) const {
   std::lock_guard<std::mutex> lock(m_mutex);
   auto it = m_transitions.find(monitorName);
   if (it != m_transitions.end()) {
@@ -239,4 +313,4 @@ double WallpaperTransitionManager::getProgress(
   }
   return 0.0;
 }
-}  
+} // namespace bwp::wallpaper

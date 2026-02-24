@@ -1,5 +1,6 @@
 #include "TransitionEngine.hpp"
 #include "../utils/Logger.hpp"
+#include <cairo.h>
 namespace bwp::transition {
 TransitionEngine::TransitionEngine() {
   m_lastProgressUpdate = std::chrono::steady_clock::now();
@@ -22,6 +23,8 @@ void TransitionEngine::startWithEasing(cairo_surface_t *from,
                                        Easing::EasingFunc easingFunc,
                                        FinishCallback callback) {
   stop();  
+  m_liveToRender = nullptr;
+  m_liveToWidth = m_liveToHeight = 0;
   if (m_preloaded && to == nullptr) {
     to = m_preloaded;
     m_preloaded = nullptr;
@@ -43,6 +46,32 @@ void TransitionEngine::startWithEasing(cairo_surface_t *from,
   LOG_DEBUG("Transition started: duration=" + std::to_string(durationMs) +
             "ms");
 }
+void TransitionEngine::startWithLiveTo(cairo_surface_t *from,
+                                       LiveToRenderFunc liveToRender,
+                                       int width, int height,
+                                       std::shared_ptr<TransitionEffect> effect,
+                                       long durationMs,
+                                       const std::string &easingName,
+                                       FinishCallback callback) {
+  stop();
+  m_to = nullptr;
+  if (from) {
+    m_from = cairo_surface_reference(from);
+  }
+  m_liveToRender = std::move(liveToRender);
+  m_liveToWidth = width;
+  m_liveToHeight = height;
+  m_effect = effect;
+  m_durationMs = std::max(1L, durationMs);
+  Easing::EasingFunc ef = Easing::getByName(easingName);
+  m_easingFunc = ef ? ef : Easing::easeInOutQuad;
+  m_callback = callback;
+  m_startTime = std::chrono::steady_clock::now();
+  m_cachedProgress = 0.0;
+  m_cachedEasedProgress = 0.0;
+  m_active = true;
+  LOG_DEBUG("Transition started (live to): duration=" + std::to_string(durationMs) + "ms");
+}
 void TransitionEngine::preload(cairo_surface_t *nextSurface) {
   clearPreload();
   if (nextSurface) {
@@ -58,6 +87,8 @@ void TransitionEngine::clearPreload() {
 }
 void TransitionEngine::stop() {
   m_active = false;
+  m_liveToRender = nullptr;
+  m_liveToWidth = m_liveToHeight = 0;
   if (m_from) {
     cairo_surface_destroy(m_from);
     m_from = nullptr;
@@ -97,6 +128,39 @@ bool TransitionEngine::render(cairo_t *cr, int width, int height,
   if (!m_active)
     return false;
   updateProgress();
+  const int w = (m_liveToWidth > 0) ? m_liveToWidth : width;
+  const int h = (m_liveToHeight > 0) ? m_liveToHeight : height;
+  if (m_liveToRender) {
+    cairo_surface_t *toSurface =
+        cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
+    cairo_t *toCr = cairo_create(toSurface);
+    m_liveToRender(toCr, w, h);
+    cairo_destroy(toCr);
+    if (m_cachedProgress >= 1.0) {
+      if (m_effect && m_from) {
+        m_effect->render(cr, m_from, toSurface, 1.0, width, height, params);
+      } else {
+        cairo_set_source_surface(cr, toSurface, 0, 0);
+        cairo_paint(cr);
+      }
+      cairo_surface_destroy(toSurface);
+      FinishCallback callbackCopy = m_callback;
+      stop();
+      if (callbackCopy) {
+        callbackCopy();
+      }
+      return false;
+    }
+    if (m_effect && m_from) {
+      m_effect->render(cr, m_from, toSurface, m_cachedEasedProgress, width, height,
+                      params);
+    } else {
+      cairo_set_source_surface(cr, toSurface, 0, 0);
+      cairo_paint(cr);
+    }
+    cairo_surface_destroy(toSurface);
+    return true;
+  }
   if (m_cachedProgress >= 1.0) {
     if (m_effect && m_from && m_to) {
       m_effect->render(cr, m_from, m_to, 1.0, width, height, params);

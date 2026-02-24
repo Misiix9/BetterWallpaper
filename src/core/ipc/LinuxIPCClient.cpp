@@ -5,9 +5,10 @@
 namespace bwp::ipc {
 LinuxIPCClient::LinuxIPCClient() {}
 LinuxIPCClient::~LinuxIPCClient() {
-  if (m_connection) {
-    g_object_unref(m_connection);
-  }
+  // Note: m_connection from g_bus_get_sync() is a shared/cached singleton
+  // managed by GLib. Do NOT unref it — doing so can prematurely free the
+  // connection and cause use-after-free in other D-Bus users.
+  m_connection = nullptr;
 }
 bool LinuxIPCClient::connect() {
   GError *error = nullptr;
@@ -22,7 +23,7 @@ bool LinuxIPCClient::connect() {
   return true;
 }
 bool LinuxIPCClient::setWallpaper(const std::string &path,
-                              const std::string &monitor) {
+                                  const std::string &monitor) {
   if (!m_connection)
     return false;
   GError *error = nullptr;
@@ -78,7 +79,7 @@ std::string LinuxIPCClient::getDaemonVersion() {
     return "Unknown";
   }
   GVariant *container;
-  g_variant_get(result, "(v)", &container);  
+  g_variant_get(result, "(v)", &container);
   const char *version = g_variant_get_string(container, nullptr);
   std::string v = version ? version : "Unknown";
   g_variant_unref(container);
@@ -94,7 +95,8 @@ std::string LinuxIPCClient::getStatus() {
       "com.github.BetterWallpaper", "GetStatus", nullptr, G_VARIANT_TYPE("(s)"),
       G_DBUS_CALL_FLAGS_NONE, 5000, nullptr, &error);
   if (!result) {
-    if (error) g_error_free(error);
+    if (error)
+      g_error_free(error);
     return "{}";
   }
   const char *status;
@@ -112,7 +114,8 @@ std::string LinuxIPCClient::getMonitors() {
       "com.github.BetterWallpaper", "GetMonitors", nullptr,
       G_VARIANT_TYPE("(s)"), G_DBUS_CALL_FLAGS_NONE, 5000, nullptr, &error);
   if (!result) {
-    if (error) g_error_free(error);
+    if (error)
+      g_error_free(error);
     return "[]";
   }
   const char *monitors;
@@ -122,16 +125,18 @@ std::string LinuxIPCClient::getMonitors() {
   return m;
 }
 void LinuxIPCClient::callAction(const char *method, GVariant *parameters) {
-  if (!m_connection) return;
+  if (!m_connection)
+    return;
   GError *error = nullptr;
   GVariant *result = g_dbus_connection_call_sync(
       m_connection, "com.github.BetterWallpaper", "/com/github/BetterWallpaper",
       "com.github.BetterWallpaper", method, parameters, nullptr,
       G_DBUS_CALL_FLAGS_NONE, 5000, nullptr, &error);
   if (!result) {
-    LOG_ERROR(std::string("D-Bus call '") + method + "' failed: " +
-              (error ? error->message : "Unknown"));
-    if (error) g_error_free(error);
+    LOG_ERROR(std::string("D-Bus call '") + method +
+              "' failed: " + (error ? error->message : "Unknown"));
+    if (error)
+      g_error_free(error);
     return;
   }
   g_variant_unref(result);
@@ -157,4 +162,4 @@ void LinuxIPCClient::setVolume(const std::string &monitor, int volume) {
 void LinuxIPCClient::setMuted(const std::string &monitor, bool muted) {
   callAction("SetMuted", g_variant_new("(sb)", monitor.c_str(), muted));
 }
-}  
+} // namespace bwp::ipc

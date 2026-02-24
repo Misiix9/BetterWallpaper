@@ -10,7 +10,7 @@
 #include <thread>
 namespace bwp::gui {
 static constexpr int CARD_WIDTH = 180;
-static constexpr int CARD_HEIGHT = 135;  
+static constexpr int CARD_HEIGHT = 135;
 WallpaperCard::WallpaperCard(const bwp::wallpaper::WallpaperInfo &info)
     : m_info(info) {
   m_aliveToken = std::make_shared<bool>(true);
@@ -66,12 +66,10 @@ WallpaperCard::WallpaperCard(const bwp::wallpaper::WallpaperInfo &info)
   gtk_box_append(GTK_BOX(titleContainer), m_titleLabel);
   gtk_box_append(GTK_BOX(titleContainer), m_favoriteBtn);
   gtk_overlay_add_overlay(GTK_OVERLAY(m_overlay), titleContainer);
-  m_autoTagBadge = gtk_image_new_from_icon_name(
-      "weather-clear-night-symbolic");  
+  m_autoTagBadge = gtk_image_new_from_icon_name("weather-clear-night-symbolic");
   gtk_widget_set_tooltip_text(m_autoTagBadge, "Auto-tagged by AI");
   gtk_widget_add_css_class(m_autoTagBadge, "card-badge");
-  gtk_widget_add_css_class(m_autoTagBadge,
-                           "auto-tag-badge");  
+  gtk_widget_add_css_class(m_autoTagBadge, "auto-tag-badge");
   gtk_widget_set_halign(m_autoTagBadge, GTK_ALIGN_END);
   gtk_widget_set_valign(m_autoTagBadge, GTK_ALIGN_END);
   gtk_widget_set_margin_bottom(m_autoTagBadge, 8);
@@ -104,7 +102,7 @@ WallpaperCard::WallpaperCard(const bwp::wallpaper::WallpaperInfo &info)
     gtk_widget_add_css_class(m_typeBadge, "type-gif");
     break;
   default:
-    break;  
+    break;
   }
   if (!typeText.empty()) {
     gtk_label_set_text(GTK_LABEL(m_typeBadge), typeText.c_str());
@@ -160,28 +158,31 @@ void WallpaperCard::setInfo(const bwp::wallpaper::WallpaperInfo &info) {
   gtk_widget_remove_css_class(m_image, "no-thumbnail");
   gtk_widget_set_visible(m_autoTagBadge, info.isAutoTagged);
   gtk_widget_set_visible(m_scanOverlay, info.isScanning);
-  if (!info.blurhash.empty() &&
-      bwp::utils::blurhash::isValid(info.blurhash)) {
+  if (!info.blurhash.empty() && bwp::utils::blurhash::isValid(info.blurhash)) {
     constexpr int BLUR_W = 32;
-    constexpr int BLUR_H = 24;  
-    auto pixels =
-        bwp::utils::blurhash::decode(info.blurhash, BLUR_W, BLUR_H);
+    constexpr int BLUR_H = 24;
+    auto pixels = bwp::utils::blurhash::decode(info.blurhash, BLUR_W, BLUR_H);
     if (!pixels.empty()) {
-      GdkPixbuf *blurPixbuf = gdk_pixbuf_new_from_data(
+      GdkPixbuf *borrowed = gdk_pixbuf_new_from_data(
           pixels.data(), GDK_COLORSPACE_RGB, TRUE, 8, BLUR_W, BLUR_H,
           BLUR_W * 4, nullptr, nullptr);
-      if (blurPixbuf) {
-        GdkPixbuf *scaled = gdk_pixbuf_scale_simple(
-            blurPixbuf, CARD_WIDTH, CARD_HEIGHT, GDK_INTERP_BILINEAR);
-        g_object_unref(blurPixbuf);
-        if (scaled) {
-          GdkTexture *texture = gdk_texture_new_for_pixbuf(scaled);
-          if (texture) {
-            gtk_picture_set_paintable(GTK_PICTURE(m_image),
-                                      GDK_PAINTABLE(texture));
-            g_object_unref(texture);
+      if (borrowed) {
+        // Copy immediately so we don't depend on 'pixels' lifetime
+        GdkPixbuf *blurPixbuf = gdk_pixbuf_copy(borrowed);
+        g_object_unref(borrowed);
+        if (blurPixbuf) {
+          GdkPixbuf *scaled = gdk_pixbuf_scale_simple(
+              blurPixbuf, CARD_WIDTH, CARD_HEIGHT, GDK_INTERP_BILINEAR);
+          g_object_unref(blurPixbuf);
+          if (scaled) {
+            GdkTexture *texture = gdk_texture_new_for_pixbuf(scaled);
+            if (texture) {
+              gtk_picture_set_paintable(GTK_PICTURE(m_image),
+                                        GDK_PAINTABLE(texture));
+              g_object_unref(texture);
+            }
+            g_object_unref(scaled);
           }
-          g_object_unref(scaled);
         }
       }
     }
@@ -200,13 +201,13 @@ void WallpaperCard::updateThumbnail(const std::string &path) {
   };
   RequestData *data = new RequestData{this, path};
   m_thumbnailSourceId = g_timeout_add_full(
-      G_PRIORITY_DEFAULT, 80,  
+      G_PRIORITY_DEFAULT, 80,
       [](gpointer user_data) -> gboolean {
         auto *d = static_cast<RequestData *>(user_data);
-        d->card->m_thumbnailSourceId = 0;  
+        d->card->m_thumbnailSourceId = 0;
         auto &cache = bwp::wallpaper::ThumbnailCache::getInstance();
         auto *cardPtr = d->card;
-        auto aliveToken = cardPtr->m_aliveToken;  
+        auto aliveToken = cardPtr->m_aliveToken;
         cache.getAsync(
             d->path, bwp::wallpaper::ThumbnailCache::Size::Medium,
             [cardPtr, aliveToken, path = d->path](GdkPixbuf *pixbuf) {
@@ -224,8 +225,7 @@ void WallpaperCard::updateThumbnail(const std::string &path) {
                   auto wallpaperId = cardPtr->m_info.id;
                   auto wallpaperPath = cardPtr->m_info.path;
                   std::thread([wallpaperId, wallpaperPath]() {
-                    auto &cache =
-                        bwp::wallpaper::ThumbnailCache::getInstance();
+                    auto &cache = bwp::wallpaper::ThumbnailCache::getInstance();
                     std::string hash = cache.computeBlurhash(
                         wallpaperPath,
                         bwp::wallpaper::ThumbnailCache::Size::Small);
@@ -301,4 +301,4 @@ void WallpaperCard::setHighlight(const std::string &query) {
   g_free(escMatch);
   g_free(escBefore);
 }
-}  
+} // namespace bwp::gui

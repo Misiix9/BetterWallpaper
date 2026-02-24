@@ -1,6 +1,8 @@
 #include "SettingsView.hpp"
 #include "../../core/config/ConfigManager.hpp"
 #include "../../core/system/AutostartManager.hpp"
+#include "../../core/transition/EffectFactory.hpp"
+#include "../../core/transition/Easing.hpp"
 #include "../../core/utils/Logger.hpp"
 #include "../../core/utils/ToastManager.hpp"
 #include "../../core/wallpaper/LibraryScanner.hpp"
@@ -55,18 +57,19 @@ void SettingsView::onDiscardChanges() {
   m_hasUnsavedChanges = false;
   hideUnsavedBar();
   rebuildPages();
-  conf.startWatching([this](const std::string &, const nlohmann::json &) {
-    if (!m_hasUnsavedChanges) {
-      m_hasUnsavedChanges = true;
-      g_idle_add(
-          +[](gpointer data) -> gboolean {
-            auto *self = static_cast<SettingsView *>(data);
-            self->showUnsavedBar();
-            return G_SOURCE_REMOVE;
-          },
-          this);
-    }
-  });
+  conf.startWatching(
+      [this](const std::string &, const nlohmann::json &) {
+        if (!m_hasUnsavedChanges) {
+          m_hasUnsavedChanges = true;
+          g_idle_add(
+              +[](gpointer data) -> gboolean {
+                auto *self = static_cast<SettingsView *>(data);
+                self->showUnsavedBar();
+                return G_SOURCE_REMOVE;
+              },
+              this);
+        }
+      });
   bwp::core::utils::ToastManager::getInstance().showInfo("Changes discarded");
 }
 void SettingsView::rebuildPages() {
@@ -135,7 +138,8 @@ void SettingsView::rebuildPages() {
   addPage("controls", "Controls", "input-keyboard-symbolic",
           createControlsPage(),
           {"keybind", "shortcut", "hotkey", "keyboard", "mouse"});
-  addPage("sources", "Sources", "folder-pictures-symbolic", createSourcesPage(),
+  addPage("sources", "Sources", "folder-pictures-symbolic",
+          createSourcesPage(),
           {"folder", "directory", "library", "path", "steam", "workshop"});
   addPage("about", "About", "help-about-symbolic", createAboutPage(),
           {"version", "license", "credits", "author"});
@@ -173,19 +177,21 @@ void SettingsView::setupUi() {
   gtk_box_append(GTK_BOX(barBox), barLabel);
   GtkWidget *discardBtn = gtk_button_new_with_label("Discard");
   gtk_widget_add_css_class(discardBtn, "destructive-action");
-  g_signal_connect(discardBtn, "clicked",
-                   G_CALLBACK(+[](GtkButton *, gpointer data) {
-                     static_cast<SettingsView *>(data)->onDiscardChanges();
-                   }),
-                   this);
+  g_signal_connect(
+      discardBtn, "clicked",
+      G_CALLBACK(+[](GtkButton *, gpointer data) {
+        static_cast<SettingsView *>(data)->onDiscardChanges();
+      }),
+      this);
   gtk_box_append(GTK_BOX(barBox), discardBtn);
   GtkWidget *saveBtn = gtk_button_new_with_label("Save");
   gtk_widget_add_css_class(saveBtn, "suggested-action");
-  g_signal_connect(saveBtn, "clicked",
-                   G_CALLBACK(+[](GtkButton *, gpointer data) {
-                     static_cast<SettingsView *>(data)->onKeepChanges();
-                   }),
-                   this);
+  g_signal_connect(
+      saveBtn, "clicked",
+      G_CALLBACK(+[](GtkButton *, gpointer data) {
+        static_cast<SettingsView *>(data)->onKeepChanges();
+      }),
+      this);
   gtk_box_append(GTK_BOX(barBox), saveBtn);
   gtk_revealer_set_child(GTK_REVEALER(m_unsavedRevealer), barBox);
   gtk_box_append(GTK_BOX(m_outerBox), m_unsavedRevealer);
@@ -201,14 +207,14 @@ void SettingsView::setupUi() {
   gtk_widget_set_margin_start(m_searchEntry, 8);
   gtk_widget_set_margin_end(m_searchEntry, 8);
   gtk_widget_set_margin_bottom(m_searchEntry, 8);
-  g_signal_connect(m_searchEntry, "search-changed",
-                   G_CALLBACK(+[](GtkSearchEntry *entry, gpointer data) {
-                     auto *self = static_cast<SettingsView *>(data);
-                     const char *text =
-                         gtk_editable_get_text(GTK_EDITABLE(entry));
-                     self->filterSettings(text ? text : "");
-                   }),
-                   this);
+  g_signal_connect(
+      m_searchEntry, "search-changed",
+      G_CALLBACK(+[](GtkSearchEntry *entry, gpointer data) {
+        auto *self = static_cast<SettingsView *>(data);
+        const char *text = gtk_editable_get_text(GTK_EDITABLE(entry));
+        self->filterSettings(text ? text : "");
+      }),
+      this);
   gtk_box_append(GTK_BOX(sidebarBox), m_searchEntry);
   m_sidebarList = gtk_list_box_new();
   gtk_widget_add_css_class(m_sidebarList, "navigation-sidebar");
@@ -272,7 +278,8 @@ void SettingsView::setupUi() {
   addPage("controls", "Controls", "input-keyboard-symbolic",
           createControlsPage(),
           {"keybind", "shortcut", "hotkey", "keyboard", "mouse"});
-  addPage("sources", "Sources", "folder-pictures-symbolic", createSourcesPage(),
+  addPage("sources", "Sources", "folder-pictures-symbolic",
+          createSourcesPage(),
           {"folder", "directory", "library", "path", "steam", "workshop"});
   addPage("about", "About", "help-about-symbolic", createAboutPage(),
           {"version", "license", "credits", "author"});
@@ -321,8 +328,7 @@ void SettingsView::filterSettings(const std::string &query) {
     }
     gtk_widget_set_visible(GTK_WIDGET(row), match);
     if (match) {
-      const char *id =
-          (const char *)g_object_get_data(G_OBJECT(row), "page_id");
+      const char *id = (const char *)g_object_get_data(G_OBJECT(row), "page_id");
       if (id) {
 #if ADW_CHECK_VERSION(1, 4, 0)
         adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(m_stack), id);
@@ -530,8 +536,7 @@ GtkWidget *SettingsView::createGeneralPage() {
   g_signal_connect(extractRow, "notify::active",
                    G_CALLBACK(+[](AdwSwitchRow *row, GParamSpec *, gpointer) {
                      bwp::config::ConfigManager::getInstance().set(
-                         "theming.enabled",
-                         static_cast<bool>(adw_switch_row_get_active(row)));
+                         "theming.enabled", static_cast<bool>(adw_switch_row_get_active(row)));
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(themeGroup), extractRow);
@@ -586,6 +591,7 @@ GtkWidget *SettingsView::createGeneralPage() {
   g_signal_connect(
       resetBtn, "clicked", G_CALLBACK(+[](GtkButton *, gpointer) {
         bwp::config::ConfigManager::getInstance().resetToDefaults();
+        bwp::config::ConfigManager::getInstance().save();
         bwp::core::utils::ToastManager::getInstance().showToast(
             "All settings reset to defaults. Restart recommended.");
       }),
@@ -605,22 +611,20 @@ GtkWidget *SettingsView::createGraphicsPage() {
   GtkWidget *fpsRow = adw_spin_row_new_with_range(1, 240, 1);
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(fpsRow),
                                 "Global FPS Limit");
-  adw_action_row_set_subtitle(ADW_ACTION_ROW(fpsRow),
-                              "Maximum frames per second for wallpapers");
-  int currentFps = conf.get<int>("performance.fps_limit");
+  int currentFps = conf.get<int>("performance.fps_limit", 60);
   if (currentFps <= 0)
     currentFps = 60;
+  if (currentFps > 240)
+    currentFps = 240;
   adw_spin_row_set_value(ADW_SPIN_ROW(fpsRow), currentFps);
-  g_signal_connect(
-      fpsRow, "notify::value",
-      G_CALLBACK(+[](AdwSpinRow *row, GParamSpec *, gpointer) {
-        int fps = static_cast<int>(adw_spin_row_get_value(row));
-        bwp::config::ConfigManager::getInstance().set("performance.fps_limit",
-                                                      fps);
-        // Apply live to active wallpapers
-        bwp::wallpaper::WallpaperManager::getInstance().setFpsLimit(fps);
-      }),
-      nullptr);
+  g_signal_connect(fpsRow, "notify::value",
+                   G_CALLBACK(+[](AdwSpinRow *row, GParamSpec *, gpointer) {
+                     int fps = static_cast<int>(adw_spin_row_get_value(row));
+                     bwp::config::ConfigManager::getInstance().set(
+                         "performance.fps_limit", fps);
+                     bwp::wallpaper::WallpaperManager::getInstance().setFpsLimit(fps);
+                   }),
+                   nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(perfGroup), fpsRow);
   GtkWidget *scalingRow = adw_combo_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(scalingRow),
@@ -648,24 +652,12 @@ GtkWidget *SettingsView::createGraphicsPage() {
                      int idx = adw_combo_row_get_selected(row);
                      const char *v = "fill";
                      switch (idx) {
-                     case 1:
-                       v = "fit";
-                       break;
-                     case 2:
-                       v = "stretch";
-                       break;
-                     case 3:
-                       v = "center";
-                       break;
-                     case 4:
-                       v = "tile";
-                       break;
-                     case 5:
-                       v = "zoom";
-                       break;
-                     default:
-                       v = "fill";
-                       break;
+                     case 1: v = "fit"; break;
+                     case 2: v = "stretch"; break;
+                     case 3: v = "center"; break;
+                     case 4: v = "tile"; break;
+                     case 5: v = "zoom"; break;
+                     default: v = "fill"; break;
                      }
                      bwp::config::ConfigManager::getInstance().set(
                          "defaults.scaling_mode", std::string(v));
@@ -742,8 +734,7 @@ GtkWidget *SettingsView::createGraphicsPage() {
   g_signal_connect(nsfwRow, "notify::active",
                    G_CALLBACK(+[](AdwSwitchRow *r, GParamSpec *, gpointer) {
                      bwp::config::ConfigManager::getInstance().set(
-                         "content.show_nsfw",
-                         static_cast<bool>(adw_switch_row_get_active(r)));
+                         "content.show_nsfw", static_cast<bool>(adw_switch_row_get_active(r)));
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(contentGroup), nsfwRow);
@@ -771,8 +762,7 @@ GtkWidget *SettingsView::createGraphicsPage() {
   g_signal_connect(shuffleRow, "notify::active",
                    G_CALLBACK(+[](AdwSwitchRow *r, GParamSpec *, gpointer) {
                      bwp::config::ConfigManager::getInstance().set(
-                         "slideshow.shuffle",
-                         static_cast<bool>(adw_switch_row_get_active(r)));
+                         "slideshow.shuffle", static_cast<bool>(adw_switch_row_get_active(r)));
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(slideGroup), shuffleRow);
@@ -793,16 +783,15 @@ GtkWidget *SettingsView::createAudioPage() {
                               "Default volume for new wallpapers");
   adw_spin_row_set_value(ADW_SPIN_ROW(volRow),
                          conf.get<int>("defaults.audio_volume"));
-  g_signal_connect(
-      volRow, "notify::value",
-      G_CALLBACK(+[](AdwSpinRow *r, GParamSpec *, gpointer) {
-        int vol = (int)adw_spin_row_get_value(r);
-        bwp::config::ConfigManager::getInstance().set("defaults.audio_volume",
-                                                      vol);
-        // Apply live to active wallpapers
-        bwp::wallpaper::WallpaperManager::getInstance().setVolumeLevel(vol);
-      }),
-      nullptr);
+  g_signal_connect(volRow, "notify::value",
+                   G_CALLBACK(+[](AdwSpinRow *r, GParamSpec *, gpointer) {
+                     int vol = (int)adw_spin_row_get_value(r);
+                     bwp::config::ConfigManager::getInstance().set(
+                         "defaults.audio_volume", vol);
+                     // Apply live to active wallpapers
+                     bwp::wallpaper::WallpaperManager::getInstance().setVolumeLevel(vol);
+                   }),
+                   nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), volRow);
   GtkWidget *muteRow = adw_switch_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(muteRow), "Audio Enabled");
@@ -810,17 +799,15 @@ GtkWidget *SettingsView::createAudioPage() {
                               "If disabled, all wallpapers will be muted");
   adw_switch_row_set_active(ADW_SWITCH_ROW(muteRow),
                             conf.get<bool>("defaults.audio_enabled"));
-  g_signal_connect(
-      muteRow, "notify::active",
-      G_CALLBACK(+[](AdwSwitchRow *r, GParamSpec *, gpointer) {
-        bool enabled = static_cast<bool>(adw_switch_row_get_active(r));
-        bwp::config::ConfigManager::getInstance().set("defaults.audio_enabled",
-                                                      enabled);
-        // Apply live to active wallpapers — muted is the inverse of
-        // audio_enabled
-        bwp::wallpaper::WallpaperManager::getInstance().setMuted(!enabled);
-      }),
-      nullptr);
+  g_signal_connect(muteRow, "notify::active",
+                   G_CALLBACK(+[](AdwSwitchRow *r, GParamSpec *, gpointer) {
+                     bool enabled = static_cast<bool>(adw_switch_row_get_active(r));
+                     bwp::config::ConfigManager::getInstance().set(
+                         "defaults.audio_enabled", enabled);
+                     // Apply live to active wallpapers — muted is the inverse of audio_enabled
+                     bwp::wallpaper::WallpaperManager::getInstance().setMuted(!enabled);
+                   }),
+                   nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), muteRow);
   return page;
 }
@@ -864,66 +851,57 @@ GtkWidget *SettingsView::createPlaybackPage() {
                               "Prevent mouse events from reaching wallpaper");
   adw_switch_row_set_active(ADW_SWITCH_ROW(mouseRow),
                             conf.get<bool>("defaults.disable_mouse", true));
-  g_signal_connect(
-      mouseRow, "notify::active",
-      G_CALLBACK(+[](AdwSwitchRow *r, GParamSpec *, gpointer) {
-        bool val = static_cast<bool>(adw_switch_row_get_active(r));
-        bwp::config::ConfigManager::getInstance().set("defaults.disable_mouse",
-                                                      val);
-        bwp::wallpaper::WallpaperManager::getInstance().setDisableMouse(val);
-      }),
-      nullptr);
+  g_signal_connect(mouseRow, "notify::active",
+                   G_CALLBACK(+[](AdwSwitchRow *r, GParamSpec *, gpointer) {
+                     bool val = static_cast<bool>(adw_switch_row_get_active(r));
+                     bwp::config::ConfigManager::getInstance().set(
+                         "defaults.disable_mouse", val);
+                     bwp::wallpaper::WallpaperManager::getInstance().setDisableMouse(val);
+                   }),
+                   nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(weGroup), mouseRow);
 
   GtkWidget *noAudioProcRow = adw_switch_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(noAudioProcRow),
                                 "Disable Audio Processing");
-  adw_action_row_set_subtitle(
-      ADW_ACTION_ROW(noAudioProcRow),
-      "Skip audio processing for wallpaper engine scenes");
-  adw_switch_row_set_active(
-      ADW_SWITCH_ROW(noAudioProcRow),
-      conf.get<bool>("defaults.no_audio_processing", true));
-  g_signal_connect(
-      noAudioProcRow, "notify::active",
-      G_CALLBACK(+[](AdwSwitchRow *r, GParamSpec *, gpointer) {
-        bool val = static_cast<bool>(adw_switch_row_get_active(r));
-        bwp::config::ConfigManager::getInstance().set(
-            "defaults.no_audio_processing", val);
-        bwp::wallpaper::WallpaperManager::getInstance().setNoAudioProcessing(
-            val);
-      }),
-      nullptr);
+  adw_action_row_set_subtitle(ADW_ACTION_ROW(noAudioProcRow),
+                              "Skip audio processing for wallpaper engine scenes");
+  adw_switch_row_set_active(ADW_SWITCH_ROW(noAudioProcRow),
+                            conf.get<bool>("defaults.no_audio_processing", true));
+  g_signal_connect(noAudioProcRow, "notify::active",
+                   G_CALLBACK(+[](AdwSwitchRow *r, GParamSpec *, gpointer) {
+                     bool val = static_cast<bool>(adw_switch_row_get_active(r));
+                     bwp::config::ConfigManager::getInstance().set(
+                         "defaults.no_audio_processing", val);
+                     bwp::wallpaper::WallpaperManager::getInstance().setNoAudioProcessing(val);
+                   }),
+                   nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(weGroup), noAudioProcRow);
 
   GtkWidget *noAutomuteRow = adw_switch_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(noAutomuteRow),
                                 "No Auto-Mute");
-  adw_action_row_set_subtitle(
-      ADW_ACTION_ROW(noAutomuteRow),
-      "Prevent wallpaper from auto-muting when other audio plays");
+  adw_action_row_set_subtitle(ADW_ACTION_ROW(noAutomuteRow),
+                              "Prevent wallpaper from auto-muting when other audio plays");
   adw_switch_row_set_active(ADW_SWITCH_ROW(noAutomuteRow),
                             conf.get<bool>("defaults.no_automute", false));
-  g_signal_connect(
-      noAutomuteRow, "notify::active",
-      G_CALLBACK(+[](AdwSwitchRow *r, GParamSpec *, gpointer) {
-        bool val = static_cast<bool>(adw_switch_row_get_active(r));
-        bwp::config::ConfigManager::getInstance().set("defaults.no_automute",
-                                                      val);
-        bwp::wallpaper::WallpaperManager::getInstance().setNoAutomute(val);
-      }),
-      nullptr);
+  g_signal_connect(noAutomuteRow, "notify::active",
+                   G_CALLBACK(+[](AdwSwitchRow *r, GParamSpec *, gpointer) {
+                     bool val = static_cast<bool>(adw_switch_row_get_active(r));
+                     bwp::config::ConfigManager::getInstance().set(
+                         "defaults.no_automute", val);
+                     bwp::wallpaper::WallpaperManager::getInstance().setNoAutomute(val);
+                   }),
+                   nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(weGroup), noAutomuteRow);
 
   GtkWidget *fullscreenRow = adw_switch_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(fullscreenRow),
                                 "Pause on Fullscreen App");
-  adw_action_row_set_subtitle(
-      ADW_ACTION_ROW(fullscreenRow),
-      "Pause wallpaper when a fullscreen application is running");
-  adw_switch_row_set_active(
-      ADW_SWITCH_ROW(fullscreenRow),
-      conf.get<bool>("performance.pause_on_fullscreen", true));
+  adw_action_row_set_subtitle(ADW_ACTION_ROW(fullscreenRow),
+                              "Pause wallpaper when a fullscreen application is running");
+  adw_switch_row_set_active(ADW_SWITCH_ROW(fullscreenRow),
+                            conf.get<bool>("performance.pause_on_fullscreen", true));
   g_signal_connect(fullscreenRow, "notify::active",
                    G_CALLBACK(+[](AdwSwitchRow *r, GParamSpec *, gpointer) {
                      bwp::config::ConfigManager::getInstance().set(
@@ -956,8 +934,7 @@ GtkWidget *SettingsView::createTransitionsPage() {
   g_signal_connect(m_transitionEnabledSwitch, "notify::active",
                    G_CALLBACK(+[](AdwSwitchRow *row, GParamSpec *, gpointer) {
                      bwp::config::ConfigManager::getInstance().set(
-                         "transitions.enabled",
-                         static_cast<bool>(adw_switch_row_get_active(row)));
+                         "transitions.enabled", static_cast<bool>(adw_switch_row_get_active(row)));
                    }),
                    nullptr);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(transGroup),
@@ -967,20 +944,21 @@ GtkWidget *SettingsView::createTransitionsPage() {
                                 "Transition Effect");
   adw_action_row_set_subtitle(ADW_ACTION_ROW(m_transitionEffectDropdown),
                               "Visual style of the transition");
-  const char *effects[] = {
-      "Fade",     "Slide", "Wipe",  "Expanding Circle", "Expanding Square",
-      "Dissolve", "Zoom",  "Morph", "Angled Wipe",      "Pixelate",
-      "Blinds",   nullptr};
-  GtkStringList *effectModel = gtk_string_list_new(effects);
+  std::vector<std::string> effectNames =
+      bwp::transition::getAvailableEffectNames();
+  GtkStringList *effectModel = gtk_string_list_new(nullptr);
+  for (const auto &name : effectNames) {
+    gtk_string_list_append(effectModel, name.c_str());
+  }
   adw_combo_row_set_model(ADW_COMBO_ROW(m_transitionEffectDropdown),
                           G_LIST_MODEL(effectModel));
   g_object_unref(effectModel);
   std::string currentEffect =
       conf.get<std::string>("transitions.default_effect", "Fade");
   int effectIdx = 0;
-  for (int effectIndex = 0; effects[effectIndex] != nullptr; ++effectIndex) {
-    if (currentEffect == effects[effectIndex]) {
-      effectIdx = effectIndex;
+  for (size_t i = 0; i < effectNames.size(); ++i) {
+    if (currentEffect == effectNames[i]) {
+      effectIdx = static_cast<int>(i);
       break;
     }
   }
@@ -989,44 +967,15 @@ GtkWidget *SettingsView::createTransitionsPage() {
   g_signal_connect(m_transitionEffectDropdown, "notify::selected",
                    G_CALLBACK(+[](AdwComboRow *row, GParamSpec *, gpointer) {
                      guint i = adw_combo_row_get_selected(row);
-                     std::string e;
-                     switch (i) {
-                     case 0:
-                       e = "Fade";
-                       break;
-                     case 1:
-                       e = "Slide";
-                       break;
-                     case 2:
-                       e = "Wipe";
-                       break;
-                     case 3:
-                       e = "Expanding Circle";
-                       break;
-                     case 4:
-                       e = "Expanding Square";
-                       break;
-                     case 5:
-                       e = "Dissolve";
-                       break;
-                     case 6:
-                       e = "Zoom";
-                       break;
-                     case 7:
-                       e = "Morph";
-                       break;
-                     case 8:
-                       e = "Angled Wipe";
-                       break;
-                     case 9:
-                       e = "Pixelate";
-                       break;
-                     case 10:
-                       e = "Blinds";
-                       break;
-                     default:
+                     GListModel *model = adw_combo_row_get_model(row);
+                     if (!model || i >= g_list_model_get_n_items(model))
                        return;
-                     }
+                     GtkStringObject *obj = GTK_STRING_OBJECT(
+                         g_list_model_get_item(model, i));
+                     if (!obj)
+                       return;
+                     std::string e(gtk_string_object_get_string(obj));
+                     g_object_unref(obj);
                      bwp::config::ConfigManager::getInstance().set(
                          "transitions.default_effect", e);
                    }),
@@ -1054,22 +1003,21 @@ GtkWidget *SettingsView::createTransitionsPage() {
                                 "Easing Function");
   adw_action_row_set_subtitle(ADW_ACTION_ROW(m_transitionEasingDropdown),
                               "How the animation accelerates/decelerates");
-  const char *easings[] = {"linear",        "easeIn",       "easeOut",
-                           "easeInOut",     "easeInQuad",   "easeOutQuad",
-                           "easeInCubic",   "easeOutCubic", "easeInOutCubic",
-                           "easeInSine",    "easeOutSine",  "easeInOutSine",
-                           "easeInExpo",    "easeOutExpo",  "easeInOutExpo",
-                           "easeOutBounce", nullptr};
-  GtkStringList *easingModel = gtk_string_list_new(easings);
+  std::vector<std::string> easingNames =
+      bwp::transition::Easing::getAvailableNames();
+  GtkStringList *easingModel = gtk_string_list_new(nullptr);
+  for (const auto &name : easingNames) {
+    gtk_string_list_append(easingModel, name.c_str());
+  }
   adw_combo_row_set_model(ADW_COMBO_ROW(m_transitionEasingDropdown),
                           G_LIST_MODEL(easingModel));
   g_object_unref(easingModel);
   std::string currentEasing =
       conf.get<std::string>("transitions.easing", "easeInOut");
-  int easingIdx = 3;
-  for (int easingIndex = 0; easings[easingIndex] != nullptr; ++easingIndex) {
-    if (currentEasing == easings[easingIndex]) {
-      easingIdx = easingIndex;
+  int easingIdx = 0;
+  for (size_t i = 0; i < easingNames.size(); ++i) {
+    if (currentEasing == easingNames[i]) {
+      easingIdx = static_cast<int>(i);
       break;
     }
   }
@@ -1078,59 +1026,15 @@ GtkWidget *SettingsView::createTransitionsPage() {
   g_signal_connect(m_transitionEasingDropdown, "notify::selected",
                    G_CALLBACK(+[](AdwComboRow *row, GParamSpec *, gpointer) {
                      guint i = adw_combo_row_get_selected(row);
-                     std::string e;
-                     switch (i) {
-                     case 0:
-                       e = "linear";
-                       break;
-                     case 1:
-                       e = "easeIn";
-                       break;
-                     case 2:
-                       e = "easeOut";
-                       break;
-                     case 3:
-                       e = "easeInOut";
-                       break;
-                     case 4:
-                       e = "easeInQuad";
-                       break;
-                     case 5:
-                       e = "easeOutQuad";
-                       break;
-                     case 6:
-                       e = "easeInCubic";
-                       break;
-                     case 7:
-                       e = "easeOutCubic";
-                       break;
-                     case 8:
-                       e = "easeInOutCubic";
-                       break;
-                     case 9:
-                       e = "easeInSine";
-                       break;
-                     case 10:
-                       e = "easeOutSine";
-                       break;
-                     case 11:
-                       e = "easeInOutSine";
-                       break;
-                     case 12:
-                       e = "easeInExpo";
-                       break;
-                     case 13:
-                       e = "easeOutExpo";
-                       break;
-                     case 14:
-                       e = "easeInOutExpo";
-                       break;
-                     case 15:
-                       e = "easeOutBounce";
-                       break;
-                     default:
+                     GListModel *model = adw_combo_row_get_model(row);
+                     if (!model || i >= g_list_model_get_n_items(model))
                        return;
-                     }
+                     GtkStringObject *obj = GTK_STRING_OBJECT(
+                         g_list_model_get_item(model, i));
+                     if (!obj)
+                       return;
+                     std::string e(gtk_string_object_get_string(obj));
+                     g_object_unref(obj);
                      bwp::config::ConfigManager::getInstance().set(
                          "transitions.easing", e);
                    }),
@@ -1182,38 +1086,42 @@ void SettingsView::showTransitionPreviewDialog() {
           conf.set("transitions.default_effect", settings.effectName);
           conf.set("transitions.duration_ms", settings.durationMs);
           conf.set("transitions.easing", settings.easingName);
-          const char *effects[] = {"Fade",
-                                   "Slide",
-                                   "Wipe",
-                                   "Expanding Circle",
-                                   "Expanding Square",
-                                   "Dissolve",
-                                   "Zoom",
-                                   "Morph",
-                                   "Angled Wipe",
-                                   "Pixelate",
-                                   "Blinds"};
-          for (int effectIndex = 0; effectIndex < 11; ++effectIndex) {
-            if (settings.effectName == effects[effectIndex]) {
-              adw_combo_row_set_selected(
-                  ADW_COMBO_ROW(m_transitionEffectDropdown), effectIndex);
-              break;
+          GListModel *effectModel =
+              adw_combo_row_get_model(ADW_COMBO_ROW(m_transitionEffectDropdown));
+          if (effectModel) {
+            guint n = g_list_model_get_n_items(effectModel);
+            for (guint i = 0; i < n; ++i) {
+              GtkStringObject *obj = GTK_STRING_OBJECT(
+                  g_list_model_get_item(effectModel, i));
+              if (obj &&
+                  settings.effectName == gtk_string_object_get_string(obj)) {
+                g_object_unref(obj);
+                adw_combo_row_set_selected(
+                    ADW_COMBO_ROW(m_transitionEffectDropdown), i);
+                break;
+              }
+              if (obj)
+                g_object_unref(obj);
             }
           }
           adw_spin_row_set_value(ADW_SPIN_ROW(m_transitionDurationSpin),
                                  settings.durationMs);
-          const char *easings[] = {
-              "linear",       "easeIn",       "easeOut",
-              "easeInOut",    "easeInQuad",   "easeOutQuad",
-              "easeInCubic",  "easeOutCubic", "easeInOutCubic",
-              "easeInSine",   "easeOutSine",  "easeInOutSine",
-              "easeInExpo",   "easeOutExpo",  "easeInOutExpo",
-              "easeOutBounce"};
-          for (int easingIndex = 0; easingIndex < 16; ++easingIndex) {
-            if (settings.easingName == easings[easingIndex]) {
-              adw_combo_row_set_selected(
-                  ADW_COMBO_ROW(m_transitionEasingDropdown), easingIndex);
-              break;
+          GListModel *easingModel =
+              adw_combo_row_get_model(ADW_COMBO_ROW(m_transitionEasingDropdown));
+          if (easingModel) {
+            guint n = g_list_model_get_n_items(easingModel);
+            for (guint i = 0; i < n; ++i) {
+              GtkStringObject *obj = GTK_STRING_OBJECT(
+                  g_list_model_get_item(easingModel, i));
+              if (obj &&
+                  settings.easingName == gtk_string_object_get_string(obj)) {
+                g_object_unref(obj);
+                adw_combo_row_set_selected(
+                    ADW_COMBO_ROW(m_transitionEasingDropdown), i);
+                break;
+              }
+              if (obj)
+                g_object_unref(obj);
             }
           }
         });
@@ -1263,8 +1171,7 @@ GtkWidget *SettingsView::createAboutPage() {
   GtkWidget *title = gtk_label_new("BetterWallpaper");
   gtk_widget_add_css_class(title, "title-2");
   gtk_box_append(GTK_BOX(box), title);
-  std::string verStr = "Version " + std::string(BWP_VERSION) + " Beta release";
-  GtkWidget *version = gtk_label_new(verStr.c_str());
+  GtkWidget *version = gtk_label_new("Version 0.5.8 Beta");
   gtk_widget_add_css_class(version, "dim-label");
   gtk_box_append(GTK_BOX(box), version);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), box);
@@ -1274,35 +1181,26 @@ GtkWidget *SettingsView::createAboutPage() {
   GtkWidget *ghBtn = gtk_button_new_from_icon_name("external-link-symbolic");
   gtk_widget_set_valign(ghBtn, GTK_ALIGN_CENTER);
   gtk_widget_add_css_class(ghBtn, "flat");
-  g_signal_connect(
-      ghBtn, "clicked", G_CALLBACK(+[](GtkButton *btn, gpointer) {
-        GtkUriLauncher *launcher =
-            gtk_uri_launcher_new("https://github.com/Misiix9/BetterWallpaper");
-        gtk_uri_launcher_launch(
-            launcher, GTK_WINDOW(gtk_widget_get_root(GTK_WIDGET(btn))), NULL,
-            NULL, NULL);
-        g_object_unref(launcher);
-      }),
-      nullptr);
+  g_signal_connect(ghBtn, "clicked", G_CALLBACK(+[](GtkButton *btn, gpointer) {
+      GtkUriLauncher *launcher = gtk_uri_launcher_new("https://github.com/Misiix9/BetterWallpaper");
+      gtk_uri_launcher_launch(launcher, GTK_WINDOW(gtk_widget_get_root(GTK_WIDGET(btn))), NULL, NULL, NULL);
+      g_object_unref(launcher);
+  }), nullptr);
   adw_action_row_add_suffix(ADW_ACTION_ROW(ghRow), ghBtn);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), ghRow);
   GtkWidget *aurRow = adw_action_row_new();
-  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(aurRow), "AUR Package");
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(aurRow),
+                                "AUR Package");
   GtkWidget *aurBtn = gtk_button_new_from_icon_name("external-link-symbolic");
   gtk_widget_set_valign(aurBtn, GTK_ALIGN_CENTER);
   gtk_widget_add_css_class(aurBtn, "flat");
-  g_signal_connect(
-      aurBtn, "clicked", G_CALLBACK(+[](GtkButton *btn, gpointer) {
-        GtkUriLauncher *launcher = gtk_uri_launcher_new(
-            "https://aur.archlinux.org/packages/betterwallpaper-git");
-        gtk_uri_launcher_launch(
-            launcher, GTK_WINDOW(gtk_widget_get_root(GTK_WIDGET(btn))), NULL,
-            NULL, NULL);
-        g_object_unref(launcher);
-      }),
-      nullptr);
+  g_signal_connect(aurBtn, "clicked", G_CALLBACK(+[](GtkButton *btn, gpointer) {
+      GtkUriLauncher *launcher = gtk_uri_launcher_new("https://aur.archlinux.org/packages/betterwallpaper-git");
+      gtk_uri_launcher_launch(launcher, GTK_WINDOW(gtk_widget_get_root(GTK_WIDGET(btn))), NULL, NULL, NULL);
+      g_object_unref(launcher);
+  }), nullptr);
   adw_action_row_add_suffix(ADW_ACTION_ROW(aurRow), aurBtn);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), aurRow);
   return page;
 }
-} // namespace bwp::gui
+}  

@@ -308,8 +308,15 @@ void SteamCMDWorker::tryAutoLogin(
   LOG_INFO("[SteamCMD] Attempting auto-login for user: " + user);
 
   // No password — steamcmd will use its internally cached session token
-  std::string cmd =
-      "steamcmd +login '" + shellEscape(user) + "' +quit < /dev/null 2>&1";
+  // Use fake HOME to bypass IPC hang when Steam Desktop is running
+  std::string fakeHomeCmd =
+      "mkdir -p /tmp/bwp_steamcmd/.steam && "
+      "ln -sfn \"$HOME/.steam/steam\" /tmp/bwp_steamcmd/.steam/steam && "
+      "ln -sfn \"$HOME/.steam/root\" /tmp/bwp_steamcmd/.steam/root && "
+      "env HOME=/tmp/bwp_steamcmd ";
+
+  std::string cmd = fakeHomeCmd + "steamcmd +login '" + shellEscape(user) +
+                    "' +quit < /dev/null 2>&1";
 
   std::thread([this, cmd, callback]() {
     FILE *pipe = popen(cmd.c_str(), "r");
@@ -411,18 +418,17 @@ void SteamCMDWorker::download(const std::string &workshopId,
   LOG_INFO("[SteamCMD] Starting download of " + workshopId + " as " +
            loginUser);
 
-  // If we have the password, use password-based login to bypass
-  // "Waiting for client config" when Steam client is running.
-  std::string cmd;
-  if (!m_currentPass.empty() && loginUser != "anonymous") {
-    cmd = "steamcmd +login '" + shellEscape(loginUser) + "' '" +
-          shellEscape(m_currentPass) + "' +workshop_download_item 431960 " +
-          workshopId + " +quit 2>&1";
-    LOG_INFO("[SteamCMD] Using password-based login for download");
-  } else {
-    cmd = "steamcmd +login " + loginUser + " +workshop_download_item 431960 " +
-          workshopId + " +quit 2>&1";
-  }
+  // Use fake HOME to bypass IPC hang when Steam Desktop is running.
+  // This avoids passing the password repeatedly, which triggers 2FA loops.
+  std::string fakeHomeCmd =
+      "mkdir -p /tmp/bwp_steamcmd/.steam && "
+      "ln -sfn \"$HOME/.steam/steam\" /tmp/bwp_steamcmd/.steam/steam && "
+      "ln -sfn \"$HOME/.steam/root\" /tmp/bwp_steamcmd/.steam/root && "
+      "env HOME=/tmp/bwp_steamcmd ";
+
+  std::string cmd = fakeHomeCmd + "steamcmd +login '" + shellEscape(loginUser) +
+                    "' +workshop_download_item 431960 " + workshopId +
+                    " +quit 2>&1";
 
   std::thread([this, cmd, workshopId, loginUser, progressCallback,
                finishedCallback]() {

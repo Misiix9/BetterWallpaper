@@ -104,6 +104,7 @@ else()
         utils/InteractiveProcess.cpp
         wallpaper/WallpaperManager.cpp
         wallpaper/WallpaperWindow.cpp
+        wallpaper/TransitionPolicy.cpp
         wallpaper/renderers/StaticRenderer.cpp
         wallpaper/renderers/VideoRenderer.cpp
         wallpaper/renderers/WallpaperEngineRenderer.cpp
@@ -118,6 +119,7 @@ else()
         
         # Transition
         transition/TransitionEngine.cpp
+        transition/EffectFactory.cpp
         transition/effects/BasicEffects.cpp
         transition/effects/AdvancedEffects.cpp
         wallpaper/WallpaperTransitionManager.cpp

@@ -360,14 +360,16 @@ void LibraryView::onAddWallpaper() {
             info.path = path;
             info.id = std::filesystem::path(path).stem().string();
             info.source = "local";
-            std::string ext = bwp::utils::FileUtils::getExtension(path);
-            if (ext == "mp4" || ext == "webm" || ext == "mkv") {
-              info.type = bwp::wallpaper::WallpaperType::Video;
-            } else if (ext == "gif") {
-              info.type = bwp::wallpaper::WallpaperType::AnimatedImage;
-            } else {
-              info.type = bwp::wallpaper::WallpaperType::StaticImage;
-            }
+            // Treat all as WE Video for consistent transition behavior.
+            // std::string ext = bwp::utils::FileUtils::getExtension(path);
+            // if (ext == "mp4" || ext == "webm" || ext == "mkv") {
+            //   info.type = bwp::wallpaper::WallpaperType::Video;
+            // } else if (ext == "gif") {
+            //   info.type = bwp::wallpaper::WallpaperType::AnimatedImage;
+            // } else {
+            //   info.type = bwp::wallpaper::WallpaperType::StaticImage;
+            // }
+            info.type = bwp::wallpaper::WallpaperType::WEVideo;
             lib.addWallpaper(info);
             if (self->m_grid) {
               self->m_grid->addWallpaper(info);

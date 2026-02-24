@@ -1,8 +1,10 @@
+#include "../core/config/ConfigManager.hpp"
 #include "../core/ipc/IPCServiceFactory.hpp"
 #include "../core/monitor/MonitorManager.hpp"
 #include "../core/slideshow/SlideshowManager.hpp"
 #include "../core/utils/Constants.hpp"
 #include "../core/utils/Logger.hpp"
+#include "../core/wallpaper/WallpaperLibrary.hpp"
 #include "../core/wallpaper/WallpaperManager.hpp"
 
 #include <cstdlib>
@@ -15,13 +17,14 @@
 #else
 #include <gio/gio.h>
 #include <glib-unix.h>
+#include <gtk/gtk.h>
 #endif
 class DaemonApp {
 public:
   DaemonApp(int argc, char **argv) : m_argc(argc), m_argv(argv) {
 #ifndef _WIN32
-    m_app = g_application_new(bwp::constants::APP_ID_DAEMON,
-                              G_APPLICATION_DEFAULT_FLAGS);
+    m_app = gtk_application_new(bwp::constants::APP_ID_DAEMON,
+                                G_APPLICATION_DEFAULT_FLAGS);
     g_signal_connect(m_app, "activate", G_CALLBACK(onActivate), this);
     g_signal_connect(m_app, "startup", G_CALLBACK(onStartup), this);
 #endif
@@ -34,18 +37,20 @@ public:
   int run() {
 #ifdef _WIN32
     LOG_INFO("Daemon starting up (Windows)...");
-    if (!setupServices(this)) return 1;
+    if (!setupServices(this))
+      return 1;
     LOG_INFO("Daemon running. Press Ctrl+C to stop.");
-    Sleep(INFINITE);  
+    Sleep(INFINITE);
     return 0;
 #else
-    return g_application_run(m_app, m_argc, m_argv);
+    return g_application_run(G_APPLICATION(m_app), m_argc, m_argv);
 #endif
   }
+
 private:
 #ifndef _WIN32
-  static void onActivate(GApplication *app, gpointer) {
-    g_application_hold(app);
+  static void onActivate(GtkApplication *app, gpointer) {
+    g_application_hold(G_APPLICATION(app));
 
     // Install signal handlers for graceful shutdown
     g_unix_signal_add(SIGTERM, onSignal, app);
@@ -53,11 +58,11 @@ private:
 
     LOG_INFO("Daemon activated");
   }
-  static void onStartup(GApplication *, gpointer user_data) {
+  static void onStartup(GtkApplication *, gpointer user_data) {
     auto *self = static_cast<DaemonApp *>(user_data);
     if (!setupServices(self)) {
       LOG_ERROR("Service setup failed, requesting shutdown.");
-      g_application_quit(self->m_app);
+      g_application_quit(G_APPLICATION(self->m_app));
     }
   }
   static gboolean onSignal(gpointer user_data) {
@@ -77,10 +82,36 @@ private:
     LOG_INFO("Restoring slideshow state...");
     bwp::core::SlideshowManager::getInstance().loadFromConfig();
 
+    // Wire up the slideshow change callback so the daemon actually
+    // applies wallpapers when the slideshow advances.
+    bwp::core::SlideshowManager::getInstance().setChangeCallback(
+        [](const std::string &id) {
+          auto &lib = bwp::wallpaper::WallpaperLibrary::getInstance();
+          auto wp = lib.getWallpaper(id);
+          if (!wp) {
+            LOG_ERROR("Slideshow: wallpaper not found in library: " + id);
+            return;
+          }
+          auto &wm = bwp::wallpaper::WallpaperManager::getInstance();
+          auto monitors =
+              bwp::monitor::MonitorManager::getInstance().getMonitors();
+          if (monitors.empty()) {
+            LOG_WARN("Slideshow: no monitors detected, cannot apply");
+            return;
+          }
+          // One process per monitor (no shared WE process)
+          LOG_INFO("Slideshow: applying " + wp->path + " to " +
+                   std::to_string(monitors.size()) + " monitor(s)");
+          for (const auto &mon : monitors)
+            wm.setWallpaper(mon.name, wp->path);
+        });
+
     self->m_ipcService = bwp::ipc::IPCServiceFactory::createService();
     self->m_ipcService->setSetWallpaperHandler(
         [](const std::string &path, const std::string &monitor) -> bool {
           LOG_INFO("IPC Command: SetWallpaper " + path + " on " + monitor);
+          // Reload config so we pick up FPS and other settings the GUI just saved
+          bwp::config::ConfigManager::getInstance().load();
           return bwp::wallpaper::WallpaperManager::getInstance().setWallpaper(
               monitor, path);
         });
@@ -167,7 +198,7 @@ private:
   int m_argc;
   char **m_argv;
 #ifndef _WIN32
-  GApplication *m_app;
+  GtkApplication *m_app;
 #endif
   std::unique_ptr<bwp::ipc::IIPCService> m_ipcService;
 };

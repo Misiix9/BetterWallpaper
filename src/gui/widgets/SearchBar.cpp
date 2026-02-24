@@ -18,10 +18,8 @@ SearchBar::SearchBar() {
   m_historyBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
   gtk_widget_set_size_request(m_historyBox, 200, -1);
   gtk_popover_set_child(GTK_POPOVER(m_popover), m_historyBox);
-  gtk_entry_set_icon_from_icon_name(
-      GTK_ENTRY(m_entry), GTK_ENTRY_ICON_SECONDARY, "go-down-symbolic");
-  gtk_entry_set_icon_tooltip_text(GTK_ENTRY(m_entry), GTK_ENTRY_ICON_SECONDARY,
-                                  "Recent Searches");
+  // Removed invalid gtk_entry_set_icon calls (not supported on GtkSearchEntry
+  // in GTK4)
   g_signal_connect(m_entry, "icon-press",
                    G_CALLBACK(+[](GtkEntry *, GtkEntryIconPosition pos,
                                   GdkEvent *, gpointer user_data) {
@@ -38,6 +36,11 @@ SearchBar::SearchBar() {
 SearchBar::~SearchBar() {
   if (m_timeoutId > 0) {
     g_source_remove(m_timeoutId);
+  }
+  if (m_popover) {
+    gtk_popover_popdown(GTK_POPOVER(m_popover));
+    gtk_widget_unparent(m_popover);
+    m_popover = nullptr;
   }
 }
 std::string SearchBar::getText() const {
@@ -63,8 +66,7 @@ gboolean SearchBar::onTimeout(gpointer user_data) {
   self->m_timeoutId = 0;
   return FALSE;
 }
-void SearchBar::onEntryActivate(GtkSearchEntry *  ,
-                                gpointer user_data) {
+void SearchBar::onEntryActivate(GtkSearchEntry *, gpointer user_data) {
   auto *self = static_cast<SearchBar *>(user_data);
   std::string text = self->getText();
   if (!text.empty()) {
@@ -112,7 +114,7 @@ void SearchBar::updateHistoryMenu() {
           const char *txt =
               (const char *)g_object_get_data(G_OBJECT(b), "history_text");
           if (txt) {
-            self->setText(txt);  
+            self->setText(txt);
             gtk_popover_popdown(GTK_POPOVER(self->m_popover));
           }
         }),
@@ -135,4 +137,4 @@ void SearchBar::updateHistoryMenu() {
     gtk_box_append(GTK_BOX(m_historyBox), clearBtn);
   }
 }
-}  
+} // namespace bwp::gui

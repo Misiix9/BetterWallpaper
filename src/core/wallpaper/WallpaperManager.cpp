@@ -9,7 +9,7 @@
 #include "../utils/SystemUtils.hpp"
 #include "NativeWallpaperSetter.hpp"
 #include "WallpaperPreloader.hpp"
-#include "WallpaperTransitionManager.hpp"
+#include "TransitionPolicy.hpp"
 #include "renderers/StaticRenderer.hpp"
 #include "renderers/VideoRenderer.hpp"
 #include "renderers/WallpaperEngineRenderer.hpp"
@@ -24,7 +24,7 @@ namespace bwp::wallpaper {
 namespace {
 
 // keep recent wallpapers in config, max 20 seems plenty for now
-[[maybe_unused]] void updateHistory(const std::string &path) {
+void updateHistory(const std::string &path) {
   auto &conf = bwp::config::ConfigManager::getInstance();
   std::vector<std::string> history;
   try {
@@ -46,9 +46,15 @@ WallpaperManager &WallpaperManager::getInstance() {
   return instance;
 }
 WallpaperManager::WallpaperManager() {}
-WallpaperManager::~WallpaperManager() {}
+WallpaperManager::~WallpaperManager() { stopResourceMonitor(); }
 
 void WallpaperManager::initialize() {
+  // Kill ALL leftover linux-wallpaperengine processes from previous sessions.
+  // When the daemon stops, WE processes survive (setsid + persistence).
+  // Without this cleanup, old processes compete with new ones for the
+  // same Wayland layer surface, causing "random" wallpaper failures.
+  WallpaperEngineRenderer::killAllExistingProcesses();
+
   monitor::MonitorManager::getInstance().setCallback(
       [this](const monitor::MonitorInfo &info, bool connected) {
         this->handleMonitorUpdate(info, connected);
@@ -70,6 +76,11 @@ void WallpaperManager::handleMonitorUpdate(const monitor::MonitorInfo &info,
 #ifndef _WIN32
   // on Linux we need to spawn a GTK window for gtk4-layer-shell
   if (connected) {
+    if (info.name.empty()) {
+      LOG_WARN("Skipping monitor with empty name (ID: " +
+               std::to_string(info.id) + ")");
+      return;
+    }
     if (m_monitors.find(info.name) == m_monitors.end()) {
       LOG_INFO("Initializing wallpaper window for monitor: " + info.name);
       MonitorState state;
@@ -117,8 +128,6 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
   }
   return result;
 #else
-  LOG_INFO("WallpaperManager::setWallpaper called for " + monitorName +
-           " with path: " + path);
   std::lock_guard<std::recursive_mutex> lock(m_mutex);
   LOG_INFO("Currently have " + std::to_string(m_monitors.size()) + " monitors");
   {
@@ -178,6 +187,13 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
       m_noAutomute = conf.get<bool>("defaults.no_automute", m_noAutomute);
     }
   }
+  // Disable auto-restart on the old renderer BEFORE launching the new one.
+  // Without this, killExistingProcessesForMonitors kills the old process,
+  // the old watcher detects the "crash" and respawns it, creating a zombie.
+  if (it->second.renderer) {
+    it->second.renderer->prepareForReplacement();
+  }
+
   std::shared_ptr<WallpaperRenderer> renderer;
   auto &preloader = WallpaperPreloader::getInstance();
   if (preloader.isReady(path)) {
@@ -222,9 +238,7 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
     }
   }
   LOG_INFO("Loaded wallpaper successfully");
-  std::shared_ptr<WallpaperWindow> oldWindow = it->second.window;
   std::shared_ptr<WallpaperRenderer> oldRenderer = it->second.renderer;
-  std::string oldPath = it->second.currentPath;
   auto &monitorManager = monitor::MonitorManager::getInstance();
   auto monitors = monitorManager.getMonitors();
   monitor::MonitorInfo monitorInfo;
@@ -241,36 +255,85 @@ bool WallpaperManager::setWallpaper(const std::string &monitorName,
              ", using basic info");
     monitorInfo.name = monitorName;
   }
-  auto newWindow = std::make_shared<WallpaperWindow>(monitorInfo);
-  newWindow->setRenderer(renderer);
-  newWindow->setOpacity(0.0);
-  if (m_paused) {
-    renderer->pause();
+  if (!it->second.window) {
+    it->second.window = std::make_shared<WallpaperWindow>(monitorInfo);
+    it->second.window->show();
   }
+  auto &conf = bwp::config::ConfigManager::getInstance();
+  auto policy = computeTransitionPolicy(conf);
+  auto plan = makeTransitionPlan(policy);
+
   if (m_scalingModes.count(monitorName)) {
     renderer->setScalingMode(
         static_cast<ScalingMode>(m_scalingModes[monitorName]));
   }
-  newWindow->show();
-  LOG_INFO("New wallpaper window created IN FRONT with opacity 0");
-  auto &transitionManager = WallpaperTransitionManager::getInstance();
-  transitionManager.loadSettings();
-  it->second.window = newWindow;
+
+  // Choose transition path
+  auto isNextWE = std::dynamic_pointer_cast<WallpaperEngineRenderer>(renderer) != nullptr;
+
+  if (plan.useWindowTransition && it->second.renderer) {
+    it->second.window->transitionTo(renderer, [this, monitorName, oldRenderer, plan]() {
+      if (oldRenderer) {
+        auto *captured = new std::shared_ptr<WallpaperRenderer>(oldRenderer);
+        int delay = plan.stopOldRendererDelayMs;
+        if (delay <= 0) {
+          (*captured)->stop();
+          delete captured;
+        } else {
+          g_timeout_add(
+              delay,
+              +[](gpointer data) -> gboolean {
+                auto *r = static_cast<std::shared_ptr<WallpaperRenderer> *>(data);
+                (*r)->stop();
+                delete r;
+                return G_SOURCE_REMOVE;
+              },
+              captured);
+        }
+      }
+      LOG_INFO("Seamless transition completed for monitor: " + monitorName);
+    });
+  } else {
+    // Direct swap without animation
+    if (isNextWE) {
+      // Do not bind WE renderer to our surface (it renders transparent). Start it and hide our window to reveal external surface.
+      renderer->play();
+      it->second.window->hide();
+      if (oldRenderer) {
+        auto *captured = new std::shared_ptr<WallpaperRenderer>(oldRenderer);
+        int delay = plan.stopOldRendererDelayMs;
+        if (delay <= 0) {
+          (*captured)->stop();
+          delete captured;
+        } else {
+          g_timeout_add(
+              delay,
+              +[](gpointer data) -> gboolean {
+                auto *r = static_cast<std::shared_ptr<WallpaperRenderer> *>(data);
+                (*r)->stop();
+                delete r;
+                return G_SOURCE_REMOVE;
+              },
+              captured);
+        }
+      }
+    } else {
+      it->second.window->setRenderer(renderer);
+      it->second.window->show();
+      if (oldRenderer) {
+        oldRenderer->stop();
+      }
+    }
+  }
+
   it->second.renderer = renderer;
   it->second.currentPath = path;
-  transitionManager.startTransition(
-      monitorName, oldWindow, newWindow,
-      [this, monitorName, path, oldPath, oldRenderer](bool success) {
-        if (success) {
-          LOG_INFO("Seamless transition completed for monitor: " + monitorName);
-        } else {
-          LOG_WARN("Transition failed for monitor: " + monitorName);
-        }
-        if (oldRenderer) {
-          LOG_INFO("Stopping old renderer after transition");
-        }
-      });
-  LOG_INFO("Wallpaper set initiated (Transitioning)");
+
+  if (m_paused) {
+    renderer->pause();
+  }
+
+  LOG_INFO("Wallpaper set initiated (Window transition path)");
   updateHistory(path);
   saveState();
   writeHyprpaperConfig();
@@ -330,6 +393,14 @@ bool WallpaperManager::setWallpaper(const std::vector<std::string> &monitors,
       }
     }
   }
+  // Disable auto-restart on all old renderers before launching new shared one
+  for (const auto &name : validMonitors) {
+    auto &state = m_monitors[name];
+    if (state.renderer) {
+      state.renderer->prepareForReplacement();
+    }
+  }
+
   auto renderer = createRenderer(path);
   if (!renderer) {
     LOG_ERROR("Failed to create shared renderer for path: " + path);
@@ -493,7 +564,7 @@ void WallpaperManager::killConflictingWallpapers() {
       "hyprpaper",  "swaybg",   "swww-daemon", "mpvpaper",    "wpaperd",
       "waypaper",   "aztime",   "glpaper",     "feh",         "nitrogen",
       "xwallpaper", "hsetroot", "habak",       "displayball", "eww-daemon",
-      "ags",        "swww",     "mpv"};
+      "ags",        "swww"};
   for (const auto &proc : conflicts) {
     bwp::utils::SafeProcess::exec({"pkill", "-9", "-x", proc});
   }
@@ -562,7 +633,12 @@ void WallpaperManager::writeHyprpaperConfig() {
     base = configHome;
   } else {
     const char *home = std::getenv("HOME");
-    base = std::string(home ? home : "") + "/.config";
+    if (!home) {
+      LOG_ERROR(
+          "writeHyprpaperConfig: neither XDG_CONFIG_HOME nor HOME is set");
+      return;
+    }
+    base = std::string(home) + "/.config";
   }
   std::string hyprpaperPath = base + "/hypr/hyprpaper.conf";
   std::ofstream file(hyprpaperPath);

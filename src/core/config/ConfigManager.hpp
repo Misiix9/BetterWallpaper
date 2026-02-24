@@ -1,18 +1,18 @@
 #pragma once
+#include "../utils/Logger.hpp"
 #include "SettingsSchema.hpp"
 #include <atomic>
 #include <filesystem>
 #include <functional>
 #include <map>
 #include <mutex>
-#include "../utils/Logger.hpp"
 #ifndef _WIN32
-#include <gtk/gtk.h>
+#include <glib.h>
 #endif
 namespace bwp::config {
 class ConfigManager {
 public:
-  static ConfigManager &getInstance();  
+  static ConfigManager &getInstance();
   bool load();
   bool save();
   void scheduleSave(int delayMs = 500);
@@ -28,6 +28,7 @@ public:
   // Add an additional listener for config changes (supports multiple)
   int addListener(Callback callback);
   void removeListener(int id);
+
 private:
   ConfigManager();
   ~ConfigManager() = default;
@@ -84,7 +85,7 @@ void ConfigManager::set(const std::string &key, const T &value) {
     callbackCopy = m_callback;
     listenersCopy = m_listeners;
   }
-  scheduleSave();
+  save();
   if (callbackCopy) {
     callbackCopy(key, value);
   }
@@ -94,4 +95,4 @@ void ConfigManager::set(const std::string &key, const T &value) {
     }
   }
 }
-}  
+} // namespace bwp::config

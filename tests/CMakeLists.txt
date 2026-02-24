@@ -21,6 +21,7 @@ add_executable(unit_tests
     unit/ConfigManagerTests.cpp
     unit/WallpaperLibraryTests.cpp
     unit/SchedulerTests.cpp
+    unit/TransitionPolicyTests.cpp
 )
 
 target_link_libraries(unit_tests PRIVATE

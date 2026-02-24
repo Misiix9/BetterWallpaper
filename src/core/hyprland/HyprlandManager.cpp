@@ -14,6 +14,14 @@ HyprlandManager::~HyprlandManager() {}
 void HyprlandManager::initialize() {
   auto &ipc = HyprlandIPC::getInstance();
   if (ipc.connect()) {
+    // Apply critical layer rules to prevent Hyprland interference
+    // Disable animations (noanim) to stop the "Slide from top" effect
+    // We use regex anchors ^()$ for strict matching
+    ipc.dispatch("keyword layerrule noanim, ^(linux-wallpaperengine)$");
+    ipc.dispatch("keyword layerrule noanim, ^(betterwallpaper)$");
+    ipc.dispatch("keyword layerrule ignorezero, ^(linux-wallpaperengine)$");
+    ipc.dispatch("keyword layerrule ignorezero, ^(betterwallpaper)$");
+
     ipc.setEventCallback(
         [this](const std::string &event, const std::string &data) {
           this->onEvent(event, data);
@@ -23,7 +31,7 @@ void HyprlandManager::initialize() {
 }
 void HyprlandManager::loadConfig() {
   auto &conf = bwp::config::ConfigManager::getInstance();
-  auto json = conf.getJson();  
+  auto json = conf.getJson();
   if (json.contains("hyprland")) {
     if (json["hyprland"].contains("workspaces")) {
       for (const auto &item : json["hyprland"]["workspaces"].items()) {
@@ -46,7 +54,7 @@ void HyprlandManager::saveConfig() {
       j[std::to_string(id)] = path;
     }
   }
-  conf.set("hyprland.workspaces", j);  
+  conf.set("hyprland.workspaces", j);
 }
 bool HyprlandManager::isActive() const {
   return HyprlandIPC::getInstance().isConnected();
@@ -117,7 +125,7 @@ void HyprlandManager::handleWorkspaceChange(const std::string &data) {
   } catch (...) {
   }
 }
-}  
+} // namespace bwp::hyprland
 std::string bwp::hyprland::HyprlandManager::generateConfigSnippet() const {
   std::stringstream ss;
   ss << "# BetterWallpaper Keybinds for Hyprland\n";

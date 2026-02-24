@@ -6,12 +6,13 @@
 #include <random>
 #ifdef _WIN32
 typedef int gboolean;
-typedef void* gpointer;
+typedef void *gpointer;
 typedef unsigned int guint;
 #define G_SOURCE_CONTINUE true
 #define G_SOURCE_REMOVE false
-inline guint g_timeout_add_seconds(guint interval, int (*func)(void*), void* data) {
-    return 1;  
+inline guint g_timeout_add_seconds(guint interval, int (*func)(void *),
+                                   void *data) {
+  return 1;
 }
 inline void g_source_remove(guint tag) {}
 #else
@@ -25,7 +26,7 @@ SlideshowManager &SlideshowManager::getInstance() {
 SlideshowManager::~SlideshowManager() { stop(); }
 void SlideshowManager::start(const std::vector<std::string> &wallpaperIds,
                              int intervalSeconds) {
-  stop();  
+  stop();
   std::lock_guard<std::recursive_mutex> lock(m_mutex);
   m_playlist = wallpaperIds;
   m_intervalSeconds = intervalSeconds;
@@ -182,7 +183,7 @@ void SlideshowManager::setShuffle(bool shuffle) {
 }
 void SlideshowManager::tick() {
   std::lock_guard<std::recursive_mutex> lock(m_mutex);
-  if (m_paused)
+  if (!m_running || m_paused || m_playlist.empty())
     return;
   m_currentIndex = (m_currentIndex + 1) % static_cast<int>(m_playlist.size());
   applyCurrentWallpaper();
@@ -209,13 +210,13 @@ void SlideshowManager::loadFromConfig() {
   m_shuffle = conf.get<bool>("slideshow.shuffle");
   m_intervalSeconds = conf.get<int>("slideshow.interval");
   if (m_intervalSeconds < 10) {
-    m_intervalSeconds = 300;  
+    m_intervalSeconds = 300;
   }
   bool wasRunning = conf.get<bool>("slideshow.running");
   if (wasRunning) {
     auto playlist = conf.get<std::vector<std::string>>("slideshow.playlist");
     if (!playlist.empty()) {
-      m_loading = true;   
+      m_loading = true;
       start(playlist, m_intervalSeconds);
       m_loading = false;
       m_currentIndex = conf.get<int>("slideshow.current_index");
@@ -234,4 +235,4 @@ void SlideshowManager::saveToConfig() {
   conf.set("slideshow.playlist", m_playlist);
   conf.set("slideshow.current_index", m_currentIndex);
 }
-}  
+} // namespace bwp::core

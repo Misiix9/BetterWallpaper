@@ -1,6 +1,6 @@
 #include "StaticRenderer.hpp"
 #include "../../utils/Logger.hpp"
-#include <gdk/gdk.h>  
+#include <gdk/gdk.h>
 namespace bwp::wallpaper {
 StaticRenderer::StaticRenderer() {}
 StaticRenderer::~StaticRenderer() {
@@ -43,15 +43,14 @@ void StaticRenderer::render(cairo_t *cr, int width, int height) {
   cairo_restore(cr);
   switch (m_mode) {
   case ScalingMode::Stretch:
-    break;  
     break;
-  case ScalingMode::Fill:  
+  case ScalingMode::Fill:
     scale = std::max(scaleX, scaleY);
     tx = (width - m_imgWidth * scale) / 2.0;
     ty = (height - m_imgHeight * scale) / 2.0;
     scaleX = scaleY = scale;
     break;
-  case ScalingMode::Fit:  
+  case ScalingMode::Fit:
     scale = std::min(scaleX, scaleY);
     tx = (width - m_imgWidth * scale) / 2.0;
     ty = (height - m_imgHeight * scale) / 2.0;
@@ -63,7 +62,7 @@ void StaticRenderer::render(cairo_t *cr, int width, int height) {
     ty = (height - m_imgHeight) / 2.0;
     break;
   case ScalingMode::Zoom:
-    scale = std::max(scaleX, scaleY) * 1.2;  
+    scale = std::max(scaleX, scaleY) * 1.2;
     tx = (width - m_imgWidth * scale) / 2.0;
     ty = (height - m_imgHeight * scale) / 2.0;
     scaleX = scaleY = scale;
@@ -85,4 +84,4 @@ void StaticRenderer::render(cairo_t *cr, int width, int height) {
     cairo_restore(cr);
   }
 }
-}  
+} // namespace bwp::wallpaper

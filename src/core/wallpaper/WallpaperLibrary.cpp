@@ -7,7 +7,29 @@
 #include <chrono>
 #include <fstream>
 #include <iostream>
+#include <unordered_map>
+#include <unordered_set>
 namespace bwp::wallpaper {
+
+namespace {
+
+WallpaperType detectTypeFromPath(const std::string &path) {
+  std::string ext = utils::StringUtils::toLower(
+      std::filesystem::path(path).extension().string());
+  if (ext == ".pkg")
+    return WallpaperType::WEScene;
+  if (ext == ".html" || ext == ".htm")
+    return WallpaperType::WEWeb;
+  if (ext == ".mp4" || ext == ".webm" || ext == ".mkv" || ext == ".avi")
+    return WallpaperType::Video;
+  if (ext == ".gif")
+    return WallpaperType::AnimatedImage;
+  if (ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".bmp")
+    return WallpaperType::StaticImage;
+  return WallpaperType::Unknown;
+}
+
+} // namespace
 WallpaperLibrary &WallpaperLibrary::getInstance() {
   static WallpaperLibrary instance;
   return instance;
@@ -18,7 +40,12 @@ WallpaperLibrary::WallpaperLibrary() {
 }
 WallpaperLibrary::~WallpaperLibrary() {
   if (m_dirty) {
-    save();
+    try {
+      save();
+    } catch (...) {
+      // save() may fail during static destruction if Logger/FileUtils
+      // singletons are already destroyed — silently ignore.
+    }
   }
 }
 void WallpaperLibrary::initialize() {
@@ -52,6 +79,11 @@ void WallpaperLibrary::load() {
   try {
     std::string content = utils::FileUtils::readFile(m_dbPath);
     nlohmann::json j = nlohmann::json::parse(content);
+    if (!j.contains("wallpapers") || !j["wallpapers"].is_array()) {
+      LOG_WARN(
+          "Library JSON missing or invalid 'wallpapers' array - skipping load");
+      return;
+    }
     m_wallpapers.clear();
     for (const auto &item : j["wallpapers"]) {
       WallpaperInfo info;
@@ -63,6 +95,10 @@ void WallpaperLibrary::load() {
         m_dirty = true;
       }
       info.type = static_cast<WallpaperType>(item.value("type", 0));
+      if (info.type == WallpaperType::Unknown || info.type == WallpaperType::StaticImage) {
+        // Recompute when unknown or defaulted to StaticImage
+        info.type = detectTypeFromPath(info.path);
+      }
       info.source = item.value("source", std::string(""));
       info.rating = item.value("rating", 0);
       info.favorite = item.value("favorite", false);
@@ -223,6 +259,8 @@ void WallpaperLibrary::addWallpaper(const WallpaperInfo &info) {
         existing.title = info.title;
       if (info.type != WallpaperType::Unknown)
         existing.type = info.type;
+      else
+        existing.type = detectTypeFromPath(existing.path);
       if (!info.source.empty())
         existing.source = info.source;
       if (!info.tags.empty())
@@ -231,6 +269,8 @@ void WallpaperLibrary::addWallpaper(const WallpaperInfo &info) {
       return;
     }
     WallpaperInfo newInfo = info;
+    if (newInfo.type == WallpaperType::Unknown)
+      newInfo.type = detectTypeFromPath(newInfo.path);
     if (newInfo.added == 0) {
       newInfo.added =
           static_cast<long long>(std::chrono::system_clock::to_time_t(
@@ -244,8 +284,14 @@ void WallpaperLibrary::addWallpaper(const WallpaperInfo &info) {
     m_dirty = true;
   }
   save();
-  if (m_changeCallback) {
-    m_changeCallback(info);
+  // Copy callback outside lock to avoid holding mutex during invocation
+  ChangeCallback cb;
+  {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    cb = m_changeCallback;
+  }
+  if (cb) {
+    cb(info);
   }
 }
 void WallpaperLibrary::updateWallpaper(const WallpaperInfo &info) {
@@ -257,7 +303,9 @@ void WallpaperLibrary::updateWallpaper(const WallpaperInfo &info) {
   {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
     if (m_wallpapers.count(info.id)) {
-      m_wallpapers[info.id] = info;
+      WallpaperInfo stored = info;
+      stored.type = WallpaperType::WEVideo;
+      m_wallpapers[info.id] = stored;
       m_dirty = true;
       needsSave = true;
       cb = m_changeCallback;
@@ -335,6 +383,23 @@ void WallpaperLibrary::removeWallpaper(const std::string &id) {
 }
 void WallpaperLibrary::removeDuplicates() {
   std::lock_guard<std::recursive_mutex> lock(m_mutex);
+  std::unordered_map<std::string, std::string> pathToId; // path -> first id
+  std::vector<std::string> toRemove;
+  for (const auto &[id, info] : m_wallpapers) {
+    auto [it, inserted] = pathToId.emplace(info.path, id);
+    if (!inserted) {
+      toRemove.push_back(id); // duplicate path, remove this entry
+    }
+  }
+  for (const auto &id : toRemove) {
+    m_wallpapers.erase(id);
+  }
+  if (!toRemove.empty()) {
+    m_dirty = true;
+    LOG_INFO("Removed " + std::to_string(toRemove.size()) +
+             " duplicate wallpapers.");
+    save();
+  }
 }
 std::optional<WallpaperInfo>
 WallpaperLibrary::getWallpaper(const std::string &id) const {
@@ -371,8 +436,9 @@ WallpaperLibrary::search(const std::string &query) const {
       if (utils::StringUtils::toLower(tag).find(q) != std::string::npos)
         match = true;
     }
-    if (match)
+    if (match) {
       result.push_back(info);
+    }
   }
   return result;
 }
@@ -407,21 +473,13 @@ void WallpaperLibrary::removeChangeCallback(int id) {
 }
 std::vector<std::string> WallpaperLibrary::getAllTags() const {
   std::lock_guard<std::recursive_mutex> lock(m_mutex);
-  std::vector<std::string> tags;
+  std::unordered_set<std::string> tagSet;
   for (const auto &pair : m_wallpapers) {
     for (const auto &tag : pair.second.tags) {
-      bool found = false;
-      for (const auto &existing : tags) {
-        if (existing == tag) {
-          found = true;
-          break;
-        }
-      }
-      if (!found) {
-        tags.push_back(tag);
-      }
+      tagSet.insert(tag);
     }
   }
+  std::vector<std::string> tags(tagSet.begin(), tagSet.end());
   std::sort(tags.begin(), tags.end());
   return tags;
 }
